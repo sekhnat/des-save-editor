@@ -1,0 +1,3551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'">
+<title>Demon's Souls — Save Editor (PS5 / PPSA01341)</title>
+<style>
+  :root{
+    --bg:#0d0f12; --panel:#151a20; --panel2:#1b222b; --line:#2a323d;
+    --fg:#d8dee7; --dim:#8b97a8; --accent:#c8a04a; --accent2:#e8c877;
+    --ok:#4ea86b; --warn:#c98a2e; --err:#c0504d; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1200px 600px at 50% -10%,#1a2029 0%,var(--bg) 60%);
+       color:var(--fg);font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  header{padding:22px 26px 10px;border-bottom:1px solid var(--line);background:#0b0d10cc;position:sticky;top:0;z-index:20;backdrop-filter:blur(8px)}
+  h1{margin:0;font-size:19px;letter-spacing:.4px;font-weight:650}
+  h1 span{color:var(--accent);font-weight:400}
+  .sub{color:var(--dim);font-size:12px;margin-top:3px}
+  main{padding:20px 26px 80px;max-width:1180px;margin:0 auto}
+  /* drop zone */
+  #drop{border:2px dashed var(--line);border-radius:14px;padding:44px 24px;text-align:center;
+        background:var(--panel);transition:.15s;cursor:pointer}
+  #drop.hot{border-color:var(--accent);background:#1d2330}
+  #drop.compact{padding:12px 16px;text-align:left;font-size:12px;border-style:solid;border-width:1px;
+                background:#11151a;color:var(--dim)}
+  #drop.compact b{color:var(--dim);font-weight:500}
+  #drop.compact .hint,#drop.compact .bar{display:none}
+  .chip.add{border-style:dashed;color:var(--accent)}
+  #drop b{color:var(--accent2)}
+  .hint{color:var(--dim);font-size:12px;margin-top:8px}
+  /* file list */
+  .files{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:6px 14px;
+        cursor:pointer;font-size:12.5px;color:var(--dim)}
+  .chip.active{border-color:var(--accent);color:var(--accent2);background:#232b36}
+  .chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--ok);margin-right:7px}
+  .chip.dirty .dot{background:var(--warn)}
+  /* panels */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:16px}
+  .card h2{margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:1.2px;color:var(--accent);font-weight:600}
+  .card .note{color:var(--dim);font-size:12px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px 18px}
+  .row{display:flex;flex-direction:column;gap:4px}
+  .row label{font-size:11.5px;color:var(--dim);font-family:var(--mono);letter-spacing:.2px}
+  .row .desc{font-size:11.5px;color:var(--dim)}
+  input[type=text],input[type=number],select{
+    background:#0f1318;border:1px solid var(--line);color:var(--fg);border-radius:7px;
+    padding:7px 9px;font-family:var(--mono);font-size:13px;width:100%}
+  input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px #c8a04a22}
+  input.changed{border-color:var(--accent);background:#191510}
+  .inline{display:flex;gap:6px}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;
+         padding:8px 14px;cursor:pointer;font-size:13px;font-family:inherit}
+  button:hover{border-color:var(--accent);color:var(--accent2)}
+  button.primary{background:linear-gradient(#e8c877,#c8a04a);color:#1a1508;border:none;font-weight:650}
+  button.primary:hover{filter:brightness(1.08);color:#1a1508}
+  button:disabled{opacity:.4;cursor:not-allowed}
+  .bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}
+  .status{font-size:12px;padding:3px 9px;border-radius:999px;border:1px solid var(--line);color:var(--dim)}
+  .status.ok{color:#8fe0a8;border-color:#2e6b42;background:#12251a}
+  .status.err{color:#f0a3a0;border-color:#6b2e2e;background:#251212}
+  .status.warn{color:#f0cf9a;border-color:#6b552e;background:#251f12}
+  table{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:12px}
+  th,td{text-align:left;padding:5px 8px;border-bottom:1px solid #1f262f;vertical-align:top}
+  th{color:var(--accent);font-weight:600;position:sticky;top:0;background:var(--panel);z-index:2}
+  tr:hover td{background:#1a212a}
+  td.k{color:#7f8b9c}
+  td.n{color:var(--accent2)}
+  td.v input{background:transparent;border:1px solid transparent;padding:2px 4px;font-size:12px}
+  td.v input:hover{border-color:var(--line)}
+  .scroll{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+  .flexh{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .tabs{display:flex;gap:6px;margin:14px 0}
+  .tabs button.active{background:#232b36;border-color:var(--accent);color:var(--accent2)}
+  .kbd{font-family:var(--mono);background:#0f1318;border:1px solid var(--line);border-radius:4px;padding:0 4px;font-size:11px}
+  .warnbox{border-left:3px solid var(--warn);background:#1d1911;padding:10px 14px;border-radius:6px;
+           font-size:12.5px;color:#d9c9a5;margin-top:12px}
+  .okbox{border-left:3px solid var(--ok);background:#12251a;padding:10px 14px;border-radius:6px;font-size:12.5px}
+  /* inventory */
+  .invlist{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .invrow{display:grid;grid-template-columns:44px 70px 1fr 86px 96px 40px;gap:6px;align-items:center;
+          padding:5px 10px;border-bottom:1px solid #1c232b;font-size:12.5px}
+  .invrow:last-child{border-bottom:none}
+  .invrow:hover{background:#1a212a}
+  .invrow .n{color:#5f6b7c;font-family:var(--mono);font-size:11px;text-align:right}
+  .invrow .id{font-family:var(--mono);color:var(--dim)}
+  .invrow .nm{color:var(--fg)}
+  .invrow .nm.unknown{color:#8a6a3a;font-style:italic}
+  .invrow .cat{font-size:10.5px;color:#6d7a8b;text-transform:uppercase;letter-spacing:.6px}
+  .invrow button{padding:2px 8px;font-size:11px}
+  .modal{position:fixed;inset:0;background:#000a;display:flex;align-items:flex-start;justify-content:center;
+         z-index:100;padding-top:8vh}
+  .modalbox{background:var(--panel);border:1px solid var(--accent);border-radius:12px;width:min(760px,94vw);
+            max-height:74vh;display:flex;flex-direction:column;box-shadow:0 20px 60px #000a}
+  .modalbox header{padding:12px 16px;border-bottom:1px solid var(--line);background:none;position:static}
+  .modalbox .body{overflow:auto;padding:6px}
+  .pickrow{display:grid;grid-template-columns:64px 1fr 90px;gap:10px;padding:6px 10px;border-radius:6px;
+           cursor:pointer;font-size:12.5px}
+  .pickrow:hover{background:#232b36}
+  .pickrow .pid{font-family:var(--mono);color:var(--dim)}
+  .pickrow .pcat{font-size:10.5px;color:#6d7a8b;text-transform:uppercase;letter-spacing:.6px}
+  /* undo / diagnostics / tree / reference */
+  button:disabled{opacity:.38;cursor:default}
+  .diag{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .diag div{font-size:12.5px;padding:7px 11px;border-radius:8px;border-left:3px solid}
+  .diag .err{background:#2a1417;border-color:var(--err);color:#e9b3b8}
+  .diag .warn{background:#2a2214;border-color:var(--accent);color:#e7cf9e}
+  .diag .info{background:#14202a;border-color:#3b6f96;color:#a9c6da}
+  .trow{display:grid;grid-template-columns:90px 210px 54px 1fr;gap:10px;font-size:12px;
+        font-family:var(--mono);padding:2px 8px;border-bottom:1px solid #171d24}
+  .trow:hover{background:#1a212a}
+  .trow .tk{color:#7d8b9d}.trow .tn{color:var(--fg);font-family:inherit}
+  .trow .tt{color:#5f6b7c;text-align:right}.trow .tv{color:#9fb0c2;overflow:hidden;text-overflow:ellipsis}
+  .trow.cont .tn{color:var(--accent)}
+  table.ref{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.ref th{position:sticky;top:0;background:#151b22;text-align:left;padding:7px 9px;
+               font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:#8896a8;border-bottom:1px solid var(--line)}
+  table.ref td{padding:6px 9px;border-bottom:1px solid #1a2029;vertical-align:top}
+  table.ref td.desc{color:#8d9bad;font-size:12px}
+  table.ref tr:hover td{background:#1a212a}
+  .kbd{font-family:var(--mono);font-size:11px;background:#1d242d;border:1px solid #2c3a48;
+       border-radius:4px;padding:1px 5px;color:#9fb0c2}
+  .hidden{display:none!important}
+  code{font-family:var(--mono);color:var(--accent2)}
+  .small{font-size:11.5px;color:var(--dim)}
+  .field-error{color:#f0a3a0;font-size:12px;white-space:normal;display:block}
+  input.invalid{border-color:var(--err);background:#251212}
+  input[readonly]{opacity:.7;cursor:not-allowed}
+  button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  #message{position:sticky;top:82px;z-index:25;max-height:180px;overflow:auto;white-space:pre-wrap;margin-bottom:16px}#message:empty{display:none}
+  .tabs{flex-wrap:wrap}.bar input,.bar select{width:auto;max-width:100%}
+  .pages{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;color:var(--dim);font-size:12px}
+  .invlist{max-height:360px;overflow:auto}.invrow{grid-template-columns:32px 62px minmax(140px,1fr) 110px 82px 40px}
+  .pickrow{width:100%;text-align:left;margin-bottom:4px}
+  .modalbox textarea{width:100%;min-height:240px;resize:vertical;background:#0f1318;color:var(--fg);font:12px/1.5 var(--mono);padding:12px}
+  .modalbox footer{padding:12px 16px;border-top:1px solid var(--line)}
+  .trow .tn{overflow-wrap:anywhere}.trow .tv{white-space:pre-wrap}
+  @media(max-width:700px){
+    header{padding:12px}main{padding:12px}.card{padding:14px}.grid{grid-template-columns:1fr}
+    input[type=text],input[type=number],select{font-size:16px}
+    .invrow{grid-template-columns:24px 50px minmax(90px,1fr) 66px 34px}.invrow .cat{display:none}
+    .invrow button{padding:4px}.trow{grid-template-columns:65px minmax(110px,1fr) 36px minmax(80px,1fr);gap:5px}
+    .modal{padding-top:3vh}.modalbox{max-height:90vh}.pickrow{grid-template-columns:58px 1fr 65px}
+    .scroll{overflow:auto}#alltable{min-width:700px}table.ref{min-width:760px}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Demon's Souls <span>— save editor</span></h1>
+  <div class="sub">PS5 / PPSA01341 &nbsp;·&nbsp; edits <code>USR-DATA</code> in
+    <code>_SaveData/PPSA01341/*</code> &nbsp;·&nbsp; format: typed field tree, FNV-1a 32 checksum</div>
+</header>
+<main>
+<div id="message" role="status" aria-live="polite"></div>
+  <div id="drop">
+    <b>Drop your <code>USR-DATA</code> files here</b> — or the whole <code>_SaveData</code> folder<br>
+    <span class="hint">Everything runs locally in this page. Nothing is uploaded anywhere.</span>
+    <div class="bar" style="justify-content:center;margin-top:14px">
+      <button id="pick">Choose files…</button>
+      <button id="pickdir">Choose folder…</button>
+    </div>
+    <input type="file" id="file" multiple class="hidden">
+    <input type="file" id="filedir" webkitdirectory directory multiple class="hidden">
+  </div>
+
+  <div id="work" class="hidden">
+    <div class="files" id="files"></div>
+
+    <div class="card">
+      <div class="flexh">
+        <div>
+          <h2 id="pname">—</h2>
+          <div class="note" id="pinfo"></div>
+        </div>
+        <div class="bar">
+          <span class="status" id="csum">—</span>
+          <button id="undo" disabled title="Ctrl+Z">↶ Undo</button>
+          <button id="redo" disabled title="Ctrl+Shift+Z">↷ Redo</button>
+          <button id="revert" title="discard every change">Revert all</button>
+          <button id="backup">Original backup</button>
+          <button id="saveall">Save all (ZIP)</button>
+          <button class="primary" id="save" title="Ctrl+S">Save file</button>
+        </div>
+      </div>
+      <div id="quick" class="bar" style="margin-top:8px"></div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Editor views">
+      <button data-tab="editor" class="active">Editor</button>
+      <button data-tab="all">All fields</button>
+      <button data-tab="tree">Tree</button>
+      <button data-tab="ref">Field reference</button>
+      <button data-tab="catalog">Item catalog</button>
+      <button data-tab="changes">Changes</button>
+      <button data-tab="json">JSON</button>
+    </div>
+
+    <div id="tab-editor"></div>
+    <div id="tab-all" class="hidden card">
+      <div class="flexh" style="margin-bottom:10px">
+        <div><h2>Raw field table</h2><div class="note">Every field in the file. Unknown keys still accept edits.</div></div>
+        <input type="text" id="filter" placeholder="filter by name / key / value" style="max-width:280px">
+      </div>
+      <div class="scroll"><table id="alltable"><thead><tr>
+        <th style="width:64px">offset</th><th style="width:76px">key</th>
+        <th style="width:190px">name</th><th style="width:52px">array</th>
+        <th style="width:38px">type</th><th>value</th>
+      </tr></thead><tbody></tbody></table></div>
+      <div id="rawpages" class="pages"></div>
+    </div>
+    <div id="tab-tree" class="hidden card">
+      <div class="flexh" style="margin-bottom:10px">
+        <div><h2>Parse tree</h2><div class="note">Every record in file order, indented by container depth.</div></div>
+        <span class="small" id="treecount"></span>
+      </div>
+      <div class="scroll" id="treebody" style="max-height:620px;overflow:auto;
+           border:1px solid var(--line);border-radius:10px"></div>
+      <div id="treepages" class="pages"></div>
+    </div>
+
+    <div id="tab-ref" class="hidden card">
+      <div class="flexh" style="margin-bottom:10px">
+        <div><h2>Field reference</h2><div class="note">Every name the editor knows, the FNV-1a key it hashes to, and what it holds.</div></div>
+        <input type="text" id="reffilter" placeholder="filter names / descriptions" style="max-width:280px">
+      </div>
+      <div class="scroll" style="max-height:620px;overflow:auto">
+        <table class="ref"><thead><tr>
+          <th style="width:76px">key</th><th style="width:230px">name</th><th style="width:170px">label</th>
+          <th style="width:52px">type</th><th style="width:120px">this file</th><th>description</th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+
+    <div id="tab-catalog" class="hidden card">
+      <h2>Item catalog</h2>
+      <p class="note">Category-specific game IDs. Weapons, armor, spells and skills remain searchable even when their IDs do not fit a u16 record. Catalog presence is not proof of a save-field mapping.</p>
+      <div class="bar"><input id="catalogsearch" type="text" placeholder="Search all item names / IDs" aria-label="Search item catalog">
+        <select id="catalogcategory" aria-label="Catalog category"><option value="">All categories</option><option value="G">Goods</option><option value="W">Weapons</option><option value="A">Armor</option><option value="R">Rings</option><option value="S">Spells</option><option value="K">Skills</option></select></div>
+      <div class="scroll"><table><thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Scope</th></tr></thead><tbody id="catalogbody"></tbody></table></div>
+      <div id="catalogpages" class="pages"></div>
+    </div>
+    <div id="tab-changes" class="hidden card">
+      <div class="flexh"><div><h2>Changes</h2><p id="changescount" class="note"></p></div><button id="downloadpatch">Export scalar patch</button></div>
+      <div class="scroll"><table><thead><tr><th>Path</th><th>Field</th><th>Original</th><th>Edited</th></tr></thead><tbody id="changesbody"></tbody></table></div>
+      <div id="changespages" class="pages"></div>
+    </div>
+    <div id="tab-json" class="hidden card">
+      <div class="flexh" style="margin-bottom:10px">
+        <div><h2>JSON / patches</h2><div id="jsonstatus" class="note">Full dump or {FIELD: value} patch. Imports are validated atomically.</div></div>
+        <div class="bar"><button id="refreshjson">Refresh</button>
+          <button id="downloadjson">Download</button>
+          <button id="importjson">Import…</button><input id="jsonfile" type="file" accept=".json,application/json" class="hidden">
+          <button id="copyjson">Copy</button>
+          <button class="primary" id="applyjson">Apply JSON</button></div>
+      </div>
+      <textarea id="json" spellcheck="false" style="width:100%;height:460px;background:#0f1318;color:#b9c4d2;
+        border:1px solid var(--line);border-radius:10px;font-family:var(--mono);font-size:12px;padding:12px"></textarea>
+    </div>
+
+    <div class="warnbox" id="tips"></div>
+  </div>
+  <div id="picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="picktitle">
+    <div class="modalbox">
+      <header><div class="flexh"><b id="picktitle">Choose an experimental candidate</b><button id="closepicker" aria-label="Close item picker">Close</button></div>
+        <p class="small" id="pickhint"></p><input id="pickersearch" type="text" placeholder="Search candidate names / IDs…" aria-label="Search item candidates">
+        <select id="pickcategory" aria-label="Candidate category"><option value="">All equipment categories</option><option value="G">Goods</option><option value="W">Weapons</option><option value="A">Armor</option><option value="R">Rings</option></select></header>
+      <div class="body" id="pickerbody"></div><footer id="pickerpages" class="pages"></footer>
+    </div>
+  </div>
+  <div id="blobeditor" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="blobtitle">
+    <div class="modalbox"><header><div class="flexh"><b id="blobtitle">Binary field</b><button id="closeblob">Close</button></div><p class="small">Opaque bytes. Export/import binary or edit strict hex; unknown formats are not interpreted.</p></header>
+      <div class="body"><textarea id="blobhex" spellcheck="false" aria-label="Binary field hex"></textarea></div>
+      <footer class="bar"><button id="downloadblob">Download binary</button><label>Import binary <input id="importblob" type="file"></label><button id="applyblob" class="primary">Apply bytes</button></footer>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+/* ===================================================================== *
+ *  Container format
+ *    u32 version | u32 fnv1a(payload) | u32 payloadSize | u32 1 | payload
+ *  field: u32 key (fnv1a of UPPERCASE name) | u8 type | value
+ * ===================================================================== */
+const SIZES = {0x02:1, 0x03:2, 0x04:4, 0x08:4, 0x0A:4, 0x0C:1};
+const T = {U8:0x02, U16:0x03, RAW4:0x04, CONT:0x06, I32:0x08, F32:0x0A, BOOL:0x0C, STR:0x0D, BLOB:0x0E};
+
+function fnv1a(bytes, h = 0x811C9DC5){
+  for (let i = 0; i < bytes.length; i++){
+    h = Math.imul((h ^ bytes[i]) >>> 0, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+function nameKey(name){
+  return fnv1a(new TextEncoder().encode(String(name).toUpperCase()));
+}
+const MAX_FILE_SIZE = 16 * 1024 * 1024;
+const MAX_DEPTH = 64;
+const encoder = new TextEncoder(), decoder = new TextDecoder();
+const HEX = Array.from({length:256}, (_, i) => i.toString(16).padStart(2, "0"));
+function readVarint(buf, i, end = buf.length){
+  let value = 0;
+  for (let n = 0; n < 5; n++){
+    if (i >= end) throw new Error("Truncated LEB128 length");
+    const b = buf[i++];
+    value += (b & 0x7f) * 2 ** (7 * n);
+    if (value > 0xffffffff) throw new Error("LEB128 length exceeds uint32");
+    if (!(b & 0x80)) return [value, i];
+  }
+  throw new Error("LEB128 length exceeds five bytes");
+}
+function writeVarint(value){
+  if (!Number.isInteger(value) || value < 0 || value > 0xffffffff) throw new Error("Invalid LEB128 length");
+  const out = [];
+  do { const b = value % 128; value = Math.floor(value / 128); out.push(b | (value ? 128 : 0)); } while (value);
+  return out;
+}
+function bytesHex(bytes){ return Array.from(bytes, b => HEX[b]).join(""); }
+function hexToBytes(text){
+  if (typeof text !== "string") throw new Error("Hex must be a string");
+  const s = text.replace(/\s/g, "").replace(/^0x/i, "");
+  if (!/^(?:[0-9a-f]{2})*$/i.test(s)) throw new Error("Use complete hex byte pairs (00–ff), optionally separated by spaces");
+  const out = new Uint8Array(s.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(s.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+function numericBytes(type, value){
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Enter a finite number");
+  const out = new Uint8Array(SIZES[type]);
+  const view = new DataView(out.buffer);
+  if (type === T.F32){
+    if (!Number.isFinite(Math.fround(value))) throw new Error("Value exceeds float32 range");
+    view.setFloat32(0, value, true);
+  } else {
+    const lo = type === T.I32 ? -2147483648 : 0;
+    const hi = type === T.I32 ? 2147483647 : type === T.U16 ? 65535 : 255;
+    if (!Number.isInteger(value) || value < lo || value > hi) throw new Error(`Enter an integer from ${lo} to ${hi}`);
+    if (type === T.I32) view.setInt32(0, value, true);
+    else if (type === T.U16) view.setUint16(0, value, true);
+    else view.setUint8(0, value);
+  }
+  return out;
+}
+class Field{
+  constructor(key, type, raw = new Uint8Array(0), children = null, offset = 0){
+    this.key = key; this.type = type; this._raw = raw;
+    this.children = children; this.offset = offset; this.path = ""; this.owner = null;
+  }
+  get name(){ return FIELD_BY_KEY.get(this.key) || null; }
+  get isContainer(){ return this.type === T.CONT; }
+  get isFloat(){ return this.type === T.F32; }
+  get isText(){ return this.type === T.STR || this.type === T.BLOB; }
+  get isInt(){ return [T.U8,T.U16,T.I32,T.BOOL].includes(this.type); }
+  get raw(){ return this._raw; }
+  set raw(bytes){
+    if (!(bytes instanceof Uint8Array)) throw new Error("Expected binary bytes");
+    if (SIZES[this.type] !== undefined && bytes.length !== SIZES[this.type]) throw new Error(`Type 0x${this.type.toString(16)} needs exactly ${SIZES[this.type]} bytes`);
+    if (bytes.length > MAX_FILE_SIZE) throw new Error("Field exceeds editor size limit");
+    if (bytesEq(this._raw, bytes)) return;
+    this._raw = bytes.slice();
+    if (this.owner) this.owner.touch();
+  }
+  get value(){
+    if (this.isContainer) return null;
+    const d = new DataView(this._raw.buffer, this._raw.byteOffset, this._raw.byteLength);
+    if (this.type === T.F32) return d.getFloat32(0, true);
+    if (this.type === T.I32) return d.getInt32(0, true);
+    if (this.type === T.U16) return d.getUint16(0, true);
+    if (this.isInt) return d.getUint8(0);
+    if (this.type === T.STR) return decoder.decode(this.raw);
+    return this.raw;
+  }
+  set value(v){
+    if (this.isContainer) throw new Error("Containers cannot be assigned a scalar");
+    if (this.isInt || this.isFloat) this.raw = numericBytes(this.type, v);
+    else if (this.type === T.RAW4) this.raw = typeof v === "string" ? hexToBytes(v) : v;
+    else if (this.type === T.STR){
+      if (typeof v !== "string") throw new Error("Expected text");
+      this.raw = encoder.encode(v);
+    } else this.raw = v;
+  }
+  get hex(){ return bytesHex(this.raw); }
+  get display(){
+    if (this.isContainer) return `container(${this.children.length})`;
+    if (this.type === T.BLOB) return `blob[${this.raw.length}] ${bytesHex(this.raw.subarray(0,16))}${this.raw.length > 16 ? "…" : ""}`;
+    if (this.type === T.STR) return JSON.stringify(decoder.decode(this.raw.subarray(0,160))) + (this.raw.length > 160 ? "…" : "");
+    if (this.type === T.RAW4) return `0x${this.hex}`;
+    return String(this.value);
+  }
+}
+function parseFields(payload, start = 0, end = payload.length, count = null, depth = 0, budget = {left:100000}){
+  if (depth > MAX_DEPTH) throw new Error("Container nesting exceeds editor limit");
+  if (start < 0 || end > payload.length || start > end) throw new Error("Invalid record bounds");
+  const out = [];
+  let i = start;
+  const need = n => { if (n > end - i) throw new Error(`Truncated record at payload offset 0x${i.toString(16)}`); };
+  while (i < end && (count === null || out.length < count)){
+    need(5);
+    if (--budget.left < 0) throw new Error("Too many records");
+    const offset = i;
+    const key = new DataView(payload.buffer, payload.byteOffset + i, 4).getUint32(0, true);
+    const type = payload[i + 4]; i += 5;
+    if (SIZES[type] !== undefined){
+      need(SIZES[type]);
+      out.push(new Field(key, type, payload.subarray(i, i + SIZES[type]), null, offset));
+      i += SIZES[type];
+    } else if (type === T.STR || type === T.BLOB){
+      let n; [n, i] = readVarint(payload, i, end); need(n);
+      out.push(new Field(key, type, payload.subarray(i, i + n), null, offset)); i += n;
+    } else if (type === T.CONT){
+      let n; [n, i] = readVarint(payload, i, end);
+      if (n > Math.floor((end - i) / 5)) throw new Error("Container count exceeds remaining payload");
+      const [kids, next] = parseFields(payload, i, end, n, depth + 1, budget);
+      out.push(new Field(key, type, new Uint8Array(0), kids, offset)); i = next;
+    } else throw new Error(`Unknown field type 0x${type.toString(16)} at payload offset 0x${offset.toString(16)}`);
+  }
+  if (count !== null && out.length !== count) throw new Error("Container count mismatch");
+  return [out, i];
+}
+function serializeFields(records){
+  // Two passes allocate one typed buffer; blobs are copied with set(), not spread/push.
+  const measure = (rows, depth = 0) => {
+    if (depth > MAX_DEPTH) throw new Error("Container nesting exceeds editor limit");
+    let size = 0;
+    for (const f of rows){
+      size += 5;
+      if (f.isContainer) size += writeVarint(f.children.length).length + measure(f.children, depth + 1);
+      else {
+        if (SIZES[f.type] !== undefined && f.raw.length !== SIZES[f.type]) throw new Error("Invalid scalar byte length");
+        size += f.raw.length + (f.isText ? writeVarint(f.raw.length).length : 0);
+      }
+      if (size > MAX_FILE_SIZE - 16) throw new Error("Save exceeds editor size limit");
+    }
+    return size;
+  };
+  const out = new Uint8Array(measure(records)), view = new DataView(out.buffer);
+  let i = 0;
+  const write = bytes => { out.set(bytes, i); i += bytes.length; };
+  const visit = rows => {
+    for (const f of rows){
+      f.offset = i; view.setUint32(i, f.key, true); out[i + 4] = f.type; i += 5;
+      if (f.isContainer){ write(writeVarint(f.children.length)); visit(f.children); }
+      else { if (f.isText) write(writeVarint(f.raw.length)); write(f.raw); }
+    }
+  };
+  visit(records);
+  return out;
+}
+class SaveFile{
+  constructor(buf){
+    if (!(buf instanceof Uint8Array) || buf.length < 16 || buf.length > MAX_FILE_SIZE) throw new Error("Save must be 16 bytes–16 MiB");
+    this.buf = buf;
+    const d = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    this.version = d.getUint32(0, true); this.checksum = d.getUint32(4, true);
+    this.size = d.getUint32(8, true); this.fieldC = d.getUint32(12, true);
+    if (this.version !== 7 || this.fieldC !== 1) throw new Error("Unsupported save header (expected version 7 / marker 1)");
+    const payload = buf.subarray(16);
+    if (payload.length !== this.size) throw new Error("Payload size does not match header");
+    this.checksumOk = fnv1a(payload) === this.checksum;
+    [this.records] = parseFields(payload);
+    this.revision = 0; this.dirty = new Set(); this._built = null;
+    this.reindex(false);
+  }
+  touch(){ this.revision++; this._built = null; }
+  reindex(changed = true){
+    this.byKey = new Map(); this.flat = [];
+    const visit = (rows, depth, prefix) => rows.forEach((f, i) => {
+      f.owner = this; f.path = prefix + "/" + i; this.flat.push([f, depth]);
+      if (!this.byKey.has(f.key)) this.byKey.set(f.key, []);
+      this.byKey.get(f.key).push(f);
+      if (f.isContainer) visit(f.children, depth + 1, f.path);
+    });
+    visit(this.records, 0, "");
+    if (changed) this.touch();
+  }
+  *walk(){ yield* this.flat; }
+  findAll(name){
+    const key = typeof name === "number" ? name : /^0x[0-9a-f]{1,8}$/i.test(name) ? Number(name) : nameKey(name);
+    return (this.byKey.get(key) || []).filter(f => !f.isContainer);
+  }
+  find(name){ return name === null || name === undefined ? null : this.findAll(name)[0] || null; }
+  get(name){ const f = this.find(name); return f ? f.value : null; }
+  set(name, value){ const f = this.find(name); if (!f) return false; f.value = value; return true; }
+  payload(){ return serializeFields(this.records); }
+  build(){
+    if (!this._built){
+      const payload = this.payload(), out = new Uint8Array(16 + payload.length), d = new DataView(out.buffer);
+      d.setUint32(0, this.version, true); d.setUint32(4, fnv1a(payload), true);
+      d.setUint32(8, payload.length, true); d.setUint32(12, this.fieldC, true); out.set(payload, 16);
+      this._built = out;
+    }
+    return this._built; // Treat snapshots and returned bytes as immutable.
+  }
+  summary(){
+    const g = name => this.get(name), attrs = ATTRS.map(a => g("PLAYER_CURRENT" + a));
+    return {name:g("PLAYER_NAME"), souls:g("PLAYER_SOULS"), attrs,
+      soulLevel:attrs.every(v => typeof v === "number") ? attrs.reduce((a,b) => a+b,0) - 80 : null,
+      hp:[g("PLAYER_CURRENTHP"),g("PLAYER_CURRENTMAXHP"),g("PLAYER_BASEMAXHP")],
+      mp:[g("PLAYER_CURRENTMP"),g("PLAYER_CURRENTMAXMP"),g("PLAYER_BASEMAXMP")],
+      sp:[g("PLAYER_CURRENTSP"),g("PLAYER_CURRENTMAXSP"),g("PLAYER_BASEMAXSP")], playtime:g("PLAYTIME")};
+  }
+}
+
+/* ===================================================================== *
+ *  Field names (cracked by FNV-1a brute force)
+ * ===================================================================== */
+const ATTRS = ["VITALITY","INTELLIGENCE","ENDURANCE","STRENGTH","DEXTERITY","MAGIC","FAITH","LUCK"];
+
+const DEFS = [
+  ["PLAYER_NAME","text","Character name",0,16,"The name shown on the character select screen."],
+  ["PLAYER_ARCHETYPE","int","Class / archetype id",0,9,"Numeric archetype. The class-name mapping has not been verified; preserve it unless you know the correct id."],
+  ["PLAYER_ISMALE","int","Gender (isMale)",0,1,"Gender flag as the game names it. Both sample saves store 0."],
+  ["ARCHSTONEHOMEINDEX","int","Home archstone",0,20,"Archstone the character returns to."],
+  ["PLAYER_NUMBER","int","Character slot",0,20,"Index of this character."],
+  ["PLAYER_SOULS","int","Souls",0,999999999,"Souls currently carried."],
+  ["PLAYER_CUMULATIVESOULS","int","Souls (lifetime)",0,2000000000,"Total souls ever collected with this character."],
+  ["PLAYER_CURRENTHP","int","HP (current)",0,100000,""],
+  ["PLAYER_CURRENTMAXHP","int","HP (max, effective)",0,100000,"Max HP the game shows — reduced in soul form."],
+  ["PLAYER_BASEMAXHP","int","HP (body form max)",0,100000,"Body-form maximum, derived from Vitality."],
+  ["PLAYER_CURRENTMP","int","MP (current)",0,100000,""],
+  ["PLAYER_CURRENTMAXMP","int","MP (max, effective)",0,100000,""],
+  ["PLAYER_BASEMAXMP","int","MP (base)",0,100000,"Derived from Intelligence."],
+  ["PLAYER_CURRENTSP","int","Stamina (current)",0,100000,""],
+  ["PLAYER_CURRENTMAXSP","int","Stamina (max, effective)",0,100000,""],
+  ["PLAYER_BASEMAXSP","int","Stamina (max)",0,100000,""],
+  ["PLAYER_RECOVERMP","int","MP recovery",0,100000,"Regeneration bonus."],
+  ["PLAYER_RECOVERSP","int","Stamina recovery",0,100000,"Regeneration bonus."],
+  ["WORLDSTATUS_MIRRORMODE","int","Mirror mode",0,1,""],
+  ["MISC_HASUNLOCKEDNEXUSSTATUE","int","Nexus statue unlocked",0,1,""],
+  ["EQUIPMENT_STORAGEBOX_COUNT","int","Storage box count (read-only)",0,100000,"Counter only. Contents and their relationship to this counter have not been decoded; changing the counter alone is unsafe."],
+  ["PLAYER_RESISTANCE_POISON","int","Poison resistance",0,100000,""],
+  ["PLAYER_RESISTANCE_PLAGUE","int","Plague resistance",0,100000,""],
+  ["PLAYTIME","float","Play time (ms)",0,1e12,"Milliseconds. 3 600 000 = one hour."],
+  ["TRUEDEATHCOUNT","int","Deaths",0,1000000,""],
+  ["DEMONSKILLED","int","Demons killed",0,1000000,""],
+  ["CLEARSTATE","int","Clear state",0,1000,""],
+  ["CLEARCOUNT","int","Clear count",0,1000,"Number of finished playthroughs (NG+ level)."],
+  ["KILLBLACK","int","Black phantom kills",0,1000000,""],
+  ["PLAYER_SHOPLEVEL","int","Shop level (unverified)",0,10000,"Hash name recovered, but the meaning of the value is not confirmed."],
+  ["PLAYER_CLEARITEM","byte","Clear item flag",0,255,""],
+  ["PLAYER_CLEARBONUS","float","Clear bonus",-1e9,1e9,""],
+  ["PLAYEROFFSET","int","Player record offset (unverified)",-1,1000000,"Recovered field name; value meaning is unverified."],
+  ["BRIGHTNESS","int","Brightness",0,100,""],
+  ["DISPLAYBRIGHTNESS","float","Display brightness",0,2,""],
+  ["VOLUMEMUSIC","float","Music volume",0,1,""],
+  ["VOLUMEEFFECTS","float","Effects volume",0,1,""],
+  ["VOLUMEVOICE","float","Voice volume",0,1,""],
+  ["SUBTITLES","int","Subtitles",0,1,""],
+  ["SHOWHELMET","int","Show helmet",0,1,""],
+  ["GAMEFILTERNAME","hex","Colour filter",0,4294967295,"4 raw bytes."],
+  ["CAMERASPEED","int","Camera speed",0,10,""],
+  ["CAMERAMODE","int","Camera mode",0,1,""],
+  ["SOUNDTYPE","int","Sound output",0,8,""],
+  ["COLORBLIND","int","Colour-blind filter",0,8,""],
+  ["PASSWORD","text","Network password",0,8,""],
+];
+for (const a of ATTRS){
+  DEFS.push(["PLAYER_CURRENT"+a,"int",a.toLowerCase(),1,99,"Attribute value used by the level-up screen."]);
+  DEFS.push(["PLAYER_BASE"+a,"int",a.toLowerCase()+" (base)",1,99,"Stored base value of the same attribute."]);
+}
+
+const FIELD_BY_KEY = new Map();
+const META = new Map();
+for (const [name, kind, label, lo, hi, desc] of DEFS){
+  const m = {name, kind, label, lo, hi, desc, key: nameKey(name)};
+  FIELD_BY_KEY.set(m.key, name);
+  META.set(name, m);
+}
+
+const LAYOUT = [
+  ["Character", ["PLAYER_NAME","PLAYER_ISMALE","PLAYER_ARCHETYPE","PLAYER_NUMBER",
+                 "ARCHSTONEHOMEINDEX"]],
+  ["Souls", ["PLAYER_SOULS","PLAYER_CUMULATIVESOULS"]],
+  ["Attributes", ATTRS.map(a => "PLAYER_CURRENT"+a)],
+  ["Attributes (base)", ATTRS.map(a => "PLAYER_BASE"+a)],
+  ["Vitals", ["PLAYER_CURRENTHP","PLAYER_CURRENTMAXHP","PLAYER_BASEMAXHP",
+              "PLAYER_CURRENTMP","PLAYER_CURRENTMAXMP","PLAYER_BASEMAXMP",
+              "PLAYER_CURRENTSP","PLAYER_CURRENTMAXSP","PLAYER_BASEMAXSP",
+              "PLAYER_RECOVERMP","PLAYER_RECOVERSP"]],
+  ["Progress flags", ["WORLDSTATUS_MIRRORMODE","MISC_HASUNLOCKEDNEXUSSTATUE",
+                      "EQUIPMENT_STORAGEBOX_COUNT"]],
+  ["Resistance", ["PLAYER_RESISTANCE_POISON","PLAYER_RESISTANCE_PLAGUE"]],
+  ["Progress", ["PLAYTIME","TRUEDEATHCOUNT","DEMONSKILLED","CLEARSTATE","CLEARCOUNT",
+                "KILLBLACK"]],
+  ["Advanced (unverified)", ["PLAYER_SHOPLEVEL","PLAYER_CLEARITEM","PLAYER_CLEARBONUS","PLAYEROFFSET"]],
+  ["Options", ["BRIGHTNESS","DISPLAYBRIGHTNESS","VOLUMEMUSIC","VOLUMEEFFECTS","VOLUMEVOICE",
+               "SUBTITLES","SHOWHELMET","CAMERASPEED","CAMERAMODE","SOUNDTYPE","COLORBLIND",
+               "GAMEFILTERNAME","PASSWORD"]],
+];
+
+/* ===================================================================== *
+ *  UI
+ * ===================================================================== */
+
+/* ===================================================================== *
+ *  Item database + inventory
+ * ===================================================================== */
+/* ITEMDB:START */
+const ITEMDB = [
+[100000,"Gold Mask","A"],
+[100100,"Silver Coronet","A"],
+[100200,"Assassin's Mask","A"],
+[100300,"Leather Cap","A"],
+[100400,"Mail Coif","A"],
+[100500,"Mirdan Helm","A"],
+[100600,"Plate Helm","A"],
+[100700,"Fluted Helm","A"],
+[100800,"Brushwood Helm","A"],
+[100900,"Dark Silver Helm","A"],
+[100999,"Unlabelled Armor 100999","A"],
+[101000,"Gloom Helm","A"],
+[101100,"Ancient King's Mask","A"],
+[101400,"Venerable Sage's Hood","A"],
+[101700,"No Equipment","A"],
+[101800,"Official's Cap","A"],
+[101900,"Dull Gold Helm","A"],
+[102000,"Binded Hood","A"],
+[102100,"Three-Cornered Hat","A"],
+[180000,"Monk's Head Wrappings","A"],
+[190000,"UNUSED DATA","A"],
+[190100,"UNUSED DATA","A"],
+[190200,"UNUSED DATA","A"],
+[190300,"UNUSED DATA","A"],
+[190400,"Iron Helm","A"],
+[199905,"Red-Eye Knight Helmet","A"],
+[199906,"Blue-Eye Knight Helmet","A"],
+[199907,"Penetrator's Helmet","A"],
+[199909,"Imperial Spy Hood","A"],
+[200000,"Shaman's Garb","A"],
+[200100,"Wizard's Clothes","A"],
+[200200,"Black Leather Garb","A"],
+[200300,"Leather Armour","A"],
+[200400,"Chain Mail","A"],
+[200500,"Mirdan Scale Armour","A"],
+[200600,"Coat of Plates","A"],
+[200700,"Fluted Armour","A"],
+[200800,"Brushwood Armour","A"],
+[200900,"Dark Silver Armour","A"],
+[200999,"Unlabelled Armor 200999","A"],
+[201000,"Gloom Armour","A"],
+[201100,"Ancient King's Breastplate","A"],
+[201200,"Saint's Robe","A"],
+[201400,"Venerable Sage's Robe","A"],
+[201700,"No Equipment","A"],
+[201800,"Rogue's Clothes","A"],
+[201900,"Dull Gold Armour","A"],
+[202000,"Binded Cross","A"],
+[202100,"Old Ragged Robes","A"],
+[290000,"UNUSED DATA","A"],
+[290100,"UNUSED DATA","A"],
+[290200,"UNUSED DATA","A"],
+[290300,"UNUSED DATA","A"],
+[299900,"Barbarian Clothes","A"],
+[299903,"Boletarian Royalty Clothes","A"],
+[299904,"Burrower Armour","A"],
+[299905,"Red-Eye Knight Cuirass","A"],
+[299906,"Blue-Eye Knight Cuirass","A"],
+[299907,"Penetrator's Cuirass","A"],
+[299908,"Official's Clothes","A"],
+[299909,"Imperial Spy Clothes","A"],
+[300000,"Shaman's Armbands","A"],
+[300100,"Wizard's Gloves","A"],
+[300200,"Black Gloves","A"],
+[300300,"Leather Gloves","A"],
+[300400,"Chain Gloves","A"],
+[300500,"Mirdan Gauntlets","A"],
+[300600,"Plate Gauntlets","A"],
+[300700,"Fluted Gauntlets","A"],
+[300800,"Brushwood Gauntlets","A"],
+[300900,"Dark Silver Gauntlets","A"],
+[300999,"Unlabelled Armor 300999","A"],
+[301000,"Gloom Gauntlets","A"],
+[301100,"Ancient King's Gauntlets","A"],
+[301200,"Saint's Gloves","A"],
+[301400,"Venerable Sage's Gloves","A"],
+[301500,"No Equipment","A"],
+[301700,"Silver Bracelets","A"],
+[301800,"Rogue's Gloves","A"],
+[301900,"Dull Gold Gauntlets","A"],
+[302000,"Binded Gloves","A"],
+[302100,"Old Ragged Gloves","A"],
+[390000,"UNUSED DATA","A"],
+[390100,"UNUSED DATA","A"],
+[390200,"UNUSED DATA","A"],
+[390300,"UNUSED DATA","A"],
+[399900,"Barbarian Armbands","A"],
+[399903,"Boletarian Royalty Armbands","A"],
+[399904,"Burrower Armbands","A"],
+[399905,"Red-Eye Knight Gauntlets","A"],
+[399906,"Blue-Eye Knight Gauntlets","A"],
+[399907,"Penetrator's Gauntlets","A"],
+[399908,"Official's Gloves","A"],
+[399909,"Imperial Spy Gloves","A"],
+[400000,"Shaman's Tabi","A"],
+[400100,"Wizard's Shoes","A"],
+[400200,"Black Boots","A"],
+[400300,"Leather Boots","A"],
+[400400,"Hard Leather Boots","A"],
+[400500,"Mirdan Greaves","A"],
+[400600,"Plate Greaves","A"],
+[400700,"Fluted Greaves","A"],
+[400800,"Brushwood Greaves","A"],
+[400900,"Dark Silver Greaves","A"],
+[400999,"Unlabelled Armor 400999","A"],
+[401000,"Gloom Greaves","A"],
+[401100,"Ancient King's Greaves","A"],
+[401200,"Saint's Boots","A"],
+[401400,"Venerable Sage's Boots","A"],
+[401500,"No Equipment","A"],
+[401800,"Rogue's Boots","A"],
+[401900,"Dull Gold Leggings","A"],
+[402000,"Binded Boots","A"],
+[402100,"Old Ragged Boots","A"],
+[490000,"UNUSED DATA","A"],
+[490100,"UNUSED DATA","A"],
+[490200,"UNUSED DATA","A"],
+[490300,"UNUSED DATA","A"],
+[499900,"Barbarian Leggings","A"],
+[499903,"Boletarian Royalty Leggings","A"],
+[499904,"Burrower Boots","A"],
+[499905,"Red-Eye Knight Greaves","A"],
+[499906,"Blue-Eye Knight Greaves","A"],
+[499907,"Penetrator's Greaves","A"],
+[499908,"Official's Leggings","A"],
+[499909,"Imperial Spy Leggings","A"],
+[500000,"Shaved","A"],
+[500100,"Buzz Cut","A"],
+[500200,"Spiked","A"],
+[500300,"Bowl","A"],
+[500400,"Swept Back","A"],
+[500500,"Parted Centre","A"],
+[500600,"Unlabelled Armor 500600","A"],
+[500700,"Wavy","A"],
+[500800,"Wild","A"],
+[500900,"Ponytail","A"],
+[501000,"Shaved","A"],
+[501100,"Buzz Cut","A"],
+[501200,"Short Wavy","A"],
+[501300,"Long Wavy","A"],
+[501400,"Short","A"],
+[501500,"Long","A"],
+[501600,"Unlabelled Armor 501600","A"],
+[501700,"Wild","A"],
+[501800,"Ponytail","A"],
+[501900,"Chignon","A"],
+[590000,"Unlabelled Armor 590000","A"],
+[6,"Execution Grounds Key","G"],
+[7,"False King Demon Soul","G"],
+[8,"Iron Key Ring","G"],
+[9,"Copper Key","G"],
+[10,"Prison of Hope, 1F Key","G"],
+[11,"Prison of Hope, 2F Key","G"],
+[12,"Prison of Hope, 3F Key","G"],
+[13,"Prison of Hope, 4F Key","G"],
+[14,"Prison of Hope, Warden's Key","G"],
+[15,"Lead Demon Soul","G"],
+[16,"Iron Demon Soul","G"],
+[17,"Silver Demon Soul","G"],
+[18,"Swollen Demon Soul","G"],
+[19,"Hero Demon Soul","G"],
+[20,"Storm Demon Soul","G"],
+[21,"Doll Demon Soul","G"],
+[22,"Mixed Demon Soul","G"],
+[23,"Golden Demon Soul","G"],
+[24,"Writhing Demon Soul","G"],
+[25,"Eroded Demon Soul","G"],
+[26,"Pureblood Demon Soul","G"],
+[27,"Hard Demon Soul","G"],
+[28,"Searing Demon Soul","G"],
+[29,"Dragon Demon Soul","G"],
+[30,"Maiden in Black Demon Soul","G"],
+[31,"Grey Demon Soul","G"],
+[32,"Small Scaled Flame Demon Soul","G"],
+[33,"Large Scaled Flame Demon Soul","G"],
+[34,"Colourless Demon Soul","G"],
+[35,"Mausoleum Key","G"],
+[36,"Bloody Iron Key","G"],
+[37,"Vinland Crest","G"],
+[38,"Jade Hair Ornament","G"],
+[39,"Prison of Hope, 1F Cell Key","G"],
+[40,"Prison of Hope, 2F W. Cell Key","G"],
+[41,"Prison of Hope, 3F Cell Key","G"],
+[42,"Prison of Hope, 4F Cell Key","G"],
+[43,"Prison of Hope, 2F E. Cell Key","G"],
+[44,"Prison of Hope, Special Key","G"],
+[45,"Soul of the Old One","G"],
+[99,"Augite of Souls","G"],
+[1000,"Crescent Moon Grass","G"],
+[1001,"Half Moon Grass","G"],
+[1002,"Late Moon Grass","G"],
+[1003,"Full Moon Grass","G"],
+[1004,"New Moon Grass","G"],
+[1005,"Fresh Spice","G"],
+[1006,"Aged Spice","G"],
+[1007,"Noble's Lotus","G"],
+[1008,"Widow's Lotus","G"],
+[1009,"Dark Moon Grass","G"],
+[1010,"Ed's Sharpening Stone","G"],
+[1011,"Throwing Knife","G"],
+[1012,"Kunai","G"],
+[1013,"Firebomb","G"],
+[1014,"Soul Remains","G"],
+[1015,"Pine Resin","G"],
+[1016,"Black Pine Resin","G"],
+[1017,"Sticky White Slime","G"],
+[1018,"Brass Telescope","G"],
+[1020,"Archstone Shard","G"],
+[1021,"Stone of Ephemeral Eyes","G"],
+[1022,"Augite of Guidance","G"],
+[1023,"Soldier's Lotus","G"],
+[1024,"Stealth Throwing Dagger","G"],
+[1025,"Unknown Warrior Soul","G"],
+[1026,"Unknown Hero Soul","G"],
+[1027,"Renowned Warrior Soul","G"],
+[1028,"Renowned Hero Soul","G"],
+[1029,"Storied Warrior Soul","G"],
+[1030,"Storied Hero Soul","G"],
+[1031,"Legendary Warrior Soul","G"],
+[1032,"Legendary Hero Soul","G"],
+[1033,"Nexial Binding","G"],
+[2000,"Hardstone Shard","G"],
+[2001,"Large Hardstone Shard","G"],
+[2002,"Hardstone Chunk","G"],
+[2003,"Pure Hardstone","G"],
+[2004,"Sharpstone Shard","G"],
+[2005,"Large Sharpstone Shard","G"],
+[2006,"Sharpstone Chunk","G"],
+[2007,"Pure Sharpstone","G"],
+[2008,"Unlabelled Goods 2008","G"],
+[2009,"Unlabelled Goods 2009","G"],
+[2010,"Unlabelled Goods 2010","G"],
+[2011,"Unlabelled Goods 2011","G"],
+[2012,"Clearstone Shard","G"],
+[2013,"Clearstone Chunk","G"],
+[2014,"Pure Clearstone","G"],
+[2015,"Greystone Shard","G"],
+[2016,"Greystone Chunk","G"],
+[2017,"Pure Greystone","G"],
+[2018,"Unlabelled Goods 2018","G"],
+[2019,"Unlabelled Goods 2019","G"],
+[2020,"Unlabelled Goods 2020","G"],
+[2021,"Bladestone Shard","G"],
+[2022,"Bladestone Chunk","G"],
+[2023,"Pure Bladestone","G"],
+[2024,"Spiderstone Shard","G"],
+[2025,"Spiderstone Chunk","G"],
+[2026,"Pure Spiderstone","G"],
+[2027,"Mercurystone Shard","G"],
+[2028,"Mercurystone Chunk","G"],
+[2029,"Pure Mercurystone","G"],
+[2030,"Dragonstone Shard","G"],
+[2031,"Dragonstone Chunk","G"],
+[2032,"Pure Dragonstone","G"],
+[2033,"Suckerstone Shard","G"],
+[2034,"Suckerstone Chunk","G"],
+[2035,"Pure Suckerstone","G"],
+[2036,"Marrowstone Shard","G"],
+[2037,"Marrowstone Chunk","G"],
+[2038,"Pure Marrowstone","G"],
+[2039,"Moonlightstone Shard","G"],
+[2040,"Moonlightstone Chunk","G"],
+[2041,"Pure Moonlightstone","G"],
+[2042,"Moonshadestone Shard","G"],
+[2043,"Moonshadestone Chunk","G"],
+[2044,"Pure Moonshadestone","G"],
+[2045,"Faintstone Shard","G"],
+[2046,"Faintstone Chunk","G"],
+[2047,"Pure Faintstone","G"],
+[2048,"Cloudstone Shard","G"],
+[2049,"Cloudstone Chunk","G"],
+[2050,"Pure Cloudstone","G"],
+[2051,"Unlabelled Goods 2051","G"],
+[2052,"Unlabelled Goods 2052","G"],
+[2053,"Unlabelled Goods 2053","G"],
+[2054,"Meltstone Shard","G"],
+[2055,"UNUSED DATA","G"],
+[2056,"UNUSED DATA","G"],
+[2057,"UNUSED DATA","G"],
+[9000,"Shard of Bronze_test1","G"],
+[9001,"Shard of Steel_test2","G"],
+[9002,"Material_test3","G"],
+[9003,"Material_test4","G"],
+[9004,"Material_test5","G"],
+[9920,"Preservation Grains","G"],
+[9921,"Phosphorescent Grains","G"],
+[9922,"Bearbug Grains","G"],
+[9923,"Calming Fragment","G"],
+[9924,"Grass Jelly","G"],
+[9925,"Bright Water","G"],
+[9926,"Elixir","G"],
+[9927,"Cracked Stone Eye","G"],
+[9928,"Gold Coin","G"],
+[9929,"Ceramic Coin","G"],
+[9930,"Broken Coin","G"],
+[9931,"Rusted Key","G"],
+[9992,"Fractured Binding","G"],
+[9993,"Nexial Agent","G"],
+[9994,"Orange Eye Stone","G"],
+[9995,"Black Eye Stone","G"],
+[9996,"Red Eye Stone","G"],
+[9997,"Blue Eye Stone","G"],
+[9998,"UNUSED DATA","G"],
+[9999,"White Eye Stone","G"],
+[0,"Test Skill 0","R"],
+[100,"Ring of Great Strength","R"],
+[101,"Ring of Herculean Strength","R"],
+[102,"Clever Rat's Ring","R"],
+[103,"Dull Rat's Ring","R"],
+[104,"Eternal Warrior's Ring","R"],
+[105,"Fragrant Ring","R"],
+[106,"Regenerator's Ring","R"],
+[107,"Flame Resistance Ring","R"],
+[108,"Poison Resistance Ring","R"],
+[109,"Ring of Magical Sharpness","R"],
+[110,"Ring of Magical Dullness","R"],
+[111,"Ring of Magical Nature","R"],
+[112,"Ring of Sincere Prayer","R"],
+[113,"Cling Ring","R"],
+[114,"Ally's Ring","R"],
+[115,"Foe's Ring","R"],
+[116,"Thief Ring","R"],
+[117,"Graverobber's Ring","R"],
+[118,"Cat Ring","R"],
+[119,"Ring of the Accursed","R"],
+[120,"Ring of Avarice","R"],
+[121,"Ronin Ring","R"],
+[123,"Master's Ring","R"],
+[124,"Ring of Devout Prayer","R"],
+[125,"Gash Resistance Ring","R"],
+[126,"Plague Resistance Ring","R"],
+[200,"Unlabelled Ring 200","R"],
+[201,"Unlabelled Ring 201","R"],
+[9960,"Sodden Ring","R"],
+[9961,"Ring of Longevity","R"],
+[9962,"Providential Ring","R"],
+[9963,"Ring of Uneven Scales","R"],
+[9964,"Apprentice's Ring","R"],
+[9965,"Ring of Longevity","R"],
+[0,"Test","K"],
+[100,"EQP Weight Limit UP","K"],
+[101,"Item Carry Cap. UP","K"],
+[102,"ATK UP when HP LOW","K"],
+[103,"DEF UP when HP LOW","K"],
+[104,"Stamina Recovery UP","K"],
+[105,"MP Recovery","K"],
+[106,"HP Recovery","K"],
+[107,"Fire Defence UP","K"],
+[108,"Poison Res. UP","K"],
+[109,"Magic Power UP","K"],
+[110,"Magic Defence UP","K"],
+[111,"Magic Capacity UP","K"],
+[112,"Miracle Power UP","K"],
+[113,"Soul Form HP UP","K"],
+[114,"Phantom Power UP","K"],
+[115,"BLK Phantom Pwr UP","K"],
+[116,"Hide from Enemies","K"],
+[117,"Hide from Phantoms","K"],
+[118,"Fall Damage DOWN","K"],
+[119,"Attract Enemies","K"],
+[120,"Obtained Souls UP","K"],
+[121,"Weapon Wear DOWN","K"],
+[122,"Unlabelled Skill 122","K"],
+[123,"Mighty Optimal Hits","K"],
+[124,"Miracle Capacity UP","K"],
+[125,"Bleed Resistance UP","K"],
+[126,"Plague Res. UP","K"],
+[0,"Test","S"],
+[1,"test_firebolt","S"],
+[2,"test_enchantweapon","S"],
+[3,"test_cure","S"],
+[4,"test_SOSsign","S"],
+[100,"Invoke Magic Sq.","S"],
+[1000,"Soul Arrow","S"],
+[1001,"Flame Toss","S"],
+[1002,"Relief","S"],
+[1003,"Enchant Weapon","S"],
+[1004,"Curse Weapon","S"],
+[1005,"Soul Thirst","S"],
+[1006,"Poison Cloud","S"],
+[1007,"Familiar's Prank","S"],
+[1008,"Fireball","S"],
+[1009,"Ignite","S"],
+[1010,"Soul Ray","S"],
+[1011,"Homing Soul Arrow","S"],
+[1012,"Cloak","S"],
+[1013,"Protection","S"],
+[1014,"Light Weapon","S"],
+[1015,"Water Veil","S"],
+[1016,"Death Cloud","S"],
+[1017,"Fire Spray","S"],
+[1018,"Soulsucker","S"],
+[1019,"Acid Cloud","S"],
+[1020,"Warding","S"],
+[1021,"Firestorm","S"],
+[2000,"God's Wrath","S"],
+[2001,"Anti-Magic Field","S"],
+[2002,"Recovery","S"],
+[2003,"Second Chance","S"],
+[2004,"Regeneration","S"],
+[2005,"Resurrection","S"],
+[2006,"Cure","S"],
+[2007,"Hidden Soul","S"],
+[2008,"Evacuate","S"],
+[2009,"Banish","S"],
+[2010,"Heal","S"],
+[2011,"Antidote","S"],
+[1,"UNUSED DATA","W"],
+[2,"All-purpose catalyst (For Menu Dummy)","W"],
+[10000,"Dagger","W"],
+[10001,"Dagger+1","W"],
+[10002,"Dagger+2","W"],
+[10003,"Dagger+3","W"],
+[10004,"Dagger+4","W"],
+[10005,"Dagger+5","W"],
+[10006,"Dagger+6","W"],
+[10007,"Dagger+7","W"],
+[10008,"Dagger+8","W"],
+[10009,"Dagger+9","W"],
+[10010,"Dagger+10","W"],
+[10011,"Quality Dagger+1","W"],
+[10012,"Quality Dagger+2","W"],
+[10013,"Quality Dagger+3","W"],
+[10014,"Quality Dagger+4","W"],
+[10015,"Quality Dagger+5","W"],
+[10021,"Mercury Dagger+1","W"],
+[10022,"Mercury Dagger+2","W"],
+[10023,"Mercury Dagger+3","W"],
+[10024,"Mercury Dagger+4","W"],
+[10025,"Mercury Dagger+5","W"],
+[10031,"Sharp Dagger+1","W"],
+[10032,"Sharp Dagger+2","W"],
+[10033,"Sharp Dagger+3","W"],
+[10034,"Sharp Dagger+4","W"],
+[10035,"Sharp Dagger+5","W"],
+[10041,"Fatal Dagger+1","W"],
+[10042,"Fatal Dagger+2","W"],
+[10043,"Fatal Dagger+3","W"],
+[10044,"Fatal Dagger+4","W"],
+[10045,"Fatal Dagger+5","W"],
+[10051,"Crescent Dagger+1","W"],
+[10052,"Crescent Dagger+2","W"],
+[10053,"Crescent Dagger+3","W"],
+[10054,"Crescent Dagger+4","W"],
+[10055,"Crescent Dagger+5","W"],
+[10100,"Parrying Dagger","W"],
+[10101,"Parrying Dagger+1","W"],
+[10102,"Parrying Dagger+2","W"],
+[10103,"Parrying Dagger+3","W"],
+[10104,"Parrying Dagger+4","W"],
+[10105,"Parrying Dagger+5","W"],
+[10106,"Parrying Dagger+6","W"],
+[10107,"Parrying Dagger+7","W"],
+[10108,"Parrying Dagger+8","W"],
+[10109,"Parrying Dagger+9","W"],
+[10110,"Parrying Dagger+10","W"],
+[10111,"Quality Parrying Dagger+1","W"],
+[10112,"Quality Parrying Dagger+2","W"],
+[10113,"Quality Parrying Dagger+3","W"],
+[10114,"Quality Parrying Dagger+4","W"],
+[10115,"Quality Parrying Dagger+5","W"],
+[10121,"Mercury Parrying Dagger+1","W"],
+[10122,"Mercury Parrying Dagger+2","W"],
+[10123,"Mercury Parrying Dagger+3","W"],
+[10124,"Mercury Parrying Dagger+4","W"],
+[10125,"Mercury Parrying Dagger+5","W"],
+[10131,"Fatal Parrying Dagger+1","W"],
+[10132,"Fatal Parrying Dagger+2","W"],
+[10133,"Fatal Parrying Dagger+3","W"],
+[10134,"Fatal Parrying Dagger+4","W"],
+[10135,"Fatal Parrying Dagger+5","W"],
+[10141,"Sharp Parrying Dagger+1","W"],
+[10142,"Sharp Parrying Dagger+2","W"],
+[10143,"Sharp Parrying Dagger+3","W"],
+[10144,"Sharp Parrying Dagger+4","W"],
+[10145,"Sharp Parrying Dagger+5","W"],
+[10151,"Crescent Parrying Dagger+1","W"],
+[10152,"Crescent Parrying Dagger+2","W"],
+[10153,"Crescent Parrying Dagger+3","W"],
+[10154,"Crescent Parrying Dagger+4","W"],
+[10155,"Crescent Parrying Dagger+5","W"],
+[10200,"Mail Breaker","W"],
+[10201,"Mail Breaker+1","W"],
+[10202,"Mail Breaker+2","W"],
+[10203,"Mail Breaker+3","W"],
+[10204,"Mail Breaker+4","W"],
+[10205,"Mail Breaker+5","W"],
+[10206,"Mail Breaker+6","W"],
+[10207,"Mail Breaker+7","W"],
+[10208,"Mail Breaker+8","W"],
+[10209,"Mail Breaker+9","W"],
+[10210,"Mail Breaker+10","W"],
+[10211,"Quality Mail Breaker+1","W"],
+[10212,"Quality Mail Breaker+2","W"],
+[10213,"Quality Mail Breaker+3","W"],
+[10214,"Quality Mail Breaker+4","W"],
+[10215,"Quality Mail Breaker+5","W"],
+[10221,"Mercury Mail Breaker+1","W"],
+[10222,"Mercury Mail Breaker+2","W"],
+[10223,"Mercury Mail Breaker+3","W"],
+[10224,"Mercury Mail Breaker+4","W"],
+[10225,"Mercury Mail Breaker+5","W"],
+[10231,"Fatal Mail Breaker+1","W"],
+[10232,"Fatal Mail Breaker+2","W"],
+[10233,"Fatal Mail Breaker+3","W"],
+[10234,"Fatal Mail Breaker+4","W"],
+[10235,"Fatal Mail Breaker+5","W"],
+[10241,"Sharp Mail Breaker+1","W"],
+[10242,"Sharp Mail Breaker+2","W"],
+[10243,"Sharp Mail Breaker+3","W"],
+[10244,"Sharp Mail Breaker+4","W"],
+[10245,"Sharp Mail Breaker+5","W"],
+[10251,"Crescent Mail Breaker+1","W"],
+[10252,"Crescent Mail Breaker+2","W"],
+[10253,"Crescent Mail Breaker+3","W"],
+[10254,"Crescent Mail Breaker+4","W"],
+[10255,"Crescent Mail Breaker+5","W"],
+[10400,"Baby's Nail","W"],
+[10401,"Baby's Nail+1","W"],
+[10402,"Baby's Nail+2","W"],
+[10403,"Baby's Nail+3","W"],
+[10404,"Baby's Nail+4","W"],
+[10405,"Baby's Nail+5","W"],
+[10500,"Geri's Stiletto","W"],
+[10501,"Geri's Stiletto+1","W"],
+[10502,"Geri's Stiletto+2","W"],
+[10503,"Geri's Stiletto+3","W"],
+[10504,"Geri's Stiletto+4","W"],
+[10505,"Geri's Stiletto+5","W"],
+[10600,"Kris Blade","W"],
+[10601,"Kris Blade+1","W"],
+[10602,"Kris Blade+2","W"],
+[10603,"Kris Blade+3","W"],
+[10604,"Kris Blade+4","W"],
+[10605,"Kris Blade+5","W"],
+[10700,"Secret Dagger","W"],
+[10701,"Secret Dagger+1","W"],
+[10702,"Secret Dagger+2","W"],
+[10703,"Secret Dagger+3","W"],
+[10704,"Secret Dagger+4","W"],
+[10705,"Secret Dagger+5","W"],
+[10706,"Secret Dagger+6","W"],
+[10707,"Secret Dagger+7","W"],
+[10708,"Secret Dagger+8","W"],
+[10709,"Secret Dagger+9","W"],
+[10710,"Secret Dagger+10","W"],
+[10711,"Sharp Secret Dagger+1","W"],
+[10712,"Sharp Secret Dagger+2","W"],
+[10713,"Sharp Secret Dagger+3","W"],
+[10714,"Sharp Secret Dagger+4","W"],
+[10715,"Sharp Secret Dagger+5","W"],
+[10721,"Tearing Dagger+1","W"],
+[10722,"Tearing Dagger+2","W"],
+[10723,"Tearing Dagger+3","W"],
+[10731,"Crescent Secret Dagger+1","W"],
+[10732,"Crescent Secret Dagger+2","W"],
+[10733,"Crescent Secret Dagger+3","W"],
+[10734,"Crescent Secret Dagger+4","W"],
+[10735,"Crescent Secret Dagger+5","W"],
+[10741,"Quality Secret Dagger+1","W"],
+[10742,"Quality Secret Dagger+2","W"],
+[10743,"Quality Secret Dagger+3","W"],
+[10744,"Quality Secret Dagger+4","W"],
+[10745,"Quality Secret Dagger+5","W"],
+[10751,"Mercury Secret Dagger+1","W"],
+[10752,"Mercury Secret Dagger+2","W"],
+[10753,"Mercury Secret Dagger+3","W"],
+[10754,"Mercury Secret Dagger+4","W"],
+[10755,"Mercury Secret Dagger+5","W"],
+[10761,"Fatal Secret Dagger+1","W"],
+[10762,"Fatal Secret Dagger+2","W"],
+[10763,"Fatal Secret Dagger+3","W"],
+[10764,"Fatal Secret Dagger+4","W"],
+[10765,"Fatal Secret Dagger+5","W"],
+[19000,"Unlabelled Weapon 19000","W"],
+[20000,"Short Sword","W"],
+[20001,"Short Sword+1","W"],
+[20002,"Short Sword+2","W"],
+[20003,"Short Sword+3","W"],
+[20004,"Short Sword+4","W"],
+[20005,"Short Sword+5","W"],
+[20006,"Short Sword+6","W"],
+[20007,"Short Sword+7","W"],
+[20008,"Short Sword+8","W"],
+[20009,"Short Sword+9","W"],
+[20010,"Short Sword+10","W"],
+[20011,"Quality Short Sword+1","W"],
+[20012,"Quality Short Sword+2","W"],
+[20013,"Quality Short Sword+3","W"],
+[20014,"Quality Short Sword+4","W"],
+[20015,"Quality Short Sword+5","W"],
+[20021,"Dragon Short Sword+1","W"],
+[20022,"Dragon Short Sword+2","W"],
+[20023,"Dragon Short Sword+3","W"],
+[20024,"Dragon Short Sword+4","W"],
+[20025,"Dragon Short Sword+5","W"],
+[20031,"Moon Short Sword+1","W"],
+[20032,"Moon Short Sword+2","W"],
+[20033,"Moon Short Sword+3","W"],
+[20034,"Moon Short Sword+4","W"],
+[20035,"Moon Short Sword+5","W"],
+[20041,"Crushing Short Sword+1","W"],
+[20042,"Crushing Short Sword+2","W"],
+[20043,"Crushing Short Sword+3","W"],
+[20044,"Crushing Short Sword+4","W"],
+[20045,"Crushing Short Sword+5","W"],
+[20051,"Blessed Short Sword+1","W"],
+[20052,"Blessed Short Sword+2","W"],
+[20053,"Blessed Short Sword+3","W"],
+[20054,"Blessed Short Sword+4","W"],
+[20055,"Blessed Short Sword+5","W"],
+[20100,"Broadsword","W"],
+[20101,"Broadsword+1","W"],
+[20102,"Broadsword+2","W"],
+[20103,"Broadsword+3","W"],
+[20104,"Broadsword+4","W"],
+[20105,"Broadsword+5","W"],
+[20106,"Broadsword+6","W"],
+[20107,"Broadsword+7","W"],
+[20108,"Broadsword+8","W"],
+[20109,"Broadsword+9","W"],
+[20110,"Broadsword+10","W"],
+[20111,"Sharp Broadsword+1","W"],
+[20112,"Sharp Broadsword+2","W"],
+[20113,"Sharp Broadsword+3","W"],
+[20114,"Sharp Broadsword+4","W"],
+[20115,"Sharp Broadsword+5","W"],
+[20121,"Tearing Broadsword+1","W"],
+[20122,"Tearing Broadsword+2","W"],
+[20123,"Tearing Broadsword+3","W"],
+[20124,"Tearing Broadsword+4","W"],
+[20125,"Tearing Broadsword+5","W"],
+[20131,"Crescent Broadsword+1","W"],
+[20132,"Crescent Broadsword+2","W"],
+[20133,"Crescent Broadsword+3","W"],
+[20134,"Crescent Broadsword+4","W"],
+[20135,"Crescent Broadsword+5","W"],
+[20141,"Quality Broadsword+1","W"],
+[20142,"Quality Broadsword+2","W"],
+[20143,"Quality Broadsword+3","W"],
+[20144,"Quality Broadsword+4","W"],
+[20145,"Quality Broadsword+5","W"],
+[20151,"Mercury Broadsword+1","W"],
+[20152,"Mercury Broadsword+2","W"],
+[20153,"Mercury Broadsword+3","W"],
+[20154,"Mercury Broadsword+4","W"],
+[20155,"Mercury Broadsword+5","W"],
+[20161,"Moon Broadsword+1","W"],
+[20162,"Moon Broadsword+2","W"],
+[20163,"Moon Broadsword+3","W"],
+[20164,"Moon Broadsword+4","W"],
+[20165,"Moon Broadsword+5","W"],
+[20200,"Long Sword","W"],
+[20201,"Long Sword+1","W"],
+[20202,"Long Sword+2","W"],
+[20203,"Long Sword+3","W"],
+[20204,"Long Sword+4","W"],
+[20205,"Long Sword+5","W"],
+[20206,"Long Sword+6","W"],
+[20207,"Long Sword+7","W"],
+[20208,"Long Sword+8","W"],
+[20209,"Long Sword+9","W"],
+[20210,"Long Sword+10","W"],
+[20211,"Quality Long Sword+1","W"],
+[20212,"Quality Long Sword+2","W"],
+[20213,"Quality Long Sword+3","W"],
+[20214,"Quality Long Sword+4","W"],
+[20215,"Quality Long Sword+5","W"],
+[20221,"Dragon Long Sword+1","W"],
+[20222,"Dragon Long Sword+2","W"],
+[20223,"Dragon Long Sword+3","W"],
+[20224,"Dragon Long Sword+4","W"],
+[20225,"Dragon Long Sword+5","W"],
+[20231,"Moon Long Sword+1","W"],
+[20232,"Moon Long Sword+2","W"],
+[20233,"Moon Long Sword+3","W"],
+[20234,"Moon Long Sword+4","W"],
+[20235,"Moon Long Sword+5","W"],
+[20241,"Crushing Long Sword+1","W"],
+[20242,"Crushing Long Sword+2","W"],
+[20243,"Crushing Long Sword+3","W"],
+[20244,"Crushing Long Sword+4","W"],
+[20245,"Crushing Long Sword+5","W"],
+[20251,"Blessed Long Sword+1","W"],
+[20252,"Blessed Long Sword+2","W"],
+[20253,"Blessed Long Sword+3","W"],
+[20254,"Blessed Long Sword+4","W"],
+[20255,"Blessed Long Sword+5","W"],
+[20300,"Flamberge","W"],
+[20301,"Flamberge+1","W"],
+[20302,"Flamberge+2","W"],
+[20303,"Flamberge+3","W"],
+[20304,"Flamberge+4","W"],
+[20305,"Flamberge+5","W"],
+[20306,"Flamberge+6","W"],
+[20307,"Flamberge+7","W"],
+[20308,"Flamberge+8","W"],
+[20309,"Flamberge+9","W"],
+[20310,"Flamberge+10","W"],
+[20311,"Sharp Flamberge+1","W"],
+[20312,"Sharp Flamberge+2","W"],
+[20313,"Sharp Flamberge+3","W"],
+[20314,"Sharp Flamberge+4","W"],
+[20315,"Sharp Flamberge+5","W"],
+[20321,"Tearing Flamberge+1","W"],
+[20322,"Tearing Flamberge+2","W"],
+[20323,"Tearing Flamberge+3","W"],
+[20324,"Tearing Flamberge+4","W"],
+[20325,"Tearing Flamberge+5","W"],
+[20331,"Crescent Flamberge+1","W"],
+[20332,"Crescent Flamberge+2","W"],
+[20333,"Crescent Flamberge+3","W"],
+[20334,"Crescent Flamberge+4","W"],
+[20335,"Crescent Flamberge+5","W"],
+[20341,"Quality Flamberge+1","W"],
+[20342,"Quality Flamberge+2","W"],
+[20343,"Quality Flamberge+3","W"],
+[20344,"Quality Flamberge+4","W"],
+[20345,"Quality Flamberge+5","W"],
+[20351,"Mercury Flamberge+1","W"],
+[20352,"Mercury Flamberge+2","W"],
+[20353,"Mercury Flamberge+3","W"],
+[20354,"Mercury Flamberge+4","W"],
+[20355,"Mercury Flamberge+5","W"],
+[20361,"Moon Flamberge+1","W"],
+[20362,"Moon Flamberge+2","W"],
+[20363,"Moon Flamberge+3","W"],
+[20364,"Moon Flamberge+4","W"],
+[20365,"Moon Flamberge+5","W"],
+[20400,"Bastard Sword","W"],
+[20401,"Bastard Sword+1","W"],
+[20402,"Bastard Sword+2","W"],
+[20403,"Bastard Sword+3","W"],
+[20404,"Bastard Sword+4","W"],
+[20405,"Bastard Sword+5","W"],
+[20406,"Bastard Sword+6","W"],
+[20407,"Bastard Sword+7","W"],
+[20408,"Bastard Sword+8","W"],
+[20409,"Bastard Sword+9","W"],
+[20410,"Bastard Sword+10","W"],
+[20411,"Quality Bastard Sword+1","W"],
+[20412,"Quality Bastard Sword+2","W"],
+[20413,"Quality Bastard Sword+3","W"],
+[20414,"Quality Bastard Sword+4","W"],
+[20415,"Quality Bastard Sword+5","W"],
+[20421,"Dragon Bastard Sword+1","W"],
+[20422,"Dragon Bastard Sword+2","W"],
+[20423,"Dragon Bastard Sword+3","W"],
+[20424,"Dragon Bastard Sword+4","W"],
+[20425,"Dragon Bastard Sword+5","W"],
+[20431,"Moon Bastard Sword+1","W"],
+[20432,"Moon Bastard Sword+2","W"],
+[20433,"Moon Bastard Sword+3","W"],
+[20434,"Moon Bastard Sword+4","W"],
+[20435,"Moon Bastard Sword+5","W"],
+[20441,"Crushing Bastard Sword+1","W"],
+[20442,"Crushing Bastard Sword+2","W"],
+[20443,"Crushing Bastard Sword+3","W"],
+[20444,"Crushing Bastard Sword+4","W"],
+[20445,"Crushing Bastard Sword+5","W"],
+[20451,"Blessed Bastard Sword+1","W"],
+[20452,"Blessed Bastard Sword+2","W"],
+[20453,"Blessed Bastard Sword+3","W"],
+[20454,"Blessed Bastard Sword+4","W"],
+[20455,"Blessed Bastard Sword+5","W"],
+[20500,"Claymore","W"],
+[20501,"Claymore+1","W"],
+[20502,"Claymore+2","W"],
+[20503,"Claymore+3","W"],
+[20504,"Claymore+4","W"],
+[20505,"Claymore+5","W"],
+[20506,"Claymore+6","W"],
+[20507,"Claymore+7","W"],
+[20508,"Claymore+8","W"],
+[20509,"Claymore+9","W"],
+[20510,"Claymore+10","W"],
+[20511,"Quality Claymore+1","W"],
+[20512,"Quality Claymore+2","W"],
+[20513,"Quality Claymore+3","W"],
+[20514,"Quality Claymore+4","W"],
+[20515,"Quality Claymore+5","W"],
+[20521,"Dragon Claymore+1","W"],
+[20522,"Dragon Claymore+2","W"],
+[20523,"Dragon Claymore+3","W"],
+[20524,"Dragon Claymore+4","W"],
+[20525,"Dragon Claymore+5","W"],
+[20531,"Moon Claymore+1","W"],
+[20532,"Moon Claymore+2","W"],
+[20533,"Moon Claymore+3","W"],
+[20534,"Moon Claymore+4","W"],
+[20535,"Moon Claymore+5","W"],
+[20541,"Crushing Claymore+1","W"],
+[20542,"Crushing Claymore+2","W"],
+[20543,"Crushing Claymore+3","W"],
+[20544,"Crushing Claymore+4","W"],
+[20545,"Crushing Claymore+5","W"],
+[20551,"Blessed Claymore+1","W"],
+[20552,"Blessed Claymore+2","W"],
+[20553,"Blessed Claymore+3","W"],
+[20554,"Blessed Claymore+4","W"],
+[20555,"Blessed Claymore+5","W"],
+[20600,"Great Sword","W"],
+[20601,"Great Sword+1","W"],
+[20602,"Great Sword+2","W"],
+[20603,"Great Sword+3","W"],
+[20604,"Great Sword+4","W"],
+[20605,"Great Sword+5","W"],
+[20606,"Great Sword+6","W"],
+[20607,"Great Sword+7","W"],
+[20608,"Great Sword+8","W"],
+[20609,"Great Sword+9","W"],
+[20610,"Great Sword+10","W"],
+[20611,"Quality Great Sword+1","W"],
+[20612,"Quality Great Sword+2","W"],
+[20613,"Quality Great Sword+3","W"],
+[20614,"Quality Great Sword+4","W"],
+[20615,"Quality Great Sword+5","W"],
+[20621,"Dragon Great Sword+1","W"],
+[20622,"Dragon Great Sword+2","W"],
+[20623,"Dragon Great Sword+3","W"],
+[20624,"Dragon Great Sword+4","W"],
+[20625,"Dragon Great Sword+5","W"],
+[20631,"Moon Great Sword+1","W"],
+[20632,"Moon Great Sword+2","W"],
+[20633,"Moon Great Sword+3","W"],
+[20634,"Moon Great Sword+4","W"],
+[20635,"Moon Great Sword+5","W"],
+[20641,"Crushing Great Sword+1","W"],
+[20642,"Crushing Great Sword+2","W"],
+[20643,"Crushing Great Sword+3","W"],
+[20644,"Crushing Great Sword+4","W"],
+[20645,"Crushing Great Sword+5","W"],
+[20651,"Blessed Great Sword+1","W"],
+[20652,"Blessed Great Sword+2","W"],
+[20653,"Blessed Great Sword+3","W"],
+[20654,"Blessed Great Sword+4","W"],
+[20655,"Blessed Great Sword+5","W"],
+[20700,"Dragon Bone Smasher","W"],
+[20701,"Dragon Bone Smasher+1","W"],
+[20702,"Dragon Bone Smasher+2","W"],
+[20703,"Dragon Bone Smasher+3","W"],
+[20704,"Dragon Bone Smasher+4","W"],
+[20705,"Dragon Bone Smasher+5","W"],
+[20800,"Rune Sword","W"],
+[20801,"Rune Sword+1","W"],
+[20802,"Rune Sword+2","W"],
+[20803,"Rune Sword+3","W"],
+[20804,"Rune Sword+4","W"],
+[20805,"Rune Sword+5","W"],
+[20900,"Soulbrandt","W"],
+[21000,"Demonbrandt","W"],
+[21100,"Storm Ruler","W"],
+[21101,"Storm Ruler","W"],
+[21102,"Storm Ruler","W"],
+[21103,"Storm Ruler","W"],
+[21104,"Storm Ruler","W"],
+[21105,"Storm Ruler","W"],
+[21106,"Storm Ruler","W"],
+[21107,"Storm Ruler","W"],
+[21300,"Knight Sword","W"],
+[21301,"Knight Sword+1","W"],
+[21302,"Knight Sword+2","W"],
+[21303,"Knight Sword+3","W"],
+[21304,"Knight Sword+4","W"],
+[21305,"Knight Sword+5","W"],
+[21306,"Knight Sword+6","W"],
+[21307,"Knight Sword+7","W"],
+[21308,"Knight Sword+8","W"],
+[21309,"Knight Sword+9","W"],
+[21310,"Knight Sword+10","W"],
+[21311,"Quality Knight Sword+1","W"],
+[21312,"Quality Knight Sword+2","W"],
+[21313,"Quality Knight Sword+3","W"],
+[21314,"Quality Knight Sword+4","W"],
+[21315,"Quality Knight Sword+5","W"],
+[21321,"Dragon Knight Sword+1","W"],
+[21322,"Dragon Knight Sword+2","W"],
+[21323,"Dragon Knight Sword+3","W"],
+[21324,"Dragon Knight Sword+4","W"],
+[21325,"Dragon Knight Sword+5","W"],
+[21331,"Moon Knight Sword+1","W"],
+[21332,"Moon Knight Sword+2","W"],
+[21333,"Moon Knight Sword+3","W"],
+[21334,"Moon Knight Sword+4","W"],
+[21335,"Moon Knight Sword+5","W"],
+[21341,"Crushing Knight Sword+1","W"],
+[21342,"Crushing Knight Sword+2","W"],
+[21343,"Crushing Knight Sword+3","W"],
+[21344,"Crushing Knight Sword+4","W"],
+[21345,"Crushing Knight Sword+5","W"],
+[21351,"Blessed Knight Sword+1","W"],
+[21352,"Blessed Knight Sword+2","W"],
+[21353,"Blessed Knight Sword+3","W"],
+[21354,"Blessed Knight Sword+4","W"],
+[21355,"Blessed Knight Sword+5","W"],
+[21400,"Broken Sword","W"],
+[21500,"Northern Regalia","W"],
+[21501,"Northern Regalia","W"],
+[21600,"Large Sword of Moonlight","W"],
+[21601,"Large Sword of Moonlight+1","W"],
+[21602,"Large Sword of Moonlight+2","W"],
+[21603,"Large Sword of Moonlight+3","W"],
+[21604,"Large Sword of Moonlight+4","W"],
+[21605,"Large Sword of Moonlight+5","W"],
+[21699,"Unlabelled Weapon 21699","W"],
+[21700,"Blueblood Sword","W"],
+[21800,"Penetrating Sword","W"],
+[21801,"Penetrating Sword+1","W"],
+[21802,"Penetrating Sword+2","W"],
+[21803,"Penetrating Sword+3","W"],
+[21804,"Penetrating Sword+4","W"],
+[21805,"Penetrating Sword+5","W"],
+[21900,"Morion Blade","W"],
+[21901,"Morion Blade","W"],
+[21902,"Morion Blade","W"],
+[21903,"Morion Blade","W"],
+[21904,"Morion Blade","W"],
+[21905,"Morion Blade","W"],
+[29000,"Unlabelled Weapon 29000","W"],
+[30000,"Rapier","W"],
+[30001,"Rapier+1","W"],
+[30002,"Rapier+2","W"],
+[30003,"Rapier+3","W"],
+[30004,"Rapier+4","W"],
+[30005,"Rapier+5","W"],
+[30006,"Rapier+6","W"],
+[30007,"Rapier+7","W"],
+[30008,"Rapier+8","W"],
+[30009,"Rapier+9","W"],
+[30010,"Rapier+10","W"],
+[30011,"Quality Rapier+1","W"],
+[30012,"Quality Rapier+2","W"],
+[30013,"Quality Rapier+3","W"],
+[30014,"Quality Rapier+4","W"],
+[30015,"Quality Rapier+5","W"],
+[30021,"Mercury Rapier+1","W"],
+[30022,"Mercury Rapier+2","W"],
+[30023,"Mercury Rapier+3","W"],
+[30024,"Mercury Rapier+4","W"],
+[30025,"Mercury Rapier+5","W"],
+[30031,"Fatal Rapier+1","W"],
+[30032,"Fatal Rapier+2","W"],
+[30033,"Fatal Rapier+3","W"],
+[30034,"Fatal Rapier+4","W"],
+[30035,"Fatal Rapier+5","W"],
+[30041,"Sharp Rapier+1","W"],
+[30042,"Sharp Rapier+2","W"],
+[30043,"Sharp Rapier+3","W"],
+[30044,"Sharp Rapier+4","W"],
+[30045,"Sharp Rapier+5","W"],
+[30051,"Crescent Rapier+1","W"],
+[30052,"Crescent Rapier+2","W"],
+[30053,"Crescent Rapier+3","W"],
+[30054,"Crescent Rapier+4","W"],
+[30055,"Crescent Rapier+5","W"],
+[30100,"Estoc","W"],
+[30101,"Estoc+1","W"],
+[30102,"Estoc+2","W"],
+[30103,"Estoc+3","W"],
+[30104,"Estoc+4","W"],
+[30105,"Estoc+5","W"],
+[30106,"Estoc+6","W"],
+[30107,"Estoc+7","W"],
+[30108,"Estoc+8","W"],
+[30109,"Estoc+9","W"],
+[30110,"Estoc+10","W"],
+[30111,"Quality Estoc+1","W"],
+[30112,"Quality Estoc+2","W"],
+[30113,"Quality Estoc+3","W"],
+[30114,"Quality Estoc+4","W"],
+[30115,"Quality Estoc+5","W"],
+[30121,"Mercury Estoc+1","W"],
+[30122,"Mercury Estoc+2","W"],
+[30123,"Mercury Estoc+3","W"],
+[30124,"Mercury Estoc+4","W"],
+[30125,"Mercury Estoc+5","W"],
+[30131,"Fatal Estoc+1","W"],
+[30132,"Fatal Estoc+2","W"],
+[30133,"Fatal Estoc+3","W"],
+[30134,"Fatal Estoc+4","W"],
+[30135,"Fatal Estoc+5","W"],
+[30141,"Sharp Estoc+1","W"],
+[30142,"Sharp Estoc+2","W"],
+[30143,"Sharp Estoc+3","W"],
+[30144,"Sharp Estoc+4","W"],
+[30145,"Sharp Estoc+5","W"],
+[30151,"Crescent Estoc+1","W"],
+[30152,"Crescent Estoc+2","W"],
+[30153,"Crescent Estoc+3","W"],
+[30154,"Crescent Estoc+4","W"],
+[30155,"Crescent Estoc+5","W"],
+[30200,"Epee Rapier","W"],
+[30201,"Epee Rapier+1","W"],
+[30202,"Epee Rapier+2","W"],
+[30203,"Epee Rapier+3","W"],
+[30204,"Epee Rapier+4","W"],
+[30205,"Epee Rapier+5","W"],
+[30300,"Spiral Rapier","W"],
+[30301,"Spiral Rapier+1","W"],
+[30302,"Spiral Rapier+2","W"],
+[30303,"Spiral Rapier+3","W"],
+[30304,"Spiral Rapier+4","W"],
+[30305,"Spiral Rapier+5","W"],
+[30306,"Spiral Rapier+6","W"],
+[30307,"Spiral Rapier+7","W"],
+[30308,"Spiral Rapier+8","W"],
+[30309,"Spiral Rapier+9","W"],
+[30310,"Spiral Rapier+10","W"],
+[30311,"Quality Spiral Rapier+1","W"],
+[30312,"Quality Spiral Rapier+2","W"],
+[30313,"Quality Spiral Rapier+3","W"],
+[30314,"Quality Spiral Rapier+4","W"],
+[30315,"Quality Spiral Rapier+5","W"],
+[30321,"Mercury Spiral Rapier+1","W"],
+[30322,"Mercury Spiral Rapier+2","W"],
+[30323,"Mercury Spiral Rapier+3","W"],
+[30324,"Mercury Spiral Rapier+4","W"],
+[30325,"Mercury Spiral Rapier+5","W"],
+[30331,"Fatal Spiral Rapier+1","W"],
+[30332,"Fatal Spiral Rapier+2","W"],
+[30333,"Fatal Spiral Rapier+3","W"],
+[30334,"Fatal Spiral Rapier+4","W"],
+[30335,"Fatal Spiral Rapier+5","W"],
+[30341,"Sharp Spiral Rapier+1","W"],
+[30342,"Sharp Spiral Rapier+2","W"],
+[30343,"Sharp Spiral Rapier+3","W"],
+[30344,"Sharp Spiral Rapier+4","W"],
+[30345,"Sharp Spiral Rapier+5","W"],
+[30351,"Crescent Spiral Rapier+1","W"],
+[30352,"Crescent Spiral Rapier+2","W"],
+[30353,"Crescent Spiral Rapier+3","W"],
+[30354,"Crescent Spiral Rapier+4","W"],
+[30355,"Crescent Spiral Rapier+5","W"],
+[30400,"Needle of Eternal Agony","W"],
+[30401,"Needle of Eternal Agony","W"],
+[30402,"Needle of Eternal Agony","W"],
+[30403,"Needle of Eternal Agony","W"],
+[30404,"Needle of Eternal Agony","W"],
+[30405,"Needle of Eternal Agony","W"],
+[30406,"Needle of Eternal Agony","W"],
+[30407,"Needle of Eternal Agony","W"],
+[39000,"Unlabelled Weapon 39000","W"],
+[40000,"Scimitar","W"],
+[40001,"Scimitar+1","W"],
+[40002,"Scimitar+2","W"],
+[40003,"Scimitar+3","W"],
+[40004,"Scimitar+4","W"],
+[40005,"Scimitar+5","W"],
+[40006,"Scimitar+6","W"],
+[40007,"Scimitar+7","W"],
+[40008,"Scimitar+8","W"],
+[40009,"Scimitar+9","W"],
+[40010,"Scimitar+10","W"],
+[40011,"Sharp Scimitar+1","W"],
+[40012,"Sharp Scimitar+2","W"],
+[40013,"Sharp Scimitar+3","W"],
+[40014,"Sharp Scimitar+4","W"],
+[40015,"Sharp Scimitar+5","W"],
+[40021,"Tearing Scimitar+1","W"],
+[40022,"Tearing Scimitar+2","W"],
+[40023,"Tearing Scimitar+3","W"],
+[40024,"Tearing Scimitar+4","W"],
+[40025,"Tearing Scimitar+5","W"],
+[40031,"Crescent Scimitar+1","W"],
+[40032,"Crescent Scimitar+2","W"],
+[40033,"Crescent Scimitar+3","W"],
+[40034,"Crescent Scimitar+4","W"],
+[40035,"Crescent Scimitar+5","W"],
+[40041,"Quality Scimitar+1","W"],
+[40042,"Quality Scimitar+2","W"],
+[40043,"Quality Scimitar+3","W"],
+[40044,"Quality Scimitar+4","W"],
+[40045,"Quality Scimitar+5","W"],
+[40051,"Mercury Scimitar+1","W"],
+[40052,"Mercury Scimitar+2","W"],
+[40053,"Mercury Scimitar+3","W"],
+[40054,"Mercury Scimitar+4","W"],
+[40055,"Mercury Scimitar+5","W"],
+[40061,"Moon Scimitar+1","W"],
+[40062,"Moon Scimitar+2","W"],
+[40063,"Moon Scimitar+3","W"],
+[40064,"Moon Scimitar+4","W"],
+[40065,"Moon Scimitar+5","W"],
+[40100,"Kilij","W"],
+[40101,"Kilij+1","W"],
+[40102,"Kilij+2","W"],
+[40103,"Kilij+3","W"],
+[40104,"Kilij+4","W"],
+[40105,"Kilij+5","W"],
+[40106,"Kilij+6","W"],
+[40107,"Kilij+7","W"],
+[40108,"Kilij+8","W"],
+[40109,"Kilij+9","W"],
+[40110,"Kilij+10","W"],
+[40111,"Sharp Kilij+1","W"],
+[40112,"Sharp Kilij+2","W"],
+[40113,"Sharp Kilij+3","W"],
+[40114,"Sharp Kilij+4","W"],
+[40115,"Sharp Kilij+5","W"],
+[40121,"Tearing Kilij+1","W"],
+[40122,"Tearing Kilij+2","W"],
+[40123,"Tearing Kilij+3","W"],
+[40124,"Tearing Kilij+4","W"],
+[40125,"Tearing Kilij+5","W"],
+[40131,"Crescent Kilij+1","W"],
+[40132,"Crescent Kilij+2","W"],
+[40133,"Crescent Kilij+3","W"],
+[40134,"Crescent Kilij+4","W"],
+[40135,"Crescent Kilij+5","W"],
+[40141,"Quality Kilij+1","W"],
+[40142,"Quality Kilij+2","W"],
+[40143,"Quality Kilij+3","W"],
+[40144,"Quality Kilij+4","W"],
+[40145,"Quality Kilij+5","W"],
+[40151,"Mercury Kilij+1","W"],
+[40152,"Mercury Kilij+2","W"],
+[40153,"Mercury Kilij+3","W"],
+[40154,"Mercury Kilij+4","W"],
+[40155,"Mercury Kilij+5","W"],
+[40161,"Moon Kilij+1","W"],
+[40162,"Moon Kilij+2","W"],
+[40163,"Moon Kilij+3","W"],
+[40164,"Moon Kilij+4","W"],
+[40165,"Moon Kilij+5","W"],
+[40200,"Shotel","W"],
+[40201,"Shotel+1","W"],
+[40202,"Shotel+2","W"],
+[40203,"Shotel+3","W"],
+[40204,"Shotel+4","W"],
+[40205,"Shotel+5","W"],
+[40206,"Shotel+6","W"],
+[40207,"Shotel+7","W"],
+[40208,"Shotel+8","W"],
+[40209,"Shotel+9","W"],
+[40210,"Shotel+10","W"],
+[40211,"Sharp Shotel+1","W"],
+[40212,"Sharp Shotel+2","W"],
+[40213,"Sharp Shotel+3","W"],
+[40214,"Sharp Shotel+4","W"],
+[40215,"Sharp Shotel+5","W"],
+[40221,"Tearing Shotel+1","W"],
+[40222,"Tearing Shotel+2","W"],
+[40223,"Tearing Shotel+3","W"],
+[40224,"Tearing Shotel+4","W"],
+[40225,"Tearing Shotel+5","W"],
+[40231,"Quality Shotel+1","W"],
+[40232,"Quality Shotel+2","W"],
+[40233,"Quality Shotel+3","W"],
+[40234,"Quality Shotel+4","W"],
+[40235,"Quality Shotel+5","W"],
+[40241,"Mercury Shotel+1","W"],
+[40242,"Mercury Shotel+2","W"],
+[40243,"Mercury Shotel+3","W"],
+[40244,"Mercury Shotel+4","W"],
+[40245,"Mercury Shotel+5","W"],
+[40251,"Moon Shotel+1","W"],
+[40252,"Moon Shotel+2","W"],
+[40253,"Moon Shotel+3","W"],
+[40254,"Moon Shotel+4","W"],
+[40255,"Moon Shotel+5","W"],
+[40261,"Crescent Shotel+1","W"],
+[40262,"Crescent Shotel+2","W"],
+[40263,"Crescent Shotel+3","W"],
+[40264,"Crescent Shotel+4","W"],
+[40265,"Crescent Shotel+5","W"],
+[40300,"Falchion","W"],
+[40301,"Falchion+1","W"],
+[40302,"Falchion+2","W"],
+[40303,"Falchion+3","W"],
+[40304,"Falchion+4","W"],
+[40305,"Falchion+5","W"],
+[40306,"Falchion+6","W"],
+[40307,"Falchion+7","W"],
+[40308,"Falchion+8","W"],
+[40309,"Falchion+9","W"],
+[40310,"Falchion+10","W"],
+[40311,"Sharp Falchion+1","W"],
+[40312,"Sharp Falchion+2","W"],
+[40313,"Sharp Falchion+3","W"],
+[40314,"Sharp Falchion+4","W"],
+[40315,"Sharp Falchion+5","W"],
+[40321,"Tearing Falchion+1","W"],
+[40322,"Tearing Falchion+2","W"],
+[40323,"Tearing Falchion+3","W"],
+[40324,"Tearing Falchion+4","W"],
+[40325,"Tearing Falchion+5","W"],
+[40331,"Crescent Falchion+1","W"],
+[40332,"Crescent Falchion+2","W"],
+[40333,"Crescent Falchion+3","W"],
+[40334,"Crescent Falchion+4","W"],
+[40335,"Crescent Falchion+5","W"],
+[40341,"Quality Falchion+1","W"],
+[40342,"Quality Falchion+2","W"],
+[40343,"Quality Falchion+3","W"],
+[40344,"Quality Falchion+4","W"],
+[40345,"Quality Falchion+5","W"],
+[40351,"Mercury Falchion+1","W"],
+[40352,"Mercury Falchion+2","W"],
+[40353,"Mercury Falchion+3","W"],
+[40354,"Mercury Falchion+4","W"],
+[40355,"Mercury Falchion+5","W"],
+[40361,"Moon Falchion+1","W"],
+[40362,"Moon Falchion+2","W"],
+[40363,"Moon Falchion+3","W"],
+[40364,"Moon Falchion+4","W"],
+[40365,"Moon Falchion+5","W"],
+[40400,"Uchigatana","W"],
+[40401,"Uchigatana+1","W"],
+[40402,"Uchigatana+2","W"],
+[40403,"Uchigatana+3","W"],
+[40404,"Uchigatana+4","W"],
+[40405,"Uchigatana+5","W"],
+[40406,"Uchigatana+6","W"],
+[40407,"Uchigatana+7","W"],
+[40408,"Uchigatana+8","W"],
+[40409,"Uchigatana+9","W"],
+[40410,"Uchigatana+10","W"],
+[40411,"Sharp Uchigatana+1","W"],
+[40412,"Sharp Uchigatana+2","W"],
+[40413,"Sharp Uchigatana+3","W"],
+[40414,"Sharp Uchigatana+4","W"],
+[40415,"Sharp Uchigatana+5","W"],
+[40421,"Tearing Uchigatana+1","W"],
+[40422,"Tearing Uchigatana+2","W"],
+[40423,"Tearing Uchigatana+3","W"],
+[40424,"Tearing Uchigatana+4","W"],
+[40425,"Tearing Uchigatana+5","W"],
+[40431,"Crescent Uchigatana+1","W"],
+[40432,"Crescent Uchigatana+2","W"],
+[40433,"Crescent Uchigatana+3","W"],
+[40434,"Crescent Uchigatana+4","W"],
+[40435,"Crescent Uchigatana+5","W"],
+[40441,"Quality Uchigatana+1","W"],
+[40442,"Quality Uchigatana+2","W"],
+[40443,"Quality Uchigatana+3","W"],
+[40444,"Quality Uchigatana+4","W"],
+[40445,"Quality Uchigatana+5","W"],
+[40451,"Mercury Uchigatana+1","W"],
+[40452,"Mercury Uchigatana+2","W"],
+[40453,"Mercury Uchigatana+3","W"],
+[40454,"Mercury Uchigatana+4","W"],
+[40455,"Mercury Uchigatana+5","W"],
+[40461,"Moon Uchigatana+1","W"],
+[40462,"Moon Uchigatana+2","W"],
+[40463,"Moon Uchigatana+3","W"],
+[40464,"Moon Uchigatana+4","W"],
+[40465,"Moon Uchigatana+5","W"],
+[40500,"Hiltless","W"],
+[40501,"Hiltless+1","W"],
+[40502,"Hiltless+2","W"],
+[40503,"Hiltless+3","W"],
+[40504,"Hiltless+4","W"],
+[40505,"Hiltless+5","W"],
+[40600,"Blind","W"],
+[40601,"Blind+1","W"],
+[40602,"Blind+2","W"],
+[40603,"Blind+3","W"],
+[40604,"Blind+4","W"],
+[40605,"Blind+5","W"],
+[40700,"Magic Sword \"Makoto\"","W"],
+[40701,"Magic Sword \"Makoto\"+1","W"],
+[40702,"Magic Sword \"Makoto\"+2","W"],
+[40703,"Magic Sword \"Makoto\"+3","W"],
+[40704,"Magic Sword \"Makoto\"+4","W"],
+[40705,"Magic Sword \"Makoto\"+5","W"],
+[40900,"Large Sword of Searching","W"],
+[40901,"Large Sword of Searching","W"],
+[40902,"Large Sword of Searching","W"],
+[40903,"Large Sword of Searching","W"],
+[40904,"Large Sword of Searching","W"],
+[40905,"Large Sword of Searching","W"],
+[40906,"Large Sword of Searching","W"],
+[40907,"Large Sword of Searching","W"],
+[40908,"Large Sword of Searching","W"],
+[49000,"Unlabelled Weapon 49000","W"],
+[50000,"Battle Axe","W"],
+[50001,"Battle Axe+1","W"],
+[50002,"Battle Axe+2","W"],
+[50003,"Battle Axe+3","W"],
+[50004,"Battle Axe+4","W"],
+[50005,"Battle Axe+5","W"],
+[50006,"Battle Axe+6","W"],
+[50007,"Battle Axe+7","W"],
+[50008,"Battle Axe+8","W"],
+[50009,"Battle Axe+9","W"],
+[50010,"Battle Axe+10","W"],
+[50011,"Crushing Battle Axe+1","W"],
+[50012,"Crushing Battle Axe+2","W"],
+[50013,"Crushing Battle Axe+3","W"],
+[50014,"Crushing Battle Axe+4","W"],
+[50015,"Crushing Battle Axe+5","W"],
+[50021,"Dragon Battle Axe+1","W"],
+[50022,"Dragon Battle Axe+2","W"],
+[50023,"Dragon Battle Axe+3","W"],
+[50024,"Dragon Battle Axe+4","W"],
+[50025,"Dragon Battle Axe+5","W"],
+[50031,"Moon Battle Axe+1","W"],
+[50032,"Moon Battle Axe+2","W"],
+[50033,"Moon Battle Axe+3","W"],
+[50034,"Moon Battle Axe+4","W"],
+[50035,"Moon Battle Axe+5","W"],
+[50041,"Quality Battle Axe+1","W"],
+[50042,"Quality Battle Axe+2","W"],
+[50043,"Quality Battle Axe+3","W"],
+[50044,"Quality Battle Axe+4","W"],
+[50045,"Quality Battle Axe+5","W"],
+[50051,"Blessed Battle Axe+1","W"],
+[50052,"Blessed Battle Axe+2","W"],
+[50053,"Blessed Battle Axe+3","W"],
+[50054,"Blessed Battle Axe+4","W"],
+[50055,"Blessed Battle Axe+5","W"],
+[50200,"Great Axe","W"],
+[50201,"Great Axe+1","W"],
+[50202,"Great Axe+2","W"],
+[50203,"Great Axe+3","W"],
+[50204,"Great Axe+4","W"],
+[50205,"Great Axe+5","W"],
+[50206,"Great Axe+6","W"],
+[50207,"Great Axe+7","W"],
+[50208,"Great Axe+8","W"],
+[50209,"Great Axe+9","W"],
+[50210,"Great Axe+10","W"],
+[50211,"Crushing Great Axe+1","W"],
+[50212,"Crushing Great Axe+2","W"],
+[50213,"Crushing Great Axe+3","W"],
+[50214,"Crushing Great Axe+4","W"],
+[50215,"Crushing Great Axe+5","W"],
+[50221,"Dragon Great Axe+1","W"],
+[50222,"Dragon Great Axe+2","W"],
+[50223,"Dragon Great Axe+3","W"],
+[50224,"Dragon Great Axe+4","W"],
+[50225,"Dragon Great Axe+5","W"],
+[50231,"Moon Great Axe+1","W"],
+[50232,"Moon Great Axe+2","W"],
+[50233,"Moon Great Axe+3","W"],
+[50234,"Moon Great Axe+4","W"],
+[50235,"Moon Great Axe+5","W"],
+[50241,"Quality Great Axe+1","W"],
+[50242,"Quality Great Axe+2","W"],
+[50243,"Quality Great Axe+3","W"],
+[50244,"Quality Great Axe+4","W"],
+[50245,"Quality Great Axe+5","W"],
+[50251,"Blessed Great Axe+1","W"],
+[50252,"Blessed Great Axe+2","W"],
+[50253,"Blessed Great Axe+3","W"],
+[50254,"Blessed Great Axe+4","W"],
+[50255,"Blessed Great Axe+5","W"],
+[50300,"Crescent Axe","W"],
+[50301,"Crescent Axe+1","W"],
+[50302,"Crescent Axe+2","W"],
+[50303,"Crescent Axe+3","W"],
+[50304,"Crescent Axe+4","W"],
+[50305,"Crescent Axe+5","W"],
+[50306,"Crescent Axe+6","W"],
+[50307,"Crescent Axe+7","W"],
+[50308,"Crescent Axe+8","W"],
+[50309,"Crescent Axe+9","W"],
+[50310,"Crescent Axe+10","W"],
+[50311,"Crushing Crescent Axe+1","W"],
+[50312,"Crushing Crescent Axe+2","W"],
+[50313,"Crushing Crescent Axe+3","W"],
+[50314,"Crushing Crescent Axe+4","W"],
+[50315,"Crushing Crescent Axe+5","W"],
+[50321,"Dragon Crescent Axe+1","W"],
+[50322,"Dragon Crescent Axe+2","W"],
+[50323,"Dragon Crescent Axe+3","W"],
+[50324,"Dragon Crescent Axe+4","W"],
+[50325,"Dragon Crescent Axe+5","W"],
+[50331,"Moon Crescent Axe+1","W"],
+[50332,"Moon Crescent Axe+2","W"],
+[50333,"Moon Crescent Axe+3","W"],
+[50334,"Moon Crescent Axe+4","W"],
+[50335,"Moon Crescent Axe+5","W"],
+[50341,"Quality Crescent Axe+1","W"],
+[50342,"Quality Crescent Axe+2","W"],
+[50343,"Quality Crescent Axe+3","W"],
+[50344,"Quality Crescent Axe+4","W"],
+[50345,"Quality Crescent Axe+5","W"],
+[50351,"Blessed Crescent Axe+1","W"],
+[50352,"Blessed Crescent Axe+2","W"],
+[50353,"Blessed Crescent Axe+3","W"],
+[50354,"Blessed Crescent Axe+4","W"],
+[50355,"Blessed Crescent Axe+5","W"],
+[50400,"Guillotine Axe","W"],
+[50401,"Guillotine Axe+1","W"],
+[50402,"Guillotine Axe+2","W"],
+[50403,"Guillotine Axe+3","W"],
+[50404,"Guillotine Axe+4","W"],
+[50405,"Guillotine Axe+5","W"],
+[50406,"Guillotine Axe+6","W"],
+[50407,"Guillotine Axe+7","W"],
+[50408,"Guillotine Axe+8","W"],
+[50409,"Guillotine Axe+9","W"],
+[50410,"Guillotine Axe+10","W"],
+[50411,"Crushing Guillotine Axe+1","W"],
+[50412,"Crushing Guillotine Axe+2","W"],
+[50413,"Crushing Guillotine Axe+3","W"],
+[50414,"Crushing Guillotine Axe+4","W"],
+[50415,"Crushing Guillotine Axe+5","W"],
+[50421,"Dragon Guillotine Axe+1","W"],
+[50422,"Dragon Guillotine Axe+2","W"],
+[50423,"Dragon Guillotine Axe+3","W"],
+[50424,"Dragon Guillotine Axe+4","W"],
+[50425,"Dragon Guillotine Axe+5","W"],
+[50431,"Moon Guillotine Axe+1","W"],
+[50432,"Moon Guillotine Axe+2","W"],
+[50433,"Moon Guillotine Axe+3","W"],
+[50434,"Moon Guillotine Axe+4","W"],
+[50435,"Moon Guillotine Axe+5","W"],
+[50441,"Quality Guillotine Axe+1","W"],
+[50442,"Quality Guillotine Axe+2","W"],
+[50443,"Quality Guillotine Axe+3","W"],
+[50444,"Quality Guillotine Axe+4","W"],
+[50445,"Quality Guillotine Axe+5","W"],
+[50451,"Blessed Guillotine Axe+1","W"],
+[50452,"Blessed Guillotine Axe+2","W"],
+[50453,"Blessed Guillotine Axe+3","W"],
+[50454,"Blessed Guillotine Axe+4","W"],
+[50455,"Blessed Guillotine Axe+5","W"],
+[50500,"Dozer Axe","W"],
+[50501,"Dozer Axe","W"],
+[50502,"Dozer Axe","W"],
+[50503,"Dozer Axe","W"],
+[50504,"Dozer Axe","W"],
+[59000,"Unlabelled Weapon 59000","W"],
+[60000,"Club","W"],
+[60001,"Crushing Club+1","W"],
+[60002,"Crushing Club+2","W"],
+[60003,"Crushing Club+3","W"],
+[60004,"Crushing Club+4","W"],
+[60005,"Crushing Club+5","W"],
+[60011,"Blessed Club+1","W"],
+[60012,"Blessed Club+2","W"],
+[60013,"Blessed Club+3","W"],
+[60014,"Blessed Club+4","W"],
+[60015,"Blessed Club+5","W"],
+[60100,"Mace","W"],
+[60101,"Crushing Mace+1","W"],
+[60102,"Crushing Mace+2","W"],
+[60103,"Crushing Mace+3","W"],
+[60104,"Crushing Mace+4","W"],
+[60105,"Crushing Mace+5","W"],
+[60111,"Blessed Mace+1","W"],
+[60112,"Blessed Mace+2","W"],
+[60113,"Blessed Mace+3","W"],
+[60114,"Blessed Mace+4","W"],
+[60115,"Blessed Mace+5","W"],
+[60121,"Mace+1","W"],
+[60122,"Mace+2","W"],
+[60123,"Mace+3","W"],
+[60124,"Mace+4","W"],
+[60125,"Mace+5","W"],
+[60126,"Mace+6","W"],
+[60127,"Mace+7","W"],
+[60128,"Mace+8","W"],
+[60129,"Mace+9","W"],
+[60130,"Mace+10","W"],
+[60131,"Quality Mace+1","W"],
+[60132,"Quality Mace+2","W"],
+[60133,"Quality Mace+3","W"],
+[60134,"Quality Mace+4","W"],
+[60135,"Quality Mace+5","W"],
+[60141,"Dragon Mace+1","W"],
+[60142,"Dragon Mace+2","W"],
+[60143,"Dragon Mace+3","W"],
+[60144,"Dragon Mace+4","W"],
+[60145,"Dragon Mace+5","W"],
+[60151,"Moon Mace+1","W"],
+[60152,"Moon Mace+2","W"],
+[60153,"Moon Mace+3","W"],
+[60154,"Moon Mace+4","W"],
+[60155,"Moon Mace+5","W"],
+[60200,"War Pick","W"],
+[60201,"War Pick+1","W"],
+[60202,"War Pick+2","W"],
+[60203,"War Pick+3","W"],
+[60204,"War Pick+4","W"],
+[60205,"War Pick+5","W"],
+[60206,"War Pick+6","W"],
+[60207,"War Pick+7","W"],
+[60208,"War Pick+8","W"],
+[60209,"War Pick+9","W"],
+[60210,"War Pick+10","W"],
+[60211,"Quality War Pick+1","W"],
+[60212,"Quality War Pick+2","W"],
+[60213,"Quality War Pick+3","W"],
+[60214,"Quality War Pick+4","W"],
+[60215,"Quality War Pick+5","W"],
+[60221,"Mercury War Pick+1","W"],
+[60222,"Mercury War Pick+2","W"],
+[60223,"Mercury War Pick+3","W"],
+[60224,"Mercury War Pick+4","W"],
+[60225,"Mercury War Pick+5","W"],
+[60231,"Sharp War Pick+1","W"],
+[60232,"Sharp War Pick+2","W"],
+[60233,"Sharp War Pick+3","W"],
+[60234,"Sharp War Pick+4","W"],
+[60235,"Sharp War Pick+5","W"],
+[60241,"Tearing War Pick+1","W"],
+[60242,"Tearing War Pick+2","W"],
+[60243,"Tearing War Pick+3","W"],
+[60244,"Tearing War Pick+4","W"],
+[60245,"Tearing War Pick+5","W"],
+[60251,"Moon War Pick+1","W"],
+[60252,"Moon War Pick+2","W"],
+[60253,"Moon War Pick+3","W"],
+[60254,"Moon War Pick+4","W"],
+[60255,"Moon War Pick+5","W"],
+[60300,"Morning Star","W"],
+[60301,"Crushing Morning Star+1","W"],
+[60302,"Crushing Morning Star+2","W"],
+[60303,"Crushing Morning Star+3","W"],
+[60304,"Crushing Morning Star+4","W"],
+[60305,"Crushing Morning Star+5","W"],
+[60311,"Blessed Morning Star+1","W"],
+[60312,"Blessed Morning Star+2","W"],
+[60313,"Blessed Morning Star+3","W"],
+[60314,"Blessed Morning Star+4","W"],
+[60315,"Blessed Morning Star+5","W"],
+[60321,"Morning Star+1","W"],
+[60322,"Morning Star+2","W"],
+[60323,"Morning Star+3","W"],
+[60324,"Morning Star+4","W"],
+[60325,"Morning Star+5","W"],
+[60326,"Morning Star+6","W"],
+[60327,"Morning Star+7","W"],
+[60328,"Morning Star+8","W"],
+[60329,"Morning Star+9","W"],
+[60330,"Morning Star+10","W"],
+[60331,"Quality Morning Star+1","W"],
+[60332,"Quality Morning Star+2","W"],
+[60333,"Quality Morning Star+3","W"],
+[60334,"Quality Morning Star+4","W"],
+[60335,"Quality Morning Star+5","W"],
+[60341,"Dragon Morning Star+1","W"],
+[60342,"Dragon Morning Star+2","W"],
+[60343,"Dragon Morning Star+3","W"],
+[60344,"Dragon Morning Star+4","W"],
+[60345,"Dragon Morning Star+5","W"],
+[60351,"Moon Morning Star+1","W"],
+[60352,"Moon Morning Star+2","W"],
+[60353,"Moon Morning Star+3","W"],
+[60354,"Moon Morning Star+4","W"],
+[60355,"Moon Morning Star+5","W"],
+[60400,"Great Club","W"],
+[60401,"Crushing Great Club+1","W"],
+[60402,"Crushing Great Club+2","W"],
+[60403,"Crushing Great Club+3","W"],
+[60404,"Crushing Great Club+4","W"],
+[60405,"Crushing Great Club+5","W"],
+[60411,"Blessed Great Club+1","W"],
+[60412,"Blessed Great Club+2","W"],
+[60413,"Blessed Great Club+3","W"],
+[60414,"Blessed Great Club+4","W"],
+[60415,"Blessed Great Club+5","W"],
+[60500,"Bramd","W"],
+[60501,"Bramd+1","W"],
+[60502,"Bramd+2","W"],
+[60503,"Bramd+3","W"],
+[60504,"Bramd+4","W"],
+[60505,"Bramd+5","W"],
+[60600,"Pickaxe","W"],
+[60601,"Pickaxe+1","W"],
+[60602,"Pickaxe+2","W"],
+[60603,"Pickaxe+3","W"],
+[60604,"Pickaxe+4","W"],
+[60605,"Pickaxe+5","W"],
+[60606,"Pickaxe+6","W"],
+[60607,"Pickaxe+7","W"],
+[60608,"Pickaxe+8","W"],
+[60609,"Pickaxe+9","W"],
+[60610,"Pickaxe+10","W"],
+[60611,"Quality Pickaxe+1","W"],
+[60612,"Quality Pickaxe+2","W"],
+[60613,"Quality Pickaxe+3","W"],
+[60614,"Quality Pickaxe+4","W"],
+[60615,"Quality Pickaxe+5","W"],
+[60621,"Mercury Pickaxe+1","W"],
+[60622,"Mercury Pickaxe+2","W"],
+[60623,"Mercury Pickaxe+3","W"],
+[60624,"Mercury Pickaxe+4","W"],
+[60625,"Mercury Pickaxe+5","W"],
+[60631,"Sharp Pickaxe+1","W"],
+[60632,"Sharp Pickaxe+2","W"],
+[60633,"Sharp Pickaxe+3","W"],
+[60634,"Sharp Pickaxe+4","W"],
+[60635,"Sharp Pickaxe+5","W"],
+[60641,"Tearing Pickaxe+1","W"],
+[60642,"Tearing Pickaxe+2","W"],
+[60643,"Tearing Pickaxe+3","W"],
+[60644,"Tearing Pickaxe+4","W"],
+[60645,"Tearing Pickaxe+5","W"],
+[60651,"Moon Pickaxe+1","W"],
+[60652,"Moon Pickaxe+2","W"],
+[60653,"Moon Pickaxe+3","W"],
+[60654,"Moon Pickaxe+4","W"],
+[60655,"Moon Pickaxe+5","W"],
+[60700,"Meat Cleaver","W"],
+[60701,"Meat Cleaver","W"],
+[60702,"Meat Cleaver","W"],
+[60703,"Meat Cleaver","W"],
+[60704,"Meat Cleaver","W"],
+[60705,"Meat Cleaver","W"],
+[60706,"Meat Cleaver","W"],
+[60707,"Meat Cleaver","W"],
+[60800,"Torch","W"],
+[69000,"Unlabelled Weapon 69000","W"],
+[70000,"Short Spear","W"],
+[70001,"Short Spear+1","W"],
+[70002,"Short Spear+2","W"],
+[70003,"Short Spear+3","W"],
+[70004,"Short Spear+4","W"],
+[70005,"Short Spear+5","W"],
+[70006,"Short Spear+6","W"],
+[70007,"Short Spear+7","W"],
+[70008,"Short Spear+8","W"],
+[70009,"Short Spear+9","W"],
+[70010,"Short Spear+10","W"],
+[70011,"Quality Short Spear+1","W"],
+[70012,"Quality Short Spear+2","W"],
+[70013,"Quality Short Spear+3","W"],
+[70014,"Quality Short Spear+4","W"],
+[70015,"Quality Short Spear+5","W"],
+[70021,"Mercury Short Spear+1","W"],
+[70022,"Mercury Short Spear+2","W"],
+[70023,"Mercury Short Spear+3","W"],
+[70024,"Mercury Short Spear+4","W"],
+[70025,"Mercury Short Spear+5","W"],
+[70031,"Sharp Short Spear+1","W"],
+[70032,"Sharp Short Spear+2","W"],
+[70033,"Sharp Short Spear+3","W"],
+[70034,"Sharp Short Spear+4","W"],
+[70035,"Sharp Short Spear+5","W"],
+[70041,"Fatal Short Spear+1","W"],
+[70042,"Fatal Short Spear+2","W"],
+[70043,"Fatal Short Spear+3","W"],
+[70044,"Fatal Short Spear+4","W"],
+[70045,"Fatal Short Spear+5","W"],
+[70051,"Moon Short Spear+1","W"],
+[70052,"Moon Short Spear+2","W"],
+[70053,"Moon Short Spear+3","W"],
+[70054,"Moon Short Spear+4","W"],
+[70055,"Moon Short Spear+5","W"],
+[70100,"Winged Spear","W"],
+[70101,"Winged Spear+1","W"],
+[70102,"Winged Spear+2","W"],
+[70103,"Winged Spear+3","W"],
+[70104,"Winged Spear+4","W"],
+[70105,"Winged Spear+5","W"],
+[70106,"Winged Spear+6","W"],
+[70107,"Winged Spear+7","W"],
+[70108,"Winged Spear+8","W"],
+[70109,"Winged Spear+9","W"],
+[70110,"Winged Spear+10","W"],
+[70111,"Quality Winged Spear+1","W"],
+[70112,"Quality Winged Spear+2","W"],
+[70113,"Quality Winged Spear+3","W"],
+[70114,"Quality Winged Spear+4","W"],
+[70115,"Quality Winged Spear+5","W"],
+[70121,"Mercury Winged Spear+1","W"],
+[70122,"Mercury Winged Spear+2","W"],
+[70123,"Mercury Winged Spear+3","W"],
+[70124,"Mercury Winged Spear+4","W"],
+[70125,"Mercury Winged Spear+5","W"],
+[70131,"Sharp Winged Spear+1","W"],
+[70132,"Sharp Winged Spear+2","W"],
+[70133,"Sharp Winged Spear+3","W"],
+[70134,"Sharp Winged Spear+4","W"],
+[70135,"Sharp Winged Spear+5","W"],
+[70141,"Fatal Winged Spear+1","W"],
+[70142,"Fatal Winged Spear+2","W"],
+[70143,"Fatal Winged Spear+3","W"],
+[70144,"Fatal Winged Spear+4","W"],
+[70145,"Fatal Winged Spear+5","W"],
+[70151,"Moon Winged Spear+1","W"],
+[70152,"Moon Winged Spear+2","W"],
+[70153,"Moon Winged Spear+3","W"],
+[70154,"Moon Winged Spear+4","W"],
+[70155,"Moon Winged Spear+5","W"],
+[70300,"Istarelle","W"],
+[70301,"Istarelle+1","W"],
+[70302,"Istarelle+2","W"],
+[70303,"Istarelle+3","W"],
+[70304,"Istarelle+4","W"],
+[70305,"Istarelle+5","W"],
+[70400,"Scraping Spear","W"],
+[70401,"Scraping Spear","W"],
+[70402,"Scraping Spear","W"],
+[70403,"Scraping Spear","W"],
+[70404,"Scraping Spear","W"],
+[70405,"Scraping Spear","W"],
+[79000,"Unlabelled Weapon 79000","W"],
+[80000,"War Scythe","W"],
+[80001,"War Scythe+1","W"],
+[80002,"War Scythe+2","W"],
+[80003,"War Scythe+3","W"],
+[80004,"War Scythe+4","W"],
+[80005,"War Scythe+5","W"],
+[80006,"War Scythe+6","W"],
+[80007,"War Scythe+7","W"],
+[80008,"War Scythe+8","W"],
+[80009,"War Scythe+9","W"],
+[80010,"War Scythe+10","W"],
+[80011,"Sharp War Scythe+1","W"],
+[80012,"Sharp War Scythe+2","W"],
+[80013,"Sharp War Scythe+3","W"],
+[80014,"Sharp War Scythe+4","W"],
+[80015,"Sharp War Scythe+5","W"],
+[80021,"Tearing War Scythe+1","W"],
+[80022,"Tearing War Scythe+2","W"],
+[80023,"Tearing War Scythe+3","W"],
+[80024,"Tearing War Scythe+4","W"],
+[80025,"Tearing War Scythe+5","W"],
+[80031,"Crescent War Scythe+1","W"],
+[80032,"Crescent War Scythe+2","W"],
+[80033,"Crescent War Scythe+3","W"],
+[80034,"Crescent War Scythe+4","W"],
+[80035,"Crescent War Scythe+5","W"],
+[80041,"Quality War Scythe+1","W"],
+[80042,"Quality War Scythe+2","W"],
+[80043,"Quality War Scythe+3","W"],
+[80044,"Quality War Scythe+4","W"],
+[80045,"Quality War Scythe+5","W"],
+[80051,"Mercury War Scythe+1","W"],
+[80052,"Mercury War Scythe+2","W"],
+[80053,"Mercury War Scythe+3","W"],
+[80054,"Mercury War Scythe+4","W"],
+[80055,"Mercury War Scythe+5","W"],
+[80061,"Moon War Scythe+1","W"],
+[80062,"Moon War Scythe+2","W"],
+[80063,"Moon War Scythe+3","W"],
+[80064,"Moon War Scythe+4","W"],
+[80065,"Moon War Scythe+5","W"],
+[80100,"Mirdan Hammer","W"],
+[80101,"Mirdan Hammer+1","W"],
+[80102,"Mirdan Hammer+2","W"],
+[80103,"Mirdan Hammer+3","W"],
+[80104,"Mirdan Hammer+4","W"],
+[80105,"Mirdan Hammer+5","W"],
+[80106,"Mirdan Hammer+6","W"],
+[80107,"Mirdan Hammer+7","W"],
+[80108,"Mirdan Hammer+8","W"],
+[80109,"Mirdan Hammer+9","W"],
+[80110,"Mirdan Hammer+10","W"],
+[80111,"Quality Mirdan Hammer+1","W"],
+[80112,"Quality Mirdan Hammer+2","W"],
+[80113,"Quality Mirdan Hammer+3","W"],
+[80114,"Quality Mirdan Hammer+4","W"],
+[80115,"Quality Mirdan Hammer+5","W"],
+[80121,"Mercury Mirdan Hammer+1","W"],
+[80122,"Mercury Mirdan Hammer+2","W"],
+[80123,"Mercury Mirdan Hammer+3","W"],
+[80131,"Crushing Mirdan Hammer+1","W"],
+[80132,"Crushing Mirdan Hammer+2","W"],
+[80133,"Crushing Mirdan Hammer+3","W"],
+[80134,"Crushing Mirdan Hammer+4","W"],
+[80135,"Crushing Mirdan Hammer+5","W"],
+[80141,"Dragon Mirdan Hammer+1","W"],
+[80142,"Dragon Mirdan Hammer+2","W"],
+[80143,"Dragon Mirdan Hammer+3","W"],
+[80144,"Dragon Mirdan Hammer+4","W"],
+[80145,"Dragon Mirdan Hammer+5","W"],
+[80151,"Moon Mirdan Hammer+1","W"],
+[80152,"Moon Mirdan Hammer+2","W"],
+[80153,"Moon Mirdan Hammer+3","W"],
+[80154,"Moon Mirdan Hammer+4","W"],
+[80155,"Moon Mirdan Hammer+5","W"],
+[80161,"Blessed Mirdan Hammer+1","W"],
+[80162,"Blessed Mirdan Hammer+2","W"],
+[80163,"Blessed Mirdan Hammer+3","W"],
+[80164,"Blessed Mirdan Hammer+4","W"],
+[80165,"Blessed Mirdan Hammer+5","W"],
+[80200,"Halberd","W"],
+[80201,"Halberd+1","W"],
+[80202,"Halberd+2","W"],
+[80203,"Halberd+3","W"],
+[80204,"Halberd+4","W"],
+[80205,"Halberd+5","W"],
+[80206,"Halberd+6","W"],
+[80207,"Halberd+7","W"],
+[80208,"Halberd+8","W"],
+[80209,"Halberd+9","W"],
+[80210,"Halberd+10","W"],
+[80211,"Quality Halberd+1","W"],
+[80212,"Quality Halberd+2","W"],
+[80213,"Quality Halberd+3","W"],
+[80214,"Quality Halberd+4","W"],
+[80215,"Quality Halberd+5","W"],
+[80221,"Mercury Halberd+1","W"],
+[80222,"Mercury Halberd+2","W"],
+[80223,"Mercury Halberd+3","W"],
+[80231,"Crushing Halberd+1","W"],
+[80232,"Crushing Halberd+2","W"],
+[80233,"Crushing Halberd+3","W"],
+[80234,"Crushing Halberd+4","W"],
+[80235,"Crushing Halberd+5","W"],
+[80241,"Dragon Halberd+1","W"],
+[80242,"Dragon Halberd+2","W"],
+[80243,"Dragon Halberd+3","W"],
+[80244,"Dragon Halberd+4","W"],
+[80245,"Dragon Halberd+5","W"],
+[80251,"Moon Halberd+1","W"],
+[80252,"Moon Halberd+2","W"],
+[80253,"Moon Halberd+3","W"],
+[80254,"Moon Halberd+4","W"],
+[80255,"Moon Halberd+5","W"],
+[80261,"Blessed Halberd+1","W"],
+[80262,"Blessed Halberd+2","W"],
+[80263,"Blessed Halberd+3","W"],
+[80264,"Blessed Halberd+4","W"],
+[80265,"Blessed Halberd+5","W"],
+[80300,"Phosphorescent Pole","W"],
+[80301,"Phosphorescent Pole+1","W"],
+[80302,"Phosphorescent Pole+2","W"],
+[80303,"Phosphorescent Pole+3","W"],
+[80304,"Phosphorescent Pole+4","W"],
+[80305,"Phosphorescent Pole+5","W"],
+[89000,"Unlabelled Weapon 89000","W"],
+[90000,"Wooden Catalyst","W"],
+[90001,"Crushing Wooden Catalyst+1","W"],
+[90002,"Crushing Wooden Catalyst+2","W"],
+[90003,"Crushing Wooden Catalyst+3","W"],
+[90004,"Crushing Wooden Catalyst+4","W"],
+[90005,"Crushing Wooden Catalyst+5","W"],
+[90100,"Silver Catalyst","W"],
+[90101,"Crushing Silver Catalyst+1","W"],
+[90102,"Crushing Silver Catalyst+2","W"],
+[90103,"Crushing Silver Catalyst+3","W"],
+[90104,"Crushing Silver Catalyst+4","W"],
+[90105,"Crushing Silver Catalyst+5","W"],
+[90200,"Insanity Catalyst","W"],
+[90201,"Insanity Catalyst","W"],
+[90400,"Talisman of God","W"],
+[90500,"Talisman of Beasts","W"],
+[99000,"Unlabelled Weapon 99000","W"],
+[99999,"Repair All","W"],
+[100000,"Iron Knuckles","W"],
+[100001,"Crushing Iron Knuckles+1","W"],
+[100002,"Crushing Iron Knuckles+2","W"],
+[100003,"Crushing Iron Knuckles+3","W"],
+[100004,"Crushing Iron Knuckles+4","W"],
+[100005,"Crushing Iron Knuckles+5","W"],
+[100011,"Blessed Iron Knuckles+1","W"],
+[100012,"Blessed Iron Knuckles+2","W"],
+[100013,"Blessed Iron Knuckles+3","W"],
+[100014,"Blessed Iron Knuckles+4","W"],
+[100015,"Blessed Iron Knuckles+5","W"],
+[100021,"Iron Knuckles+1","W"],
+[100022,"Iron Knuckles+2","W"],
+[100023,"Iron Knuckles+3","W"],
+[100024,"Iron Knuckles+4","W"],
+[100025,"Iron Knuckles+5","W"],
+[100026,"Iron Knuckles+6","W"],
+[100027,"Iron Knuckles+7","W"],
+[100028,"Iron Knuckles+8","W"],
+[100029,"Iron Knuckles+9","W"],
+[100030,"Iron Knuckles+10","W"],
+[100031,"Quality Iron Knuckles+1","W"],
+[100032,"Quality Iron Knuckles+2","W"],
+[100033,"Quality Iron Knuckles+3","W"],
+[100034,"Quality Iron Knuckles+4","W"],
+[100035,"Quality Iron Knuckles+5","W"],
+[100041,"Dragon Iron Knuckles+1","W"],
+[100042,"Dragon Iron Knuckles+2","W"],
+[100043,"Dragon Iron Knuckles+3","W"],
+[100044,"Dragon Iron Knuckles+4","W"],
+[100045,"Dragon Iron Knuckles+5","W"],
+[100051,"Moon Iron Knuckles+1","W"],
+[100052,"Moon Iron Knuckles+2","W"],
+[100053,"Moon Iron Knuckles+3","W"],
+[100054,"Moon Iron Knuckles+4","W"],
+[100055,"Moon Iron Knuckles+5","W"],
+[100100,"Claws","W"],
+[100101,"Claws+1","W"],
+[100102,"Claws+2","W"],
+[100103,"Claws+3","W"],
+[100104,"Claws+4","W"],
+[100105,"Claws+5","W"],
+[100106,"Claws+6","W"],
+[100107,"Claws+7","W"],
+[100108,"Claws+8","W"],
+[100109,"Claws+9","W"],
+[100110,"Claws+10","W"],
+[100111,"Sharp Claws+1","W"],
+[100112,"Sharp Claws+2","W"],
+[100113,"Sharp Claws+3","W"],
+[100114,"Sharp Claws+4","W"],
+[100115,"Sharp Claws+5","W"],
+[100121,"Tearing Claws+1","W"],
+[100122,"Tearing Claws+2","W"],
+[100123,"Tearing Claws+3","W"],
+[100124,"Tearing Claws+4","W"],
+[100125,"Tearing Claws+5","W"],
+[100131,"Crescent Claws+1","W"],
+[100132,"Crescent Claws+2","W"],
+[100133,"Crescent Claws+3","W"],
+[100134,"Crescent Claws+4","W"],
+[100135,"Crescent Claws+5","W"],
+[100141,"Quality Claws+1","W"],
+[100142,"Quality Claws+2","W"],
+[100143,"Quality Claws+3","W"],
+[100144,"Quality Claws+4","W"],
+[100145,"Quality Claws+5","W"],
+[100151,"Mercury Claws+1","W"],
+[100152,"Mercury Claws+2","W"],
+[100153,"Mercury Claws+3","W"],
+[100154,"Mercury Claws+4","W"],
+[100155,"Mercury Claws+5","W"],
+[100161,"Moon Claws+1","W"],
+[100162,"Moon Claws+2","W"],
+[100163,"Moon Claws+3","W"],
+[100164,"Moon Claws+4","W"],
+[100165,"Moon Claws+5","W"],
+[100200,"Hands of God","W"],
+[100201,"Hands of God+1","W"],
+[100202,"Hands of God+2","W"],
+[100203,"Hands of God+3","W"],
+[100204,"Hands of God+4","W"],
+[100205,"Hands of God+5","W"],
+[100300,"No Equipment","W"],
+[109000,"Unlabelled Weapon 109000","W"],
+[130000,"Short Bow","W"],
+[130001,"Short Bow+1","W"],
+[130002,"Short Bow+2","W"],
+[130003,"Short Bow+3","W"],
+[130004,"Short Bow+4","W"],
+[130005,"Short Bow+5","W"],
+[130006,"Short Bow+6","W"],
+[130007,"Short Bow+7","W"],
+[130008,"Short Bow+8","W"],
+[130009,"Short Bow+9","W"],
+[130010,"Short Bow+10","W"],
+[130011,"UNUSED DATA","W"],
+[130012,"UNUSED DATA","W"],
+[130013,"UNUSED DATA","W"],
+[130014,"UNUSED DATA","W"],
+[130015,"UNUSED DATA","W"],
+[130021,"Sticky Short Bow+1","W"],
+[130022,"Sticky Short Bow+2","W"],
+[130023,"Sticky Short Bow+3","W"],
+[130024,"Sticky Short Bow+4","W"],
+[130025,"Sticky Short Bow+5","W"],
+[130031,"Quality Short Bow+1","W"],
+[130032,"Quality Short Bow+2","W"],
+[130033,"Quality Short Bow+3","W"],
+[130034,"Quality Short Bow+4","W"],
+[130035,"Quality Short Bow+5","W"],
+[130100,"Compound Short Bow","W"],
+[130101,"Compound Short Bow+1","W"],
+[130102,"Compound Short Bow+2","W"],
+[130103,"Compound Short Bow+3","W"],
+[130104,"Compound Short Bow+4","W"],
+[130105,"Compound Short Bow+5","W"],
+[130106,"Compound Short Bow+6","W"],
+[130107,"Compound Short Bow+7","W"],
+[130108,"Compound Short Bow+8","W"],
+[130109,"Compound Short Bow+9","W"],
+[130110,"Compound Short Bow+10","W"],
+[130111,"UNUSED DATA","W"],
+[130112,"UNUSED DATA","W"],
+[130113,"UNUSED DATA","W"],
+[130114,"UNUSED DATA","W"],
+[130115,"UNUSED DATA","W"],
+[130121,"Sticky Compound Short Bow+1","W"],
+[130122,"Sticky Compound Short Bow+2","W"],
+[130123,"Sticky Compound Short Bow+3","W"],
+[130124,"Sticky Compound Short Bow+4","W"],
+[130125,"Sticky Compound Short Bow+5","W"],
+[130131,"Quality Compound Short Bow+1","W"],
+[130132,"Quality Compound Short Bow+2","W"],
+[130133,"Quality Compound Short Bow+3","W"],
+[130134,"Quality Compound Short Bow+4","W"],
+[130135,"Quality Compound Short Bow+5","W"],
+[130200,"Long Bow","W"],
+[130201,"Long Bow+1","W"],
+[130202,"Long Bow+2","W"],
+[130203,"Long Bow+3","W"],
+[130204,"Long Bow+4","W"],
+[130205,"Long Bow+5","W"],
+[130206,"Long Bow+6","W"],
+[130207,"Long Bow+7","W"],
+[130208,"Long Bow+8","W"],
+[130209,"Long Bow+9","W"],
+[130210,"Long Bow+10","W"],
+[130211,"UNUSED DATA","W"],
+[130212,"UNUSED DATA","W"],
+[130213,"UNUSED DATA","W"],
+[130214,"UNUSED DATA","W"],
+[130215,"UNUSED DATA","W"],
+[130221,"Sticky Long Bow+1","W"],
+[130222,"Sticky Long Bow+2","W"],
+[130223,"Sticky Long Bow+3","W"],
+[130224,"Sticky Long Bow+4","W"],
+[130225,"Sticky Long Bow+5","W"],
+[130231,"Quality Long Bow+1","W"],
+[130232,"Quality Long Bow+2","W"],
+[130233,"Quality Long Bow+3","W"],
+[130234,"Quality Long Bow+4","W"],
+[130235,"Quality Long Bow+5","W"],
+[130300,"Compound Long Bow","W"],
+[130301,"Compound Long Bow+1","W"],
+[130302,"Compound Long Bow+2","W"],
+[130303,"Compound Long Bow+3","W"],
+[130304,"Compound Long Bow+4","W"],
+[130305,"Compound Long Bow+5","W"],
+[130306,"Compound Long Bow+6","W"],
+[130307,"Compound Long Bow+7","W"],
+[130308,"Compound Long Bow+8","W"],
+[130309,"Compound Long Bow+9","W"],
+[130310,"Compound Long Bow+10","W"],
+[130311,"UNUSED DATA","W"],
+[130312,"UNUSED DATA","W"],
+[130313,"UNUSED DATA","W"],
+[130314,"UNUSED DATA","W"],
+[130315,"UNUSED DATA","W"],
+[130321,"Sticky Compound Long Bow+1","W"],
+[130322,"Sticky Compound Long Bow+2","W"],
+[130323,"Sticky Compound Long Bow+3","W"],
+[130324,"Sticky Compound Long Bow+4","W"],
+[130325,"Sticky Compound Long Bow+5","W"],
+[130331,"Quality Compound Long Bow+1","W"],
+[130332,"Quality Compound Long Bow+2","W"],
+[130333,"Quality Compound Long Bow+3","W"],
+[130334,"Quality Compound Long Bow+4","W"],
+[130335,"Quality Compound Long Bow+5","W"],
+[130400,"White Bow","W"],
+[130401,"White Bow+1","W"],
+[130402,"White Bow+2","W"],
+[130403,"White Bow+3","W"],
+[130404,"White Bow+4","W"],
+[130405,"White Bow+5","W"],
+[130500,"Lava Bow","W"],
+[130501,"Lava Bow","W"],
+[130502,"Lava Bow","W"],
+[130503,"Lava Bow","W"],
+[139000,"Unlabelled Weapon 139000","W"],
+[140000,"Light Crossbow","W"],
+[140100,"Heavy Crossbow","W"],
+[140200,"Gargoyle Crossbow","W"],
+[149000,"Unlabelled Weapon 149000","W"],
+[150000,"Buckler","W"],
+[150001,"Buckler+1","W"],
+[150002,"Buckler+2","W"],
+[150003,"Buckler+3","W"],
+[150004,"Buckler+4","W"],
+[150005,"Buckler+5","W"],
+[150006,"Buckler+6","W"],
+[150007,"Buckler+7","W"],
+[150008,"Buckler+8","W"],
+[150009,"Buckler+9","W"],
+[150010,"Buckler+10","W"],
+[150011,"Unlabelled Weapon 150011","W"],
+[150012,"Unlabelled Weapon 150012","W"],
+[150013,"Unlabelled Weapon 150013","W"],
+[150014,"Unlabelled Weapon 150014","W"],
+[150015,"Unlabelled Weapon 150015","W"],
+[150021,"Shade Buckler+1","W"],
+[150022,"Shade Buckler+2","W"],
+[150023,"Shade Buckler+3","W"],
+[150024,"Shade Buckler+4","W"],
+[150025,"Shade Buckler+5","W"],
+[150100,"Wooden Shield","W"],
+[150200,"Kite Shield","W"],
+[150201,"Kite Shield+1","W"],
+[150202,"Kite Shield+2","W"],
+[150203,"Kite Shield+3","W"],
+[150204,"Kite Shield+4","W"],
+[150205,"Kite Shield+5","W"],
+[150206,"Kite Shield+6","W"],
+[150207,"Kite Shield+7","W"],
+[150208,"Kite Shield+8","W"],
+[150209,"Kite Shield+9","W"],
+[150210,"Kite Shield+10","W"],
+[150211,"Unlabelled Weapon 150211","W"],
+[150212,"Unlabelled Weapon 150212","W"],
+[150213,"Unlabelled Weapon 150213","W"],
+[150214,"Unlabelled Weapon 150214","W"],
+[150215,"Unlabelled Weapon 150215","W"],
+[150221,"Shade Kite Shield+1","W"],
+[150222,"Shade Kite Shield+2","W"],
+[150223,"Shade Kite Shield+3","W"],
+[150224,"Shade Kite Shield+4","W"],
+[150225,"Shade Kite Shield+5","W"],
+[150300,"Heater Shield","W"],
+[150301,"Heater Shield+1","W"],
+[150302,"Heater Shield+2","W"],
+[150303,"Heater Shield+3","W"],
+[150304,"Heater Shield+4","W"],
+[150305,"Heater Shield+5","W"],
+[150306,"Heater Shield+6","W"],
+[150307,"Heater Shield+7","W"],
+[150308,"Heater Shield+8","W"],
+[150309,"Heater Shield+9","W"],
+[150310,"Heater Shield+10","W"],
+[150311,"UNUSED DATA","W"],
+[150312,"UNUSED DATA","W"],
+[150313,"UNUSED DATA","W"],
+[150314,"UNUSED DATA","W"],
+[150315,"UNUSED DATA","W"],
+[150321,"Shade Heater Shield+1","W"],
+[150322,"Shade Heater Shield+2","W"],
+[150323,"Shade Heater Shield+3","W"],
+[150324,"Shade Heater Shield+4","W"],
+[150325,"Shade Heater Shield+5","W"],
+[150400,"Adjudicator's Shield","W"],
+[150401,"Adjudicator's Shield+1","W"],
+[150402,"Adjudicator's Shield+2","W"],
+[150403,"Adjudicator's Shield+3","W"],
+[150404,"Adjudicator's Shield+4","W"],
+[150405,"Adjudicator's Shield+5","W"],
+[150411,"UNUSED DATA","W"],
+[150412,"UNUSED DATA","W"],
+[150413,"UNUSED DATA","W"],
+[150414,"UNUSED DATA","W"],
+[150415,"UNUSED DATA","W"],
+[150500,"Spiked Shield","W"],
+[150501,"Spiked Shield+1","W"],
+[150502,"Spiked Shield+2","W"],
+[150503,"Spiked Shield+3","W"],
+[150504,"Spiked Shield+4","W"],
+[150505,"Spiked Shield+5","W"],
+[150506,"Spiked Shield+6","W"],
+[150507,"Spiked Shield+7","W"],
+[150508,"Spiked Shield+8","W"],
+[150509,"Spiked Shield+9","W"],
+[150510,"Spiked Shield+10","W"],
+[150511,"UNUSED DATA","W"],
+[150512,"UNUSED DATA","W"],
+[150513,"UNUSED DATA","W"],
+[150514,"UNUSED DATA","W"],
+[150515,"UNUSED DATA","W"],
+[150521,"Sharp Spiked Shield+1","W"],
+[150522,"Sharp Spiked Shield+2","W"],
+[150523,"Sharp Spiked Shield+3","W"],
+[150524,"Sharp Spiked Shield+4","W"],
+[150525,"Sharp Spiked Shield+5","W"],
+[150600,"Tower Shield","W"],
+[150601,"Tower Shield+1","W"],
+[150602,"Tower Shield+2","W"],
+[150603,"Tower Shield+3","W"],
+[150604,"Tower Shield+4","W"],
+[150605,"Tower Shield+5","W"],
+[150700,"Dark Silver Shield","W"],
+[150701,"Dark Silver Shield+1","W"],
+[150702,"Dark Silver Shield+2","W"],
+[150703,"Dark Silver Shield+3","W"],
+[150704,"Dark Silver Shield+4","W"],
+[150705,"Dark Silver Shield+5","W"],
+[150799,"Unlabelled Weapon 150799","W"],
+[150800,"Soldier's Shield","W"],
+[150801,"Soldier's Shield+1","W"],
+[150802,"Soldier's Shield+2","W"],
+[150803,"Soldier's Shield+3","W"],
+[150804,"Soldier's Shield+4","W"],
+[150805,"Soldier's Shield+5","W"],
+[150806,"Soldier's Shield+6","W"],
+[150807,"Soldier's Shield+7","W"],
+[150808,"Soldier's Shield+8","W"],
+[150809,"Soldier's Shield+9","W"],
+[150810,"Soldier's Shield+10","W"],
+[150821,"Shade Soldier's Shield+1","W"],
+[150822,"Shade Soldier's Shield+2","W"],
+[150823,"Shade Soldier's Shield+3","W"],
+[150824,"Shade Soldier's Shield+4","W"],
+[150825,"Shade Soldier's Shield+5","W"],
+[150900,"Knight's Shield","W"],
+[150901,"Knight's Shield+1","W"],
+[150902,"Knight's Shield+2","W"],
+[150903,"Knight's Shield+3","W"],
+[150904,"Knight's Shield+4","W"],
+[150905,"Knight's Shield+5","W"],
+[150906,"Knight's Shield+6","W"],
+[150907,"Knight's Shield+7","W"],
+[150908,"Knight's Shield+8","W"],
+[150909,"Knight's Shield+9","W"],
+[150910,"Knight's Shield+10","W"],
+[150911,"UNUSED DATA","W"],
+[150912,"UNUSED DATA","W"],
+[150913,"UNUSED DATA","W"],
+[150914,"UNUSED DATA","W"],
+[150915,"UNUSED DATA","W"],
+[150921,"Shade Knight's Shield+1","W"],
+[150922,"Shade Knight's Shield+2","W"],
+[150923,"Shade Knight's Shield+3","W"],
+[150924,"Shade Knight's Shield+4","W"],
+[150925,"Shade Knight's Shield+5","W"],
+[151000,"Dregling Shield","W"],
+[151100,"Rune Shield","W"],
+[151101,"Rune Shield+1","W"],
+[151102,"Rune Shield+2","W"],
+[151103,"Rune Shield+3","W"],
+[151104,"Rune Shield+4","W"],
+[151105,"Rune Shield+5","W"],
+[151200,"Large Brushwood Shield","W"],
+[151201,"Large Brushwood Shield+1","W"],
+[151202,"Large Brushwood Shield+2","W"],
+[151203,"Large Brushwood Shield+3","W"],
+[151204,"Large Brushwood Shield+4","W"],
+[151205,"Large Brushwood Shield+5","W"],
+[151300,"Steel Shield","W"],
+[151301,"Steel Shield+1","W"],
+[151302,"Steel Shield+2","W"],
+[151303,"Steel Shield+3","W"],
+[151304,"Steel Shield+4","W"],
+[151305,"Steel Shield+5","W"],
+[151306,"Steel Shield+6","W"],
+[151307,"Steel Shield+7","W"],
+[151308,"Steel Shield+8","W"],
+[151309,"Steel Shield+9","W"],
+[151310,"Steel Shield+10","W"],
+[151321,"Shade Steel Shield+1","W"],
+[151322,"Shade Steel Shield+2","W"],
+[151323,"Shade Steel Shield+3","W"],
+[151324,"Shade Steel Shield+4","W"],
+[151325,"Shade Steel Shield+5","W"],
+[151400,"Purple Flame Shield","W"],
+[151401,"Purple Flame Shield+1","W"],
+[151402,"Purple Flame Shield+2","W"],
+[151403,"Purple Flame Shield+3","W"],
+[151404,"Purple Flame Shield+4","W"],
+[151405,"Purple Flame Shield+5","W"],
+[151406,"Purple Flame Shield+6","W"],
+[151407,"Purple Flame Shield+7","W"],
+[151408,"Purple Flame Shield+8","W"],
+[151409,"Purple Flame Shield+9","W"],
+[151410,"Purple Flame Shield+10","W"],
+[151421,"Shade Purple Flame Shield+1","W"],
+[151422,"Shade Purple Flame Shield+2","W"],
+[151423,"Shade Purple Flame Shield+3","W"],
+[151424,"Shade Purple Flame Shield+4","W"],
+[151425,"Shade Purple Flame Shield+5","W"],
+[151500,"Leather Shield","W"],
+[159000,"Unlabelled Weapon 159000","W"],
+[160000,"Arrow","W"],
+[160100,"Heavy Arrow","W"],
+[160200,"Light Arrow","W"],
+[160400,"Fire Arrow","W"],
+[160500,"Rotten Arrow","W"],
+[160600,"Holy Arrow","W"],
+[160700,"White Arrow","W"],
+[160800,"Wooden Arrow","W"],
+[169000,"Unlabelled Weapon 169000","W"],
+[170000,"Bolt","W"],
+[170100,"Heavy Bolt","W"],
+[170200,"Black Bolt","W"],
+[170300,"Wooden Bolt","W"],
+[179000,"Unlabelled Weapon 179000","W"],
+[999000,"Reaper Scythe","W"],
+[999001,"Reaper Scythe+1","W"],
+[999002,"Reaper Scythe+2","W"],
+[999003,"Reaper Scythe+3","W"],
+[999004,"Reaper Scythe+4","W"],
+[999005,"Reaper Scythe+5","W"],
+[999006,"Reaper Scythe+6","W"],
+[999007,"Reaper Scythe+7","W"],
+[999008,"Reaper Scythe+8","W"],
+[999009,"Reaper Scythe+9","W"],
+[999010,"Reaper Scythe+10","W"],
+[999100,"Ritual Blade","W"],
+[999101,"Ritual Blade+1","W"],
+[999102,"Ritual Blade+2","W"],
+[999103,"Ritual Blade+3","W"],
+[999104,"Ritual Blade+4","W"],
+[999105,"Ritual Blade+5","W"],
+[999106,"Ritual Blade+6","W"],
+[999107,"Ritual Blade+7","W"],
+[999108,"Ritual Blade+8","W"],
+[999109,"Ritual Blade+9","W"],
+[999110,"Ritual Blade+10","W"],
+[999200,"Hoplite Shield","W"],
+[999201,"Hoplite Shield+1","W"],
+[999202,"Hoplite Shield+2","W"],
+[999203,"Hoplite Shield+3","W"],
+[999204,"Hoplite Shield+4","W"],
+[999205,"Hoplite Shield+5","W"],
+[999206,"Hoplite Shield+6","W"],
+[999207,"Hoplite Shield+7","W"],
+[999208,"Hoplite Shield+8","W"],
+[999209,"Hoplite Shield+9","W"],
+[999210,"Hoplite Shield+10","W"],
+[999211,"Hoplite Shield","W"],
+[999212,"Hoplite Shield+1","W"],
+[999213,"Hoplite Shield+2","W"],
+[999214,"Hoplite Shield+3","W"],
+[999215,"Hoplite Shield+4","W"],
+[999216,"Hoplite Shield+5","W"],
+[999217,"Hoplite Shield+6","W"],
+[999218,"Hoplite Shield+7","W"],
+[999219,"Hoplite Shield+8","W"],
+[999220,"Hoplite Shield+9","W"],
+[999221,"Hoplite Shield+10","W"]
+];
+/* ITEMDB:END */
+const CATNAME = {G:"Goods",W:"Weapon",A:"Armor",R:"Ring",S:"Spell",K:"Skill","?":"Unknown"};
+const ITEM = new Map();
+for (const [id,name,cat] of ITEMDB){
+  if (!ITEM.has(id)) ITEM.set(id, []);
+  ITEM.get(id).push({name,cat});
+}
+const itemName = id => ITEM.has(id) ? ITEM.get(id).map(e => e.name).join(" / ") : `Unmapped value #${id}`;
+const itemCat = id => ITEM.has(id) ? [...new Set(ITEM.get(id).map(e => CATNAME[e.cat]))].join(" / ") : "Unmapped";
+const SLOT_PREFIXES = [0x1544B3EC,0x1444B25A,0x1344B0C6,0x1244AF34];
+const COUNT_KEY = 0xCC62FF39;
+function slotKey(i){
+  if (!Number.isInteger(i) || i < 0 || i >= 40) throw new Error("Only four observed key groups are supported (0–39)");
+  return Math.imul(SLOT_PREFIXES[Math.floor(i/10)] ^ (0x30+i%10),0x01000193) >>> 0;
+}
+const ALL_SLOT_KEYS = Array.from({length:40},(_,i) => slotKey(i));
+const SLOT_KEY_SET = new Set(ALL_SLOT_KEYS);
+function allLists(s){ return [s.records,...s.flat.filter(([f]) => f.isContainer).map(([f]) => f.children)]; }
+function invSlots(s){ return s.flat.filter(([f]) => f.type === T.U16 && SLOT_KEY_SET.has(f.key)).map(([f]) => f); }
+function invIds(s){ return invSlots(s).map(f => f.value); }
+function setInv(s, values){
+  // This is an experimental observed u16 array, NOT a verified general inventory.
+  if (!Array.isArray(values) || values.length > 40) throw new Error("At most 40 observed array keys are supported");
+  for (const v of values) numericBytes(T.U16,v);
+  const ids = [...values].sort((a,b) => a-b), slots = invSlots(s), counts = s.findAll(COUNT_KEY);
+  if (counts.length !== 1 || counts[0].type !== T.U16) throw new Error("A unique u16 array count is required");
+  const cf = counts[0], list = allLists(s).find(rows => rows.includes(cf));
+  if (new Set(slots.map(f => f.key)).size !== slots.length || slots.some(f => !list.includes(f))) throw new Error("Ambiguous array layout; raw inspection is required");
+  const countAt = list.indexOf(cf), start = countAt - slots.length;
+  if (start < 0 || slots.some((f,i) => list[start+i] !== f)) throw new Error("Array records must be contiguous immediately before the count");
+  if (cf.value !== slots.length) throw new Error("Array count mismatch; inspect the raw records before editing");
+  if (ids.length === slots.length && slots.every((f,i) => f.value === ids[i])) return;
+  const used = new Set(slots.map(f => f.key)), spare = ALL_SLOT_KEYS.filter(k => !used.has(k));
+  const next = ids.map((value,i) => new Field(slots[i] ? slots[i].key : spare.shift(),T.U16,numericBytes(T.U16,value)));
+  list.splice(start,slots.length,...next); cf.value = ids.length; s.reindex();
+}
+
+/* Session, snapshots and rendering are intentionally separate from the binary model. */
+const $ = selector => document.querySelector(selector);
+const state = {files:[],active:-1,tab:"editor",rendered:new Map(),nextId:1,loading:Promise.resolve(),saving:false};
+const escapeHtml = text => String(text).replace(/[&<>"']/g,c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function bytesEq(a,b){ if (a.length !== b.length) return false; for(let i=0;i<a.length;i++) if(a[i] !== b[i]) return false; return true; }
+function current(){ return state.files[state.active]; }
+function differentFrom(e, baseline, key){
+  const cache = e[key];
+  if (cache && cache.save === e.save && cache.revision === e.save.revision && cache.baseline === baseline) return cache.value;
+  const value = !bytesEq(e.save.build(),baseline);
+  e[key] = {save:e.save,revision:e.save.revision,baseline,value};
+  return value;
+}
+function isDirty(e){ return differentFrom(e,e.original,"dirtyCache"); }
+function isUnsaved(e){ return differentFrom(e,e.exported || e.original,"unsavedCache"); }
+function token(e){ return `${e.sequence}:${e.save.revision}`; }
+function notify(message,error = false){ const el = $("#message"); el.textContent = message; el.className = error ? "warnbox" : "okbox"; }
+function fail(error){ notify(error.message || String(error),true); }
+const HISTORY_MAX = 60, HISTORY_BYTES = 20 * 1024 * 1024;
+function recordUndo(e,snapshot){
+  e.undo.push(snapshot); e.redo.length = 0;
+  let bytes = e.undo.reduce((n,b) => n+b.length,0);
+  while(e.undo.length > 1 && (e.undo.length > HISTORY_MAX || bytes > HISTORY_BYTES)) bytes -= e.undo.shift().length;
+}
+function commitCandidate(e,candidate){
+  const before = e.save.build(), after = candidate.build();
+  if (bytesEq(before,after)) return false;
+  recordUndo(e,before); e.save = candidate; e.sequence++; e.invalid.clear();
+  return true;
+}
+function editCandidate(fn){
+  const e = current(); if(!e) return;
+  try { const candidate = new SaveFile(e.save.build()); fn(candidate); commitCandidate(e,candidate); renderEditor(); return true; }
+  catch(error){ fail(error); }
+}
+function moveHistory(direction){
+  const e = current(); if (!e) return;
+  const from = direction === "undo" ? e.undo : e.redo, to = direction === "undo" ? e.redo : e.undo;
+  if (!from.length) return;
+  to.push(e.save.build()); e.save = new SaveFile(from.pop()); e.sequence++; e.invalid.clear(); renderEditor();
+}
+function doUndo(){ moveHistory("undo"); }
+function doRedo(){ moveHistory("redo"); }
+function revertOriginal(){
+  const e = current(); if(!e) return;
+  if((isDirty(e) || e.invalid.size) && !confirm("Restore the original loaded bytes? This action is undoable.")) return;
+  commitCandidate(e,new SaveFile(e.original)); e.invalid.clear(); renderEditor();
+}
+function updateHistoryButtons(){
+  const e = current(); $("#undo").disabled = !e || !e.undo.length; $("#redo").disabled = !e || !e.redo.length;
+}
+function loadFiles(items){
+  const selected = [...items].map(x => {
+    const file = x.file || x, path = String(x.path || file.webkitRelativePath || "").replaceAll("\\", "/").replace(/^\/+/, "");
+    return {file,path};
+  });
+  state.loading = state.loading.then(async () => {
+    const errors = []; let last = null;
+    for (const {file,path} of selected){
+      if(path && !/(^|\/)USR-DATA$/i.test(path)) continue;
+      try {
+        if(file.size > MAX_FILE_SIZE) throw new Error("File exceeds the 16 MiB safety limit");
+        if(state.files.length >= 32 && !state.files.some(e => e.path && e.path === path)) throw new Error("At most 32 profiles can be loaded in one session");
+        if(state.files.reduce((n,e) => n+e.original.length,0)+file.size > 64*1024*1024) throw new Error("Loaded saves would exceed the 64 MiB session limit");
+        const original = new Uint8Array(await file.arrayBuffer()), save = new SaveFile(original);
+        const old = path ? state.files.find(e => e.path === path) : state.files.find(e => !e.path && bytesEq(e.original,original));
+        if(old && !path){ last = old; continue; }
+        if(old && (isUnsaved(old) || old.invalid.size || old.jsonDirty) && !confirm(`Replace unsaved edits to ${old.label}?`)) continue;
+        const segments = String(path || "").split("/").filter(Boolean), folder = segments.length > 1 ? segments.at(-2) : "";
+        const base = folder || (save.get("PLAYER_NAME") !== null ? `Character — ${save.get("PLAYER_NAME")}` : "Options profile");
+        let label = base, suffix = 2;
+        while(state.files.some(e => e !== old && e.label === label)) label = `${base} (${suffix++})`;
+        const e = {id:state.nextId++,label,folder,path:path || "",file,original,save,base:new SaveFile(original),
+          sourceChecksumOk:save.checksumOk,roundtrip:bytesEq(original.subarray(16),save.build().subarray(16)),undo:[],redo:[],invalid:new Map(),
+          sequence:0,jsonDraft:null,jsonDirty:false,jsonToken:null,experimental:false,pages:{all:0,tree:0,changes:0}};
+        if(old) state.files.splice(state.files.indexOf(old),1,e); else state.files.push(e);
+        last = e;
+      } catch(error){ errors.push(`${file.name}: ${error.message}`); }
+    }
+    if(last) select(state.files.indexOf(last));
+    notify(errors.length ? errors.join("\n") : last ? "Loaded locally. Original bytes retained for backup and restore." : "No supported USR-DATA files found.",errors.length > 0 || !last);
+  }).catch(fail);
+  return state.loading;
+}
+function select(i){
+  if(i < 0 || i >= state.files.length) return;
+  if(!closeBlob()) return; closePicker(); state.active = i; $("#work").classList.remove("hidden"); $("#drop").classList.add("compact");
+  state.rendered.clear(); renderEditor();
+}
+function renderFiles(){
+  const host = $("#files"); host.replaceChildren();
+  state.files.forEach((e,i) => {
+    const b = document.createElement("button"); b.className = "chip" + (i === state.active ? " active" : "") + (isUnsaved(e) || e.invalid.size ? " dirty" : "");
+    const dot = document.createElement("span"); dot.className = "dot";
+    b.append(dot,document.createTextNode(e.label)); b.onclick = () => select(i); host.append(b);
+  });
+  const add = document.createElement("button"); add.className = "chip add"; add.textContent = "+ add files";
+  add.onclick = () => $("#file").click(); host.append(add);
+}
+function diagnostics(e = current()){
+  if(!e) return [];
+  const s = e.save, out = [];
+  if(!e.sourceChecksumOk) out.push(["warn","Source checksum was invalid. Export can repair the header, but cannot repair unknown payload corruption."]);
+  if(!e.roundtrip) out.push(["err","The loaded file did not round-trip byte-identically. Export is blocked to avoid silently normalizing unknown data."]);
+  for(const {message} of e.invalid.values()) out.push(["err",message]);
+  const name = s.get("PLAYER_NAME");
+  if(typeof name === "string" && (!name.length || [...name].length > 16)) out.push(["warn","Character names normally contain 1–16 characters."]);
+  for(const meta of META.values()){
+    const f = s.find(meta.name); if(!f || !f.isInt && !f.isFloat) continue;
+    if(!Number.isFinite(f.value) || f.value < meta.lo || f.value > meta.hi) out.push(["warn",`${meta.label}: ${f.value} is outside the suggested range ${meta.lo}–${meta.hi}.`]);
+  }
+  for(const kind of ["HP","MP","SP"]){
+    const value = s.get("PLAYER_CURRENT"+kind), max = s.get("PLAYER_CURRENTMAX"+kind);
+    if(typeof value === "number" && typeof max === "number" && value > max) out.push(["warn",`${kind} ${value} exceeds its effective maximum ${max}.`]);
+  }
+  const slots = invSlots(s), cf = s.find(COUNT_KEY);
+  if(cf && cf.value !== slots.length) out.push(["err",`Observed u16 array: count ${cf.value}, records ${slots.length}. Inspect raw fields before exporting.`]);
+  if(slots.length){
+    const unknown = slots.filter(f => !ITEM.has(f.value)).map(f => f.value);
+    if(unknown.length) out.push(["info",`Unmapped u16 values: ${unknown.join(", ")}. Their meaning is unresolved; preserve them rather than assuming they are invalid items.`]);
+  }
+  if(s.get("EQUIPMENT_STORAGEBOX_COUNT") > 0) out.push(["info","Storage contents are not decoded. The storage count is read-only in the form; changing the counter does not create stored items."]);
+  if(e.experimental) out.push(["warn","Experimental array editing enabled. The u16 list is not proven to be the full inventory; a name match is not proof of item category or in-game behavior."]);
+  return out;
+}
+function refreshDiagnostics(){
+  const host = $("#diagbox"); if(!host) return;
+  host.replaceChildren(); const items = diagnostics();
+  $("#diagcard").classList.toggle("hidden",!items.length);
+  for(const [kind,message] of items){ const d = document.createElement("div"); d.className = kind; d.textContent = message; host.append(d); }
+}
+function updateHeaderOnly(){
+  const e = current(); if(!e) return;
+  const s = e.save, sum = s.summary(), dirty = isDirty(e), unsaved = isUnsaved(e);
+  $("#pname").textContent = sum.name !== null ? `Player profile — ${sum.name}` : "Options profile";
+  $("#pinfo").textContent = `${s.build().length.toLocaleString()} bytes · ${s.flat.length.toLocaleString()} records` +
+    (sum.name !== null ? ` · estimated SL ${sum.soulLevel ?? "?"} · souls ${(sum.souls ?? 0).toLocaleString()} · HP ${sum.hp[0]}/${sum.hp[1]} · MP ${sum.mp[0]}/${sum.mp[1]} · SP ${sum.sp[0]}/${sum.sp[1]}` : " · options") +
+    (typeof sum.playtime === "number" ? ` · ${(sum.playtime/3600000).toFixed(2)} h played` : "");
+  const cs = $("#csum"); cs.textContent = e.invalid.size ? "invalid input — export blocked" : unsaved ? "modified — not exported" : dirty ? "exported copy · original retained" : e.sourceChecksumOk ? "source checksum OK" : "source checksum INVALID";
+  cs.className = "status " + (e.invalid.size ? "err" : unsaved || !e.sourceChecksumOk ? "warn" : "ok");
+  $("#save").disabled = state.saving || !!e.invalid.size;
+  $("#saveall").disabled = state.saving || state.files.some(e => e.invalid.size);
+  $("#revert").disabled = !dirty && !e.invalid.size;
+  renderFiles(); updateHistoryButtons(); refreshDiagnostics();
+}
+function renderEditor(){
+  if(!current()) return;
+  state.rendered.clear(); updateHeaderOnly(); renderQuick(); renderActivePanel();
+}
+function activateTab(tab){
+  state.tab = tab;
+  document.querySelectorAll(".tabs button").forEach(b => { const active = b.dataset.tab === tab; b.classList.toggle("active",active); b.setAttribute("aria-selected",String(active)); b.tabIndex = active ? 0 : -1; });
+  document.querySelectorAll("[id^='tab-']").forEach(panel => panel.classList.toggle("hidden",panel.id !== "tab-"+tab));
+  renderActivePanel();
+}
+function renderActivePanel(){
+  const e = current(); if(!e) return;
+  const stamp = state.rendered.get(state.tab);
+  if(stamp && stamp.entry === e && stamp.token === token(e)) return;
+  const renderers = {editor:renderForm,all:renderAll,tree:renderTree,ref:renderRef,json:renderJson,changes:renderChanges,catalog:renderCatalog};
+  if(renderers[state.tab]) renderers[state.tab]();
+  state.rendered.set(state.tab,{entry:e,token:token(e)});
+}
+function renderQuick(){
+  const s = current().save, host = $("#quick"); host.replaceChildren();
+  const add = (label,fn) => { const b = document.createElement("button"); b.textContent = label; b.onclick = () => editCandidate(fn); host.append(b); };
+  if(s.find("PLAYER_SOULS")) add("Max souls",s => s.set("PLAYER_SOULS",999999999));
+  if(s.find("PLAYER_CURRENTHP")) add("Refill HP / MP / stamina",s => { for(const k of ["HP","MP","SP"]) if(s.find("PLAYER_CURRENT"+k)) s.set("PLAYER_CURRENT"+k,s.get("PLAYER_CURRENTMAX"+k)); });
+  if(s.find("PLAYER_CURRENTVITALITY")){
+    add("Sync base attributes to current",s => { for(const a of ATTRS) s.set("PLAYER_BASE"+a,s.get("PLAYER_CURRENT"+a)); });
+    add("Set attributes to 99…",s => {
+      if(!confirm("Set base and current attributes to 99? The game may recompute derived stats; this editor does not simulate those rules.")) return;
+      for(const a of ATTRS){ s.set("PLAYER_CURRENT"+a,99); s.set("PLAYER_BASE"+a,99); }
+    });
+  }
+}
+function bindFieldInput(input,f,mode = "value",meta = null){
+  const e = current(), error = document.createElement("span"); error.className = "field-error"; error.setAttribute("role","alert");
+  const invalid = e.invalid.get(f.path);
+  input.id = "field-"+state.tab+f.path.replaceAll("/","-");
+  input.value = invalid ? invalid.text : mode === "hex" ? f.hex : f.value;
+  input.setAttribute("aria-label",meta ? meta.label : (f.name || `Field ${f.path}`));
+  if(invalid){ input.classList.add("invalid"); error.textContent = invalid.message; }
+  let recorded = false;
+  input.onfocus = () => { recorded = false; };
+  input.oninput = () => {
+    try {
+      const candidate = new Field(f.key,f.type,f.raw);
+      if(mode === "hex") candidate.raw = hexToBytes(input.value);
+      else if(f.type === T.STR) candidate.value = input.value;
+      else { if(!input.value.trim()) throw new Error("Value cannot be empty"); candidate.value = Number(input.value); }
+      if(meta && f.type === T.STR && [...input.value].length > meta.hi) throw new Error(`Use at most ${meta.hi} characters`);
+      const lengthDelta = candidate.raw.length-f.raw.length + (f.isText ? writeVarint(candidate.raw.length).length-writeVarint(f.raw.length).length : 0);
+      if(e.save.build().length+lengthDelta > MAX_FILE_SIZE) throw new Error("Edit would exceed the 16 MiB save limit");
+      if(!bytesEq(candidate.raw,f.raw)){
+        if(!recorded){ recordUndo(e,e.save.build()); recorded = true; }
+        f.raw = candidate.raw; e.sequence++; input.classList.add("changed");
+      }
+      e.invalid.delete(f.path); input.classList.remove("invalid"); input.setAttribute("aria-invalid","false"); error.textContent = "";
+    } catch(err){
+      const message = `${meta ? meta.label : f.name || f.path}: ${err.message}`;
+      e.invalid.set(f.path,{text:input.value,message}); input.classList.add("invalid"); input.setAttribute("aria-invalid","true"); error.textContent = err.message;
+    }
+    updateHeaderOnly();
+  };
+  return error;
+}
+function fieldRow(name){
+  const e = current(), f = e.save.find(name), meta = META.get(name); if(!f || !meta) return null;
+  const row = document.createElement("div"); row.className = "row";
+  const label = document.createElement("label"); label.textContent = meta.label; label.title = name;
+  const input = document.createElement("input"); input.type = "text"; input.dataset.field = name;
+  const err = bindFieldInput(input,f,f.type === T.RAW4 ? "hex" : "value",meta);
+  label.htmlFor = input.id;
+  if(name === "EQUIPMENT_STORAGEBOX_COUNT") input.readOnly = true;
+  if(f.isInt || f.isFloat) input.inputMode = f.isFloat ? "decimal" : "numeric";
+  const desc = document.createElement("span"); desc.className = "desc"; desc.textContent = meta.desc;
+  row.append(label,input,err,desc); return row;
+}
+function renderForm(){
+  const host = $("#tab-editor"); host.replaceChildren();
+  const checks = document.createElement("section"); checks.className = "card"; checks.id = "diagcard";
+  checks.innerHTML = '<h2>Checks & coverage</h2><div id="diagbox" class="diag"></div>'; host.append(checks); refreshDiagnostics();
+  for(const [title,names] of LAYOUT){
+    const rows = names.map(fieldRow).filter(Boolean); if(!rows.length) continue;
+    const card = document.createElement("section"); card.className = "card";
+    const heading = document.createElement("h2"); heading.textContent = title;
+    const grid = document.createElement("div"); grid.className = "grid"; grid.append(...rows); card.append(heading,grid); host.append(card);
+  }
+  renderInventory();
+}
+function renderInventory(){
+  const e = current(), ids = invIds(e.save); if(!e.save.find(COUNT_KEY) && !ids.length) return;
+  const card = document.createElement("section"); card.className = "card"; card.id = "invcard";
+  card.innerHTML = '<h2>Observed u16 array · experimental inventory mapping</h2><p class="note">Names below are candidate matches, not a verified inventory. Equipment, stack counts, spells and storage are not fully mapped. The 40-key editing limit is a safety bound, not a proven game limit. Keep unmapped values.</p>';
+  const toggle = document.createElement("label"), checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.id = "experimental"; checkbox.checked = e.experimental;
+  toggle.append(checkbox,document.createTextNode(" Enable experimental add / replace / remove"));
+  checkbox.onchange = () => { e.experimental = checkbox.checked; state.rendered.delete("editor"); renderForm(); };
+  const bar = document.createElement("div"); bar.className = "bar";
+  const search = document.createElement("input"); search.type = "text"; search.placeholder = "Filter observed values…"; search.value = e.invFilter || ""; search.setAttribute("aria-label","Filter observed values");
+  search.oninput = () => { e.invFilter = search.value; renderInventoryOnly(); };
+  const add = document.createElement("button"); add.textContent = "+ Add value…"; add.disabled = !e.experimental || ids.length >= 40; add.onclick = () => openPicker("add");
+  const count = document.createElement("span"); count.className = "small"; count.textContent = `${ids.length} observed records · count ${e.save.get(COUNT_KEY)}`;
+  bar.append(search,add,count); const list = document.createElement("div"); list.id = "invlist"; list.className = "invlist";
+  card.append(toggle,bar,list); $("#tab-editor").append(card); fillInvList(list,ids);
+}
+function fillInvList(host,ids){
+  const e = current(), q = (e.invFilter || "").toLowerCase(); host.replaceChildren();
+  ids.forEach((id,i) => {
+    if(q && !`${id} ${itemName(id)} ${itemCat(id)}`.toLowerCase().includes(q)) return;
+    const row = document.createElement("div"); row.className = "invrow";
+    row.innerHTML = `<span class="n">${i+1}</span><span class="id">${id}</span><span class="nm${ITEM.has(id) ? "" : " unknown"}">${escapeHtml(itemName(id))}</span><span class="cat">${escapeHtml(itemCat(id))}</span>`;
+    const change = document.createElement("button"); change.textContent = "Change…"; change.disabled = !e.experimental; change.onclick = () => openPicker("set",i);
+    const remove = document.createElement("button"); remove.textContent = "✕"; remove.disabled = !e.experimental; remove.setAttribute("aria-label",`Remove observed value ${i+1}`);
+    remove.onclick = () => editCandidate(s => { const next = invIds(s); next.splice(i,1); setInv(s,next); });
+    row.append(change,remove); host.append(row);
+  });
+}
+function renderInventoryOnly(){ const host = $("#invlist"); if(host) fillInvList(host,invIds(current().save)); }
+let pickState = null;
+const CATALOG = ITEMDB.map(([id,name,cat]) => ({id,name,cat,search:`${id} ${name} ${CATNAME[cat] || "Unknown"}`.toLowerCase()})).sort((a,b) => a.name.localeCompare(b.name) || a.id-b.id);
+function openPicker(mode,index){
+  const e = current(); if(!e || !e.experimental) return;
+  pickState = {mode,index,entry:e,token:token(e),focus:document.activeElement,page:0};
+  $("#pickhint").textContent = "Experimental u16 candidate — category must match the game's expectations";
+  $("#picker").classList.remove("hidden"); $("#pickersearch").value = ""; renderPicker(); $("#pickersearch").focus();
+}
+function closePicker(){
+  if(!pickState) return;
+  const focus = pickState.focus; pickState = null; $("#picker").classList.add("hidden"); if(focus && focus.isConnected) focus.focus();
+}
+function renderPicker(){
+  if(!pickState) return;
+  const q = $("#pickersearch").value.toLowerCase(), cat = $("#pickcategory").value;
+  const rows = CATALOG.filter(e => e.id <= 65535 && ["G","W","A","R"].includes(e.cat) && (!q || e.search.includes(q)) && (!cat || cat === e.cat));
+  const host = $("#pickerbody"); host.replaceChildren();
+  const page = Math.min(pickState.page,Math.max(0,Math.ceil(rows.length/80)-1)); pickState.page = page;
+  for(const item of rows.slice(page*80,page*80+80)){
+    const b = document.createElement("button"); b.className = "pickrow";
+    b.innerHTML = `<span class="pid">${item.id}</span><span>${escapeHtml(item.name)}</span><span class="pcat">${CATNAME[item.cat]}</span>`;
+    b.onclick = () => {
+      if(current() !== pickState.entry || token(current()) !== pickState.token){ closePicker(); return fail(new Error("Save changed while the picker was open; try again")); }
+      const {mode,index} = pickState; closePicker();
+      editCandidate(s => { const ids = invIds(s); if(mode === "add") ids.push(item.id); else ids[index] = item.id; setInv(s,ids); });
+    }; host.append(b);
+  }
+  pager($("#pickerpages"),rows.length,page,80,next => { pickState.page = next; renderPicker(); });
+}
+function pager(host,total,page,size,change){
+  host.replaceChildren(); const pages = Math.max(1,Math.ceil(total/size));
+  const prev = document.createElement("button"), next = document.createElement("button"), info = document.createElement("span");
+  prev.textContent = "Previous"; prev.disabled = !page; prev.onclick = () => change(page-1);
+  next.textContent = "Next"; next.disabled = page >= pages-1; next.onclick = () => change(page+1);
+  info.textContent = `${total.toLocaleString()} results · page ${page+1} / ${pages}`; host.append(prev,info,next);
+}
+const clusterOf = key => Math.imul(key,0x359c449b) >>> 8;
+function renderAll(){
+  const e = current(), s = e.save; s.build();
+  const q = $("#filter").value.toLowerCase();
+  const rows = s.flat.filter(([f]) => `${f.path} ${f.name || ""} ${f.key.toString(16).padStart(8,"0")} ${f.display.slice(0,160)} ${clusterOf(f.key).toString(16)}`.toLowerCase().includes(q));
+  const page = Math.min(e.pages.all,Math.max(0,Math.ceil(rows.length/100)-1)); e.pages.all = page;
+  const host = $("#alltable tbody"); host.replaceChildren();
+  for(const [f] of rows.slice(page*100,page*100+100)){
+    const tr = document.createElement("tr");
+    for(const text of [`0x${(f.offset+16).toString(16)}`,f.key.toString(16).padStart(8,"0"),f.name || f.path,`◆${clusterOf(f.key).toString(16).slice(-4)}`,`0x${f.type.toString(16)}`]){
+      const td = document.createElement("td"); td.textContent = text; tr.append(td);
+    }
+    const td = document.createElement("td"); td.className = "v";
+    if(f.isContainer) td.textContent = f.display;
+    else if(f.type === T.BLOB || f.raw.length > 2048){
+      const preview = document.createElement("span"); preview.textContent = f.display.slice(0,120)+" ";
+      const b = document.createElement("button"); b.textContent = `Inspect / export ${f.raw.length.toLocaleString()} bytes…`; b.onclick = () => openBlob(f);
+      td.append(preview,b);
+    } else {
+      const input = document.createElement("input"); input.type = "text";
+      const error = bindFieldInput(input,f,f.type === T.STR || f.isInt || f.isFloat ? "value" : "hex"); td.append(input,error);
+    }
+    tr.append(td); host.append(tr);
+  }
+  pager($("#rawpages"),rows.length,page,100,next => { e.pages.all = next; renderAll(); });
+}
+function renderTree(){
+  const e = current(); e.save.build(); const rows = e.save.flat, page = e.pages.tree, host = $("#treebody");
+  host.replaceChildren();
+  for(const [f,depth] of rows.slice(page*200,page*200+200)){
+    const row = document.createElement("div"); row.className = "trow"+(f.isContainer ? " cont" : "");
+    row.innerHTML = `<span class="tk">0x${(f.offset+16).toString(16)}</span><span class="tn" style="padding-left:${depth*16}px">${escapeHtml(f.name || "0x"+f.key.toString(16))}</span><span class="tt">0x${f.type.toString(16)}</span><span class="tv">${escapeHtml(f.display.slice(0,240))}</span>`; host.append(row);
+  }
+  $("#treecount").textContent = `${rows.length.toLocaleString()} records · absolute file offsets`;
+  pager($("#treepages"),rows.length,page,200,next => { e.pages.tree = next; renderTree(); });
+}
+function renderRef(){
+  const s = current().save, q = $("#reffilter").value.toLowerCase(), host = $("#tab-ref tbody"); host.replaceChildren();
+  for(const meta of META.values()){
+    if(!`${meta.name} ${meta.label} ${meta.desc}`.toLowerCase().includes(q)) continue;
+    const f = s.find(meta.name), row = document.createElement("tr");
+    for(const text of [meta.key.toString(16).padStart(8,"0"),meta.name,meta.label,meta.kind,f ? f.display : "—",meta.desc]){
+      const td = document.createElement("td"); td.textContent = text; row.append(td);
+    } host.append(row);
+  }
+}
+function renderCatalog(){
+  const q = $("#catalogsearch").value.toLowerCase(), category = $("#catalogcategory").value;
+  const rows = CATALOG.filter(e => (!q || e.search.includes(q)) && (!category || e.cat === category));
+  const page = Math.min(state.catalogPage || 0,Math.max(0,Math.ceil(rows.length/100)-1)); state.catalogPage = page;
+  const host = $("#catalogbody"); host.replaceChildren();
+  for(const e of rows.slice(page*100,page*100+100)){
+    const row = document.createElement("tr");
+    for(const text of [e.id,e.name,CATNAME[e.cat] || "Unknown",e.id > 65535 ? "32-bit id; not a u16 candidate" : "Category-specific id"]){ const td = document.createElement("td"); td.textContent = text; row.append(td); }
+    host.append(row);
+  }
+  pager($("#catalogpages"),rows.length,page,100,next => { state.catalogPage = next; renderCatalog(); });
+}
+function jsonDump(){
+  const e = current(); if(!e) return ""; e.save.build();
+  const convert = rows => rows.map(f => {
+    const o = {path:f.path,offset:"0x"+(f.offset+16).toString(16),key:f.key.toString(16).padStart(8,"0"),type:"0x"+f.type.toString(16)};
+    if(f.name) o.name = f.name;
+    if(f.isContainer) o.children = convert(f.children);
+    else if(f.isText || f.type === T.RAW4 || !Number.isFinite(f.value) || Object.is(f.value,-0)) o.hex = f.hex;
+    else o.value = f.value;
+    return o;
+  });
+  return JSON.stringify({format:"des-save-1",file:e.label,version:e.save.version,revision:token(e),fields:convert(e.save.records)},null,2);
+}
+function renderJson(force = false){
+  const e = current();
+  if(force || e.jsonDraft === null || !e.jsonDirty){ e.jsonDraft = jsonDump(); e.jsonToken = token(e); e.jsonDirty = false; }
+  $("#json").value = e.jsonDraft;
+  $("#jsonstatus").textContent = e.jsonDirty && e.jsonToken !== token(e) ? "Draft is stale: save changed. Refresh before applying, or import a field patch." : e.jsonDirty ? "Unapplied JSON draft" : "Full save dump or {FIELD: value} patch";
+}
+function applyRecs(host,rows,prefix = ""){
+  if(!Array.isArray(rows) || host.length !== rows.length) throw new Error(`Field count mismatch at ${prefix || "/"}`);
+  host.forEach((f,i) => {
+    const o = rows[i], path = prefix+"/"+i;
+    if(!o || o.key?.toLowerCase() !== f.key.toString(16).padStart(8,"0") || Number(o.type) !== f.type) throw new Error(`Key or type mismatch at ${path}`);
+    if(f.isContainer){ applyRecs(f.children,o.children,path); return; }
+    if(o.children !== undefined) throw new Error(`Unexpected container at ${path}`);
+    const hasValue = Object.hasOwn(o,"value"), hasHex = Object.hasOwn(o,"hex");
+    if(hasValue === hasHex) throw new Error(`Use exactly one of value or hex at ${path}`);
+    if(hasHex) f.raw = hexToBytes(o.hex);
+    else f.value = o.value;
+  });
+}
+function applyJson(){
+  const e = current(); if(!e) return;
+  try {
+    const doc = JSON.parse($("#json").value), candidate = new SaveFile(e.save.build());
+    if(!doc || typeof doc !== "object" || Array.isArray(doc)) throw new Error("Expected a save dump or field patch object");
+    if(doc.fields){
+      if(doc.version !== candidate.version) throw new Error("Save version mismatch");
+      if(e.jsonDirty && e.jsonToken !== token(e)) throw new Error("JSON draft is stale. Refresh the dump before applying edits");
+      applyRecs(candidate.records,doc.fields);
+    } else if(doc.format === "des-patch-1"){
+      if(doc.version !== candidate.version || !Array.isArray(doc.changes)) throw new Error("Invalid patch document");
+      for(const change of doc.changes){
+        const f = candidate.flat.find(([f]) => f.path === change.path)?.[0];
+        if(!f || f.isContainer || f.key !== Number("0x"+change.key) || f.type !== change.type || f.hex !== change.before) throw new Error(`Patch conflict at ${change.path}`);
+        f.raw = hexToBytes(change.hex);
+      }
+    } else {
+      for(const [name,value] of Object.entries(doc)){
+        const fields = candidate.findAll(name);
+        if(fields.length !== 1) throw new Error(`${name}: expected one field, found ${fields.length}; use a path-based change patch for repeated keys`);
+        const f = fields[0];
+        if(f.type === T.BLOB || f.type === T.RAW4) f.raw = hexToBytes(typeof value === "object" && value !== null ? value.hex : value);
+        else f.value = value;
+      }
+    }
+    const verified = new SaveFile(candidate.build());
+    if(!bytesEq(candidate.build(),verified.build())) throw new Error("Edited save failed round-trip verification");
+    commitCandidate(e,candidate); e.jsonDirty = false; e.jsonDraft = null; renderEditor();
+    notify("Applied atomically. Review Changes before exporting.");
+  } catch(error){ fail(new Error("Nothing applied: "+error.message)); }
+}
+function collectChanges(e){
+  const old = new Map(e.base.flat.map(([f]) => [f.path,f])), next = new Map(e.save.flat.map(([f]) => [f.path,f])), out = [];
+  for(const path of new Set([...old.keys(),...next.keys()])){
+    const before = old.get(path), after = next.get(path);
+    if(before && after && before.key === after.key && before.type === after.type && (before.isContainer ? before.children.length === after.children.length : bytesEq(before.raw,after.raw))) continue;
+    out.push({path,before,after});
+  }
+  return out;
+}
+function renderChanges(){
+  const e = current(), changes = collectChanges(e), host = $("#changesbody"), page = e.pages.changes; host.replaceChildren();
+  $("#changescount").textContent = `${changes.length} changed record(s) relative to the immutable loaded original`;
+  for(const {path,before,after} of changes.slice(page*100,page*100+100)){
+    const row = document.createElement("tr");
+    for(const text of [path,(after || before).name || "0x"+(after || before).key.toString(16),before ? before.display.slice(0,180) : "Added",after ? after.display.slice(0,180) : "Removed"]){ const td = document.createElement("td"); td.textContent = text; row.append(td); }
+    host.append(row);
+  }
+  pager($("#changespages"),changes.length,page,100,next => { e.pages.changes = next; renderChanges(); });
+}
+function downloadPatch(){
+  const e = current(); if(!e) return;
+  try {
+    const changes = collectChanges(e);
+    if(changes.some(c => !c.before || !c.after || c.before.isContainer || c.after.isContainer || c.before.key !== c.after.key || c.before.type !== c.after.type)) throw new Error("Structural changes require a full USR-DATA export, not a scalar patch");
+    downloadBytes(encoder.encode(JSON.stringify({format:"des-patch-1",version:7,changes:changes.map(({path,before,after}) => ({path,key:after.key.toString(16),type:after.type,before:before.hex,hex:after.hex}))},null,2)),safeName(e.label)+".patch.json","application/json");
+  } catch(error){ fail(error); }
+}
+function downloadJson(){ const e = current(); if(e) downloadBytes(encoder.encode(e.jsonDirty ? $("#json").value : jsonDump()),safeName(e.label)+".json","application/json"); }
+function safeName(name){ return String(name).replace(/[\\/\x00-\x1f<>:"|?*]/g,"_").replace(/^\.+$/, "_").slice(0,100) || "profile"; }
+function downloadBytes(bytes,name,type = "application/octet-stream"){
+  const a = document.createElement("a"), url = URL.createObjectURL(new Blob([bytes],{type}));
+  a.href = url; a.download = name; document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url),10000);
+}
+function validatedExport(e){
+  if(e.invalid.size) throw new Error("Resolve invalid inputs before exporting");
+  if(e.jsonDirty) throw new Error("Apply or refresh the unapplied JSON draft before exporting");
+  const errors = diagnostics(e).filter(([kind]) => kind === "err");
+  if(errors.length) throw new Error(errors.map(([,msg]) => msg).join("\n"));
+  const out = e.save.build(), reparsed = new SaveFile(out);
+  if(!reparsed.checksumOk || !bytesEq(out,reparsed.build())) throw new Error("Export failed byte-level validation");
+  return out;
+}
+async function saveEntry(e){
+  const out = validatedExport(e);
+  if(!e.sourceChecksumOk && !confirm("The loaded checksum was invalid. Export recomputes it but cannot guarantee that the payload is safe. Continue?")) return false;
+  if(typeof window.showSaveFilePicker === "function"){
+    try {
+      const handle = await window.showSaveFilePicker({suggestedName:"USR-DATA"});
+      const writable = await handle.createWritable();
+      try { await writable.write(out); await writable.close(); }
+      catch(error){ try { await writable.abort(); } catch(_){} throw error; }
+    } catch(error){ if(error.name === "AbortError") return false; throw error; }
+    notify("File written. Original bytes and undo history remain available in this session.");
+  } else {
+    downloadBytes(out,safeName(e.folder || e.label)+"_USR-DATA");
+    notify("Download requested. Confirm it completed, then restore the filename USR-DATA in its original profile folder. Original bytes remain available.");
+  }
+  // Save the exact exported snapshot, not edits made while an asynchronous write was open.
+  e.exported = out;
+  return true;
+}
+async function saveFile(){
+  const e = current(); if(!e || state.saving) return;
+  state.saving = true; updateHeaderOnly();
+  try { await saveEntry(e); } catch(error){ fail(error); }
+  finally { state.saving = false; updateHeaderOnly(); }
+}
+const CRC_TABLE = Uint32Array.from({length:256},(_,n) => { for(let i=0;i<8;i++) n = n & 1 ? 0xedb88320 ^ (n >>> 1) : n >>> 1; return n >>> 0; });
+function crc32(bytes){ let crc = 0xffffffff; for(const b of bytes) crc = CRC_TABLE[(crc ^ b)&255] ^ (crc >>> 8); return (crc ^ 0xffffffff) >>> 0; }
+function zipStored(files){
+  let localSize = 0, centralSize = 0;
+  const entries = files.map(({name,bytes}) => { const path = encoder.encode(name), crc = crc32(bytes), offset = localSize; localSize += 30+path.length+bytes.length; centralSize += 46+path.length; return {path,bytes,crc,offset}; });
+  if(entries.length > 65535 || localSize+centralSize+22 > 64*1024*1024) throw new Error("Bundle exceeds 64 MiB safety limit");
+  const out = new Uint8Array(localSize+centralSize+22), d = new DataView(out.buffer); let cursor = 0;
+  for(const e of entries){
+    d.setUint32(cursor,0x04034b50,true); d.setUint16(cursor+4,20,true); d.setUint16(cursor+6,0x800,true); d.setUint16(cursor+12,33,true);
+    d.setUint32(cursor+14,e.crc,true); d.setUint32(cursor+18,e.bytes.length,true); d.setUint32(cursor+22,e.bytes.length,true); d.setUint16(cursor+26,e.path.length,true);
+    out.set(e.path,cursor+30); out.set(e.bytes,cursor+30+e.path.length); cursor += 30+e.path.length+e.bytes.length;
+  }
+  for(const e of entries){
+    d.setUint32(cursor,0x02014b50,true); d.setUint16(cursor+4,20,true); d.setUint16(cursor+6,20,true); d.setUint16(cursor+8,0x800,true); d.setUint16(cursor+14,33,true);
+    d.setUint32(cursor+16,e.crc,true); d.setUint32(cursor+20,e.bytes.length,true); d.setUint32(cursor+24,e.bytes.length,true); d.setUint16(cursor+28,e.path.length,true); d.setUint32(cursor+42,e.offset,true);
+    out.set(e.path,cursor+46); cursor += 46+e.path.length;
+  }
+  d.setUint32(cursor,0x06054b50,true); d.setUint16(cursor+8,entries.length,true); d.setUint16(cursor+10,entries.length,true); d.setUint32(cursor+12,centralSize,true); d.setUint32(cursor+16,localSize,true);
+  return out;
+}
+async function saveAll(){
+  if(!state.files.length || state.saving) return;
+  state.saving = true; updateHeaderOnly();
+  try {
+    const files = [], exported = [], manifest = {format:"des-save-bundle-1",profiles:[],note:"Only USR-DATA files are included. Keep emulator capacity files. Close the game before replacing saves. Byte-valid does not mean game-tested."}, used = new Set();
+    for(const e of state.files){
+      const out = validatedExport(e);
+      if(!e.sourceChecksumOk && !confirm(`Repair invalid checksum for ${e.label} in the bundle?`)) return;
+      let folder = safeName(e.folder || e.label), n = 2, base = folder;
+      while(used.has(folder)) folder = base+"_"+n++; used.add(folder);
+      const title = (e.path.match(/PPSA\d+/) || ["PPSA01341"])[0], path = `${title}/${folder}/USR-DATA`;
+      files.push({name:"edited/"+path,bytes:out},{name:"originals/"+path,bytes:e.original}); exported.push([e,out]);
+      manifest.profiles.push({label:e.label,sourcePath:e.path || null,restoreFolderKnown:!!e.folder,edited:"edited/"+path,original:"originals/"+path,sourceChecksumValid:e.sourceChecksumOk,editedBytes:out.length});
+    }
+    files.push({name:"manifest.json",bytes:encoder.encode(JSON.stringify(manifest,null,2))});
+    downloadBytes(zipStored(files),"demons-souls-save-bundle.zip","application/zip");
+    for(const [e,out] of exported) e.exported = out;
+    updateHeaderOnly(); notify("ZIP download requested: edited saves, immutable original backups, and a folder-mapping manifest. Confirm the download completed before replacing files.");
+  } catch(error){ fail(error); }
+  finally { state.saving = false; updateHeaderOnly(); }
+}
+let blobState = null;
+function openBlob(f){
+  blobState = {entry:current(),field:f,token:token(current()),focus:document.activeElement};
+  $("#blobtitle").textContent = `${f.name || f.path} · ${f.raw.length.toLocaleString()} bytes`;
+  $("#blobhex").value = f.hex; $("#blobeditor").classList.remove("hidden"); $("#blobhex").focus();
+}
+function closeBlob(force = false){
+  if(!force && blobState && $("#blobhex").value !== blobState.field.hex && !confirm("Discard the unapplied binary-field draft?")) return false;
+  const focus = blobState?.focus; blobState = null; $("#blobeditor").classList.add("hidden"); if(focus?.isConnected) focus.focus(); return true;
+}
+function applyBlob(){
+  try {
+    if(!blobState || current() !== blobState.entry || token(current()) !== blobState.token) throw new Error("Save changed; reopen the binary field");
+    const bytes = hexToBytes($("#blobhex").value), path = blobState.field.path;
+    if(editCandidate(s => { s.flat.find(([f]) => f.path === path)[0].raw = bytes; })) closeBlob(true);
+  } catch(error){ fail(error); }
+}
+
+/* Browser wiring: no network, storage, dependencies, or game-file writes on load. */
+$("#drop").onclick = event => { if(!event.target.closest("button,input")) $("#file").click(); };
+$("#pick").onclick = () => $("#file").click(); $("#pickdir").onclick = () => $("#filedir").click();
+for(const id of ["#file","#filedir"]) $(id).onchange = event => { loadFiles(event.target.files); event.target.value = ""; };
+$("#drop").addEventListener("dragover",event => { event.preventDefault(); $("#drop").classList.add("hot"); });
+$("#drop").addEventListener("dragleave",() => $("#drop").classList.remove("hot"));
+$("#drop").addEventListener("drop",async event => {
+  event.preventDefault(); $("#drop").classList.remove("hot");
+  try {
+    const items = [...(event.dataTransfer.items || [])], files = [];
+    const walk = async entry => {
+      if(entry.isFile) files.push({file:await new Promise((resolve,reject) => entry.file(resolve,reject)),path:entry.fullPath});
+      else if(entry.isDirectory){ const reader = entry.createReader(); let batch; do { batch = await new Promise((resolve,reject) => reader.readEntries(resolve,reject)); for(const child of batch) await walk(child); } while(batch.length); }
+    };
+    const entries = items.map(i => i.webkitGetAsEntry ? i.webkitGetAsEntry() : null).filter(Boolean);
+    if(entries.length) for(const entry of entries) await walk(entry); else files.push(...event.dataTransfer.files);
+    await loadFiles(files);
+  } catch(error){ fail(error); }
+});
+const tabButtons = [...document.querySelectorAll(".tabs button")];
+tabButtons.forEach((b,index) => {
+  b.setAttribute("role","tab"); b.id = "view-"+b.dataset.tab; b.setAttribute("aria-controls","tab-"+b.dataset.tab);
+  b.setAttribute("aria-selected",String(index === 0)); b.tabIndex = index === 0 ? 0 : -1;
+  const panel = $("#tab-"+b.dataset.tab); panel.setAttribute("role","tabpanel"); panel.setAttribute("aria-labelledby",b.id);
+  b.onclick = () => activateTab(b.dataset.tab);
+  b.onkeydown = event => {
+    const next = event.key === "Home" ? 0 : event.key === "End" ? tabButtons.length-1 : event.key === "ArrowRight" ? (index+1)%tabButtons.length : event.key === "ArrowLeft" ? (index+tabButtons.length-1)%tabButtons.length : null;
+    if(next !== null){ event.preventDefault(); tabButtons[next].focus(); activateTab(tabButtons[next].dataset.tab); }
+  };
+});
+$("#save").onclick = saveFile; $("#saveall").onclick = saveAll; $("#undo").onclick = doUndo; $("#redo").onclick = doRedo; $("#revert").onclick = revertOriginal;
+$("#backup").onclick = () => { const e = current(); if(e) downloadBytes(e.original,safeName(e.folder || e.label)+"_USR-DATA.original.bak"); };
+$("#applyjson").onclick = applyJson; $("#downloadjson").onclick = downloadJson; $("#downloadpatch").onclick = downloadPatch;
+$("#refreshjson").onclick = () => { const e = current(); if(e && (!e.jsonDirty || confirm("Discard the unapplied JSON draft?"))) renderJson(true); };
+$("#json").oninput = () => { const e = current(); if(e){ e.jsonDraft = $("#json").value; e.jsonDirty = true; $("#jsonstatus").textContent = "Unapplied JSON draft"; } };
+$("#importjson").onclick = () => $("#jsonfile").click();
+$("#jsonfile").onchange = async event => {
+  const file = event.target.files[0], e = current(); event.target.value = ""; if(!file || !e) return;
+  try { if(file.size > 40*1024*1024) throw new Error("JSON import exceeds 40 MiB limit"); const text = await file.text(); if(current() !== e) throw new Error("Selected profile changed during import"); JSON.parse(text); e.jsonDraft = text; e.jsonDirty = true; e.jsonToken = token(e); activateTab("json"); renderJson(); }
+  catch(error){ fail(error); }
+};
+$("#copyjson").onclick = async () => {
+  try { if(navigator.clipboard) await navigator.clipboard.writeText($("#json").value); else { $("#json").select(); if(!document.execCommand("copy")) throw new Error("Clipboard unavailable; use Download instead"); } notify("JSON copied."); }
+  catch(error){ fail(error); }
+};
+$("#filter").oninput = () => { if(current()){ current().pages.all = 0; renderAll(); } };
+$("#reffilter").oninput = renderRef;
+for(const id of ["#catalogsearch","#catalogcategory"]) $(id).oninput = () => { state.catalogPage = 0; renderCatalog(); };
+for(const id of ["#pickersearch","#pickcategory"]) $(id).oninput = () => { if(pickState){ pickState.page = 0; renderPicker(); } };
+$("#closepicker").onclick = closePicker; $("#picker").onclick = event => { if(event.target.id === "picker") closePicker(); };
+$("#closeblob").onclick = () => closeBlob(); $("#applyblob").onclick = applyBlob;
+$("#downloadblob").onclick = () => { if(blobState) downloadBytes(blobState.field.raw,`field-${blobState.field.key.toString(16)}.bin`); };
+$("#importblob").onchange = async event => {
+  const file = event.target.files[0], active = blobState; event.target.value = "";
+  try { if(!file || !active) return; if(file.size > MAX_FILE_SIZE) throw new Error("Binary field exceeds 16 MiB limit"); const bytes = new Uint8Array(await file.arrayBuffer()); if(blobState !== active) return; $("#blobhex").value = bytesHex(bytes); }
+  catch(error){ fail(error); }
+};
+window.addEventListener("beforeunload",event => {
+  if(state.files.some(e => isUnsaved(e) || e.invalid.size || e.jsonDirty) || blobState && $("#blobhex").value !== blobState.field.hex){ event.preventDefault(); event.returnValue = ""; }
+});
+document.addEventListener("keydown",event => {
+  if(event.key === "Escape"){ closePicker(); closeBlob(); return; }
+  if(event.key === "Tab" && (pickState || blobState)){
+    const dialog = pickState ? $("#picker") : $("#blobeditor"), focusable = [...dialog.querySelectorAll("button:not(:disabled),input,select,textarea")].filter(el => el.getClientRects().length > 0);
+    const first = focusable[0], last = focusable.at(-1);
+    if(event.shiftKey && document.activeElement === first){ event.preventDefault(); last.focus(); }
+    else if(!event.shiftKey && document.activeElement === last){ event.preventDefault(); first.focus(); }
+  }
+  if(!(event.ctrlKey || event.metaKey)) return;
+  const key = event.key.toLowerCase();
+  if(key === "s"){ event.preventDefault(); if(!pickState && !blobState) saveFile(); return; }
+  // Textareas and inputs keep their native text undo (especially unapplied JSON).
+  if(event.target.matches("input,textarea,select")) return;
+  if(key === "z" || key === "y"){ event.preventDefault(); key === "y" || event.shiftKey ? doRedo() : doUndo(); }
+});
+$("#tips").textContent = "Close the game before editing. Keep the original folder and USR-DATA filename. Original backup exports the exact loaded bytes; Save all (ZIP) includes originals and edited copies. Ctrl/Cmd+S exports; Undo/Redo buttons operate on committed save edits. A valid checksum and round-trip test do not prove that an edit is safe in-game. No save is modified merely by opening it.";
+</script>
+</body>
+</html>
