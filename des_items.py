@@ -13,17 +13,28 @@ from des_save import Field, T_U16
 
 M = 0xFFFFFFFF
 P = 0x01000193
-SLOT_PREFIXES = [0x1544B3EC, 0x1444B25A, 0x1344B0C6, 0x1244AF34]
-SLOT_CHUNKS = len(SLOT_PREFIXES)
+# Measured FNV states of each 10-slot chunk.  These are the value the base name
+# hashes to *before* the slot character is appended, recovered by inverting
+# FNV-1a over the observed member keys:
+#     state = (key * P^-1 mod 2^32) ^ ord(slot_character)
+# Chunks 0 and 2 sit one below their plain prefix (prefix ^ 1), which is why the
+# slot characters there run 1,0,3,2,5,4,7,6,9,8 rather than 0..9.  Both readings
+# yield the same 40-key set, so only the index -> key labelling is affected.
+SLOT_STATES = [0x1544B3ED, 0x1444B25A, 0x1344B0C7, 0x1244AF34]
+SLOT_PREFIXES = [state ^ 1 if index in (0, 2) else state
+                 for index, state in enumerate(SLOT_STATES)]
+SLOT_CHUNKS = len(SLOT_STATES)
 COUNT_KEY = 0xCC62FF39
 
 
 def slot_key(index: int) -> int:
-    """An observed candidate key; 0..39 is an editor bound, not a game limit."""
+    """Key of one observed slot; 0..39 is an editor bound, not a game limit."""
     if type(index) is not int or not 0 <= index < 10 * SLOT_CHUNKS:
         raise ValueError('only candidate key indices 0..39 are supported')
     chunk, digit = divmod(index, 10)
-    return ((SLOT_PREFIXES[chunk] ^ (ord('0') + digit)) * P) & M
+    return ((SLOT_STATES[chunk] ^ (ord('0') + digit)) * P) & M
+
+
 
 
 ALL_SLOT_KEYS = [slot_key(index) for index in range(10 * SLOT_CHUNKS)]

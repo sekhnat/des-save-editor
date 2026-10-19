@@ -355,6 +355,57 @@ class BrowserTests(unittest.TestCase):
           return bytesEq(before,current().save.build());
         }'''))
 
+    def test_recovered_arrays_card_matches_python(self):
+        import sys
+        sys.path.insert(0, str(EDITOR))
+        import des_arrays, des_save
+        for path in sorted(SAVES.glob('*/USR-DATA')):
+            with self.subTest(path=path.parent.name):
+                self.load(path)
+                expected = [[group['state'],
+                             [f.value if isinstance(f.value, int) else None
+                              for f in group['members']]]
+                            for group in des_arrays.discover(des_save.load(str(path)))]
+                got = self.page.evaluate(
+                    'discoverArrays(current().save).map(g => [g.state,'
+                    ' g.members.map(f => typeof f.value === "number" ? f.value : null)])')
+                self.assertEqual(expected, got)
+
+    def test_recovered_arrays_card_renders_and_edits(self):
+        self.load(PLAYER)
+        self.page.wait_for_selector('#arraycard')
+        text = self.page.evaluate("document.querySelector('#arraycard').textContent")
+        self.assertIn('Recovered structures', text)
+        self.assertIn('container v3', text)                     # the blob header is surfaced
+        self.assertIn('Crescent Moon Grass', text)             # the 7-slot item array
+        index = self.page.evaluate(
+            """() => [...document.querySelectorAll('#arraycard input[type=number]')]
+                     .findIndex(el => el.value === '1000')""")
+        self.assertGreaterEqual(index, 0)
+        slot = self.page.query_selector_all('#arraycard input[type=number]')[index]
+        slot.fill('1002')
+        slot.dispatch_event('change')
+        self.page.wait_for_timeout(200)
+        values = self.page.evaluate('discoverArrays(current().save).map(g => g.members.map(f => f.value))')
+        self.assertIn(1002, [value for group in values for value in group])
+        self.page.evaluate('doUndo()')
+        values = self.page.evaluate('discoverArrays(current().save).map(g => g.members.map(f => f.value))')
+        self.assertIn(1000, [value for group in values for value in group])
+
+    def test_blob_is_not_compressed_and_has_no_network_use(self):
+        self.load(LARGE)
+        info = self.page.evaluate("""() => {
+          const blob = current().save.flat.map(([f]) => f)
+            .filter(f => f.type === T.BLOB && f.raw.length > 1000)
+            .find(f => new DataView(f.raw.buffer, f.raw.byteOffset).getUint32(0, true) === 3).raw;
+          const counts = new Array(256).fill(0);
+          for (let i = 16; i < blob.length; i++) counts[blob[i]]++;
+          let h = 0; const n = blob.length - 16;
+          for (const c of counts) if (c) h -= (c / n) * Math.log2(c / n);
+          return { entropy: h, distinct: counts.filter(c => c > 0).length };
+        }""")
+        self.assertTrue(info['distinct'] > 200)                # dense payload, not a text blob
+        self.assertLess(info['entropy'], 7.9)                  # below what compression or encryption gives
 
 if __name__ == '__main__':
     unittest.main()

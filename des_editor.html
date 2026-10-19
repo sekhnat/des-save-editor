@@ -2901,11 +2901,17 @@ for (const [id,name,cat] of ITEMDB){
 }
 const itemName = id => ITEM.has(id) ? ITEM.get(id).map(e => e.name).join(" / ") : `Unmapped value #${id}`;
 const itemCat = id => ITEM.has(id) ? [...new Set(ITEM.get(id).map(e => CATNAME[e.cat]))].join(" / ") : "Unmapped";
-const SLOT_PREFIXES = [0x1544B3EC,0x1444B25A,0x1344B0C6,0x1244AF34];
+/* Measured FNV state of each 10-slot chunk: the value the still-unknown base
+   name hashes to before the slot character is appended, recovered by inverting
+   FNV-1a over the observed member keys.  Chunks 0 and 2 sit one below their
+   plain prefix, so their slot characters run 1,0,3,2,5,4,7,6,9,8.  Both
+   readings give the same 40-key set; only the index -> key labelling differs. */
+const SLOT_STATES = [0x1544B3ED,0x1444B25A,0x1344B0C7,0x1244AF34];
+const SLOT_PREFIXES = SLOT_STATES.map((state,i) => (i === 0 || i === 2) ? state ^ 1 : state);
 const COUNT_KEY = 0xCC62FF39;
 function slotKey(i){
   if (!Number.isInteger(i) || i < 0 || i >= 40) throw new Error("Only four observed key groups are supported (0–39)");
-  return Math.imul(SLOT_PREFIXES[Math.floor(i/10)] ^ (0x30+i%10),0x01000193) >>> 0;
+  return Math.imul(SLOT_STATES[Math.floor(i/10)] ^ (0x30+i%10),0x01000193) >>> 0;
 }
 const ALL_SLOT_KEYS = Array.from({length:40},(_,i) => slotKey(i));
 const SLOT_KEY_SET = new Set(ALL_SLOT_KEYS);
@@ -3159,7 +3165,120 @@ function renderForm(){
     const grid = document.createElement("div"); grid.className = "grid"; grid.append(...rows); card.append(heading,grid); host.append(card);
   }
   renderInventory();
+  renderArrays();
 }
+/* ---- recovered fixed-slot arrays and blob containers --------------------- */
+const P_INV = 0x359C449B;                       // modular inverse of 0x01000193
+const suffixOf = (key, state) => String.fromCharCode(((Math.imul(key, P_INV) >>> 0) ^ state) & 0xff);
+
+/* A member key only fixes (state ^ character), so an XOR of the whole alphabet
+   relabels every slot.  Pick the labelling that reads 0,1,2,... so the result is
+   deterministic and matches the inventory chunks, whose slots are 0..9. */
+function canonicalState(members, state){
+  const wanted = [..."0123456789"].slice(0, members.length);
+  const bases = members.map(f => Math.imul(f.key, P_INV) >>> 0);
+  let best = null;
+  for (const base of bases){
+    for (const char of wanted){
+      const candidate = (base ^ char.charCodeAt(0)) >>> 0;
+      const letters = bases.map(b => String.fromCharCode((b ^ candidate) & 0xff));
+      if (wanted.every(w => letters.includes(w)) && letters.every(l => wanted.includes(l)))
+        best = best === null ? candidate : Math.min(best, candidate);
+    }
+  }
+  return best === null ? state : best;
+}
+
+/* Digit-suffixed member keys share one pre-suffix FNV state, so inverting the
+   hash recovers whole arrays without knowing any field name.  Only contiguous
+   runs are reported; anything else is left opaque on purpose. */
+function discoverArrays(s){
+  const buckets = new Map();
+  const scalars = new Set([T.U8, T.U16, T.I32, T.F32, T.BOOL]);
+  for (const [f] of s.flat){
+    if (!scalars.has(f.type)) continue;             // blobs and strings are not slots
+    if (FIELD_BY_KEY.has(f.key) || SLOT_KEY_SET.has(f.key)) continue;
+    const base = Math.imul(f.key, P_INV) >>> 0;
+    if (!buckets.has(base)) buckets.set(base, []);
+    buckets.get(base).push(f);
+  }
+  const states = new Set();
+  for (const base of buckets.keys()) for (let d = 0; d < 10; d++) states.add((base ^ (0x30 + d)) >>> 0);
+  const groups = [];
+  for (const state of [...states].sort((a, b) => a - b)){
+    const members = [];
+    for (let d = 0; d < 10; d++){ const hit = buckets.get((state ^ (0x30 + d)) >>> 0); if (hit) members.push(...hit); }
+    if (members.length < 3) continue;
+    members.sort((a, b) => a.offset - b.offset);
+    const offs = members.map(f => f.offset), stride = offs[1] - offs[0];
+    if (!offs.every((o, i) => i === 0 || o - offs[i - 1] === stride)) continue;
+    groups.push({ state: canonicalState(members, state), members, stride, first: offs[0], count: offs.length });
+  }
+  groups.sort((a, b) => b.count - a.count || a.first - b.first || a.state - b.state);
+  const kept = [];
+  for (const g of groups){
+    const used = new Set(kept.flatMap(k => k.members.map(f => f.offset)));
+    if (g.members.some(f => used.has(f.offset))) continue;
+    kept.push(g);
+  }
+  return kept.sort((a, b) => a.first - b.first);
+}
+
+function arrayKind(values){
+  const filled = values.filter(v => v !== -1);
+  if (!filled.length) return "all slots empty (-1)";
+  if (values.includes(-1)) return "id list, -1 marks an empty slot";
+  if (filled.some(v => v > 2011) && filled.every(v => ITEM.has(v))) return "id list beyond the spell/skill range";
+  if (filled.every(v => v >= 0 && v < 256)) return "small integers";
+  return "32-bit values";
+}
+
+function renderArrays(){
+  const e = current(); if (!e) return;
+  const arrays = discoverArrays(e.save);
+  const blobs = e.save.flat.map(([f]) => f).filter(f => f.type === T.BLOB && f.raw.length >= 16)
+    .map(f => ({ f, v: new DataView(f.raw.buffer, f.raw.byteOffset, 16) }))
+    .map(({ f, v }) => ({ key: f.key, size: f.raw.length, version: v.getUint32(0, true), count: v.getUint32(4, true) }))
+    .filter(b => b.version === 3);
+  if (!arrays.length && !blobs.length) return;
+  const card = document.createElement("section"); card.className = "card"; card.id = "arraycard";
+  card.innerHTML = '<h2>Recovered structures</h2><p class="note">Fixed-slot arrays found by inverting the key hash, not by name — the base names are still unknown, so these are shown as slot letters. -1 is the observed empty-slot sentinel. Editing is experimental.</p>';
+  for (const group of arrays){
+    const values = group.members.map(f => f.value);
+    const head = document.createElement("div"); head.className = "bar";
+    head.innerHTML = `<strong>${group.count} slots</strong> <span class="small">state ${group.state.toString(16).padStart(8,"0")} · ${escapeHtml(arrayKind(values))}</span>`;
+    const list = document.createElement("div"); list.className = "invlist";
+    const ordered = [...group.members].sort((a, b) => suffixOf(a.key, group.state).localeCompare(suffixOf(b.key, group.state)));
+    for (const f of ordered){
+      const row = document.createElement("div"); row.className = "invrow";
+      const label = document.createElement("span"); label.className = "n"; label.textContent = suffixOf(f.key, group.state);
+      const id = document.createElement("span"); id.className = "id"; id.textContent = f.value;
+      const name = document.createElement("span"); name.className = "nm" + (ITEM.has(f.value) ? "" : " unknown");
+      name.textContent = f.value === -1 ? "empty" : itemName(f.value);
+      const input = document.createElement("input"); input.type = "number"; input.value = f.value;
+      input.setAttribute("aria-label", `Slot ${suffixOf(f.key, group.state)} value`);
+      input.onchange = () => editCandidate(s => {
+        const target = s.findAll(f.key)[0]; if (!target) throw new Error("Slot record disappeared");
+        target.value = Number(input.value);
+      });
+      row.append(label, id, name, input); list.append(row);
+    }
+    card.append(head, list);
+  }
+  if (blobs.length){
+    const head = document.createElement("div"); head.className = "bar";
+    head.innerHTML = '<strong>Opaque containers</strong> <span class="small">versioned blobs; the payload is dense but neither compressed nor encrypted</span>';
+    const list = document.createElement("div"); list.className = "invlist";
+    for (const b of blobs){
+      const row = document.createElement("div"); row.className = "invrow";
+      row.innerHTML = `<span class="id">${b.size}</span><span class="nm">container v${b.version} · count ${b.count}</span><span class="cat">${b.key.toString(16).padStart(8,"0")}</span>`;
+      list.append(row);
+    }
+    card.append(head, list);
+  }
+  $("#tab-editor").append(card);
+}
+
 function renderInventory(){
   const e = current(), ids = invIds(e.save); if(!e.save.find(COUNT_KEY) && !ids.length) return;
   const card = document.createElement("section"); card.className = "card"; card.id = "invcard";

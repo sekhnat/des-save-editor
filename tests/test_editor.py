@@ -15,6 +15,7 @@ from playwright.sync_api import sync_playwright
 EDITOR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EDITOR))
 import des_save
+import des_arrays
 
 
 class SyntheticBrowserTests(unittest.TestCase):
@@ -223,6 +224,30 @@ class SyntheticBrowserTests(unittest.TestCase):
           try { new SaveFile(empty); return false; } catch (_) {}   // size mismatch
           return true;
         }'''))
+
+    def test_recovered_arrays_card_needs_no_sample_save(self):
+        state, values = 0x7516F500, [100, 101, 102, 103]
+        raw = self.build([des_save.Field(des_arrays.key_for_state(state, str(index)),
+                                         des_save.T_I32,
+                                         value.to_bytes(4, 'little', signed=True))
+                          for index, value in enumerate(values)])
+        self.load_bytes(raw)
+        self.page.wait_for_selector('#arraycard')
+        self.assertEqual([[state, values]],
+                         self.page.evaluate('discoverArrays(current().save)'
+                                            '.map(g => [g.state, g.members.map(f => f.value)])'))
+        slot = self.page.evaluate(
+            """() => [...document.querySelectorAll('#arraycard input[type=number]')]
+                     .findIndex(el => el.value === '101')""")
+        element = self.page.query_selector_all('#arraycard input[type=number]')[slot]
+        element.fill('113')
+        element.dispatch_event('change')
+        self.page.wait_for_timeout(150)
+        self.assertIn(113, self.page.evaluate(
+            'discoverArrays(current().save).flatMap(g => g.members.map(f => f.value))'))
+        self.page.evaluate('doUndo()')
+        self.assertIn(101, self.page.evaluate(
+            'discoverArrays(current().save).flatMap(g => g.members.map(f => f.value))'))
 
 
 if __name__ == '__main__':

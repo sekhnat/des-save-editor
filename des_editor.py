@@ -24,6 +24,8 @@ import struct
 import sys
 import time
 
+import des_arrays
+import des_diff
 import des_fields
 import des_items
 import des_save
@@ -320,6 +322,83 @@ def cmd_inv(path: str, add: list[int], rm: list[int], sets: list[str],
     return 0
 
 
+def cmd_arrays(path: str, as_json: bool) -> int:
+    """List fixed-slot arrays recovered by FNV-state discovery."""
+    sf = des_save.load(path)
+    rows = des_arrays.report(sf)
+    if as_json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    print(f"{path}\n  {len(rows)} fixed-slot array(s) recovered structurally "
+          f"(base names still unknown)")
+    for row in rows:
+        print(f"\n  @0x{row['offset']:04x}  {row['count']} slots of {row['type']:#04x}"
+              f"  state {row['state']:08x}  [{row['kind']}]")
+        print(f"      {row['description']}")
+        for slot in row['slots']:
+            print(f"      slot '{slot['char']}'  0x{slot['key']:08x}  "
+                  f"{slot['value']:>10}  {slot['name'] or ''}")
+    return 0
+
+
+def cmd_blobs(path: str) -> int:
+    """Describe every blob, including the versioned container header."""
+    sf = des_save.load(path)
+    rows = des_arrays.blobs(sf)
+    total = sum(row['size'] for row in rows)
+    print(f"{path}\n  {len(rows)} blob(s), {total} bytes "
+          f"({total * 100 // max(len(sf.build()), 1)}% of the file)")
+    for row in rows:
+        name = row['name'] or f"<{row['key']:08x}>"
+        print(f"\n  {name:<28} {row['size']:>7} B  @0x{row['offset']:05x}")
+        header = row['header']
+        if header:
+            print(f"      container v{header['version']}  count {header['count']}  "
+                  f"signature {header['signature']}")
+            print(f"      {len(row['records'])} embedded typed record(s)")
+            for record in row['records'][:8]:
+                print(f"        0x{record['key']:08x} "
+                      f"{record['name'] or '<unnamed>':<26} = {record['value']}")
+    return 0
+
+
+def cmd_diff(before: str, after: str, as_json: bool) -> int:
+    """Record-level delta between two saves, for differential analysis."""
+    left = des_save.load(before)
+    right = des_save.load(after)
+    delta = des_diff.compare(left, right)
+    if as_json:
+        print(json.dumps(delta, indent=2))
+    else:
+        print(f"{before}\n  -> {after}")
+        print(des_diff.summarise(delta))
+    return 0
+
+
+def cmd_aslot(path: str, state: str, sets: list[str], clears: list[str],
+              out: str | None) -> int:
+    """Write single slots of a discovered array, addressed by state and suffix."""
+    sf = des_save.load(path)
+    digest = int(state, 16)
+    for spec in sets:
+        char, _, value = spec.partition('=')
+        if len(char) != 1:
+            raise ValueError('slot suffix must be exactly one character')
+        written = des_arrays.set_slot(sf, digest, char, int(value, 0))
+        print(f"  slot '{char}' -> {written.value}")
+    for char in clears:
+        if len(char) != 1:
+            raise ValueError('slot suffix must be exactly one character')
+        des_arrays.clear_slot(sf, digest, char)
+        print(f"  slot '{char}' cleared (-1)")
+    dest = out or path
+    if os.path.abspath(dest) == os.path.abspath(path):
+        _backup(path)
+    des_save.save(sf, dest)
+    print(f"  wrote {dest}")
+    return 0
+
+
 def cmd_selftest(paths: list[str]) -> int:
     """Check the library against real files: parse, rebuild, compare."""
     import glob
@@ -363,7 +442,6 @@ def cmd_selftest(paths: list[str]) -> int:
         ok = ok and same and sf.checksum_ok()
     print("SELFTEST", "PASSED" if ok else "FAILED")
     return 0 if ok else 1
-
 
 def cmd_fields(_: str | None = None) -> int:
     for name in des_fields.known_names():
@@ -427,6 +505,24 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("patch")
     p.add_argument("file"); p.add_argument("patch")
     p.add_argument("--out")
+    p = sub.add_parser("arrays", help="list fixed-slot arrays recovered by key analysis")
+    p.add_argument("file")
+    p.add_argument("--json", action="store_true", dest="as_json")
+
+    p = sub.add_parser("aslot", help="edit one slot of a recovered array")
+    p.add_argument("file")
+    p.add_argument("state", help="array state, e.g. 7516f500 (see the arrays command)")
+    p.add_argument("--set", action="append", default=[], dest="sets", metavar="CHAR=VALUE")
+    p.add_argument("--clear", action="append", default=[], metavar="CHAR")
+    p.add_argument("--out")
+
+    p = sub.add_parser("blobs", help="describe each opaque blob and its container header")
+    p.add_argument("file")
+
+    p = sub.add_parser("diff", help="record-level delta between two saves")
+    p.add_argument("before")
+    p.add_argument("after")
+    p.add_argument("--json", action="store_true", dest="as_json")
 
     a = ap.parse_args(argv)
     if a.cmd == 'inv' and not a.experimental:
@@ -441,6 +537,10 @@ def main(argv: list[str]) -> int:
     if a.cmd == "patch":  return cmd_patch(a.file, a.patch, a.out)
     if a.cmd == "items":    return cmd_items(a.file)
     if a.cmd == "inv":      return cmd_inv(a.file, a.add, a.rm, a.sets, a.out)
+    if a.cmd == "arrays":   return cmd_arrays(a.file, a.as_json)
+    if a.cmd == "aslot":    return cmd_aslot(a.file, a.state, a.sets, a.clear, a.out)
+    if a.cmd == "blobs":    return cmd_blobs(a.file)
+    if a.cmd == "diff":     return cmd_diff(a.before, a.after, a.as_json)
     if a.cmd == "selftest": return cmd_selftest(a.paths)
     if a.cmd == "fields":   return cmd_fields()
     return 1

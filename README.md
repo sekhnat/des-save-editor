@@ -1,10 +1,9 @@
 # Demon's Souls PS5 save editor
 
 Open **`des_editor.html`** in a modern browser. It is a self-contained offline
-editor for **version-7 decrypted `USR-DATA` files** from the PS5 release of
-Demon's Souls (title id `PPSA01341`). No server, installation, game assets, or
-network access is needed to use the page; its content-security policy blocks
-network requests.
+editor for the **version-7 decrypted `USR-DATA` files** of `PPSA01341`. No
+server, installation, game assets, or network access is needed to use the page.
+Its content-security policy blocks network requests.
 
 **Important:** the container can be parsed and rebuilt, but the game's entire
 save schema has **not** been decoded. A checksum-valid file is not necessarily
@@ -28,7 +27,7 @@ The editor now distinguishes observed structure from unverified interpretation.
    Confirm the download completed before replacing files.
 
 The ZIP's `edited/` and `originals/` trees contain **only USR-DATA files**.
-Keep any emulator sidecar/capacity files and the rest of the original folder.
+Keep your emulator `.blocks` capacity files and the rest of the original folder.
 When bare files were loaded without their folders, the bundle uses descriptive
 placeholder folders; match them to the real profile folders yourself. Loading
 the full save folder avoids that ambiguity.
@@ -116,15 +115,71 @@ Applying an invalid dump never discards existing edits or modifies undo history.
   a save field encodes that item.
 - **Unmapped values:** `127 128 129 130 140 146 152 153 159 171` in the observed
   array remain unresolved. Preserve them; absence from item tables does not
-  prove they should be deleted.
+  prove they should be deleted. Both param bundles were re-audited: all 33
+  tables in `gameparam.parambnd` and `gameparamna.parambnd` were searched, the
+  two bundles differ only in `TalkParam`, and three of the ten (`129 146 159`)
+  occur in no parameter table at all. No additive remap into a known ID space
+  works, so they are not equipment rows under a different numbering.
 - **Storage:** `EQUIPMENT_STORAGEBOX_COUNT` is read-only in the form. Storage
   contents may be in opaque or unidentified records. Changing a count alone
   does not add storage items. Equipment, stack quantities, learned spells,
   tendency, appearance and general progression are not fully mapped.
+- **More fixed-slot arrays exist.** Besides the u16 list, six 32-bit arrays were
+  recovered by hash inversion (see *Recovered structures* below). Their base
+  names are unknown, so the editor labels their slots by suffix character. One
+  of them holds ring IDs and starts with two entries on a fresh character; two
+  seven-slot arrays use `-1` as an empty-slot sentinel and one of them already
+  contains a consumable. Treat all of them as experimental until a differential
+  test confirms their meaning.
+- **What "append-only" means here.** A longer-played character held all 320
+  records of a fresh one plus 706 more, and no record was missing. The save
+  therefore accumulates records, which is why a before/after pair of the *same*
+  character is the only reliable identification method.
 - Only the sampled decrypted format is supported. This page does not decrypt,
   re-sign or import encrypted retail-console saves.
 - Browser safety bounds: 16 MiB per save, 100,000 records, 64 container levels,
   32 loaded profiles, 64 MiB loaded originals/bundle. These are editor bounds.
+
+## Recovered structures
+
+Two independent techniques recover structure without knowing a single field
+name, and both are implemented in `des_arrays.py` and in the page.
+
+**Fixed-slot arrays by hash inversion.** A member key is
+`(state ^ ord(suffix_character)) * 0x01000193`, so multiplying the observed key
+by the modular inverse of the FNV prime (`0x359C449B`) and XOR-ing a candidate
+character recovers the state that all members of one array share. Grouping
+keys that resolve to the same state under a digit, then requiring contiguous
+records with a constant stride, yields whole arrays even though the base name
+is unknown. Six 32-bit arrays and the four u16 item chunks come out this way.
+
+The suffix character is only defined up to an XOR of the whole alphabet, so the
+labelling is canonicalised to `0,1,2,...` and then to the smallest matching
+state; Python and the browser return identical results on every sample.
+
+**Slot ordering matters.** The four u16 chunks do not label their slots with
+plain digits: chunks 0 and 2 sit one below the plain prefix, so their characters
+run `1,0,3,2,5,4,7,6,9,8`. The 40-key *set* is unchanged, but the index-to-key
+map was wrong before this was measured, which meant "slot 0" addressed slot 1.
+`slot_key(0)` is now `0x582724E7`, the first record in file order.
+
+**Versioned blob containers.** The large opaque containers start with a 16-byte
+header: `u32` version (3), `u32` count, then an 8-byte signature
+`b13668df f82e7044`. The 239 KB container in the larger sample reports
+`count 188`; the 296-byte one in the fresh character reports `count 2`. The
+bodies also carry embedded `tag 7 / type 9 / key / int32` records that use the
+same FNV key space, and those are listed in the `blobs` command. The rest of the
+payload is dense (about 7.3 bits/byte, all 256 byte values present) with **no
+compression and no encryption** — zlib/deflate fails at every offset and the
+byte distribution is far from what either would produce. It is not a
+fixed-stride table either: no periodicity from 16 to 256 bytes.
+
+**Differential harness.** `des_diff.py` compares two saves record by record,
+using `(key, occurrence)` identity so an insertion elsewhere never renumbers
+anything, and reports added/removed/changed records plus any new digit-suffixed
+array that appears among the added keys. This is the tool that turns a save pair
+into evidence; tendency, equipment and spells will be identified with it, not
+with more dictionaries.
 
 ## Command line
 
@@ -144,6 +199,22 @@ python3 des_editor.py dump FILE dump.json
 python3 des_editor.py verify FILE
 python3 des_editor.py items FILE
 python3 des_editor.py inv FILE --experimental --add 113 --out /tmp/USR-DATA
+python3 des_editor.py arrays FILE
+python3 des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
+python3 des_editor.py blobs FILE
+python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA
+```
+
+`arrays` lists the recovered fixed-slot arrays with slot letters, values and
+candidate names; `aslot` writes one slot by array state and suffix character
+(the same letter the listing shows). `blobs` decodes the 16-byte container
+header and lists the embedded typed records. `diff` prints the record-level
+delta, so two saves of the same character can be compared directly:
+
+```text
+before    320 records     13709 bytes
+after    1026 records    258582 bytes
+added     706   removed     0   changed    64
 ```
 
 `items` lists observed values and candidate names, not a proven full inventory.
@@ -203,63 +274,26 @@ Counts: Armor 147, Goods 157, Ring 35, Skill 28, Spell 40, Weapon 1884.
 Catalog `hasParam` distinguishes rows backed by a parameter table from text-only
 entries. Both tools offer stdout modes for reproducible build integration.
 
-## Repository contents and provenance
-
-```
-des_editor.html      the editor (self-contained, offline)
-des_editor.py        command line interface
-des_save.py          parser / serializer / checksum library
-des_fields.py        recovered field-name table
-des_items.py         catalog access + experimental array helpers
-des_crack.py         field-name brute-forcer used to recover the table
-itemdb.json          category-scoped catalog (see below)
-tools/               catalog build/embed scripts
-tests/               test suites and a benchmark
-```
-
-**No save files, account data, or personal paths are included.** The repository
-ships no `USR-DATA`, no `_SaveData` folder, and no extracted game assets.
-
-`itemdb.json` contains 2,291 item identifiers and display names extracted from
-the game's own parameter and localisation tables. It is included solely so the
-editor can label values; it is factual catalogue metadata derived for
-interoperability, not a redistribution of game assets. Demon's Souls and all
-related names are trademarks of their respective owners. This project is
-unaffiliated with and not endorsed by the rights holders. Remove `itemdb.json`
-if you prefer to generate it yourself with `tools/build_itemdb.py`.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
 ## Verification and performance
 
 From `des-editor/`:
 
 ```bash
-# Standard-library tests only (no fixture files needed)
+# Standard-library tests only
 python3 -m unittest discover -s tests -p test_save.py -v
-
-# Browser tests: synthetic fixtures run out of the box, real-save tests skip
+# Full suite; requires Playwright and its Chromium browser in the test environment
 python3 -m unittest discover -s tests -v
-
-# Point the integration tests and benchmark at your own backup
-DES_SAVE_DIR=/path/to/_SaveData/PPSA01341 python3 -m unittest discover -s tests -v
-DES_SAVE_DIR=/path/to/_SaveData/PPSA01341 python3 tests/benchmark_editor.py
-
-python3 des_editor.py selftest /path/to/_SaveData/PPSA01341
+python3 tests/benchmark_editor.py
+python3 des_editor.py selftest ../_SaveData/PPSA01341
 ```
 
-`tests/test_editor.py` generates its saves in memory, so it needs no fixture
-data. `tests/test_editor_samples.py` exercises the full editor against real
-profiles and is skipped unless `DES_SAVE_DIR` points at a compatible save set;
-it asserts the SHA-256 of every source file is unchanged after the run.
-
-Regression coverage includes all three original files, malformed records,
-strict numeric/hex bounds, atomic imports/writes, undo/redo, async-save races,
-JSON drafts, category collisions, exact binary exports, ZIP contents/CRC,
-float bit preservation, and 100 seeded Python/JavaScript differential fixtures.
-Tests never edit the original saves.
+56 tests run in about 15 s (25 format/structure, 31 browser). Regression
+coverage includes all three original files, malformed records, strict
+numeric/hex bounds, atomic imports/writes, undo/redo, async-save races, JSON
+drafts, category collisions, exact binary exports, ZIP contents/CRC, float bit
+preservation, 100 seeded Python/JavaScript differential fixtures, and a check
+that Python and the browser recover identical arrays on every sample. Tests
+never edit the original saves.
 
 On the 258,582-byte / 1,026-record sample, observed JavaScript refresh time went
 from about **70.5 ms to 0.9 ms** (not a page-load/paint or game benchmark).

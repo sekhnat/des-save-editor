@@ -14,6 +14,8 @@ HAVE_SAVES = any(SAVES.glob('*/USR-DATA'))
 sys.path.insert(0, str(ROOT))
 import des_save as save
 import des_items as items
+import des_arrays as arrays
+import des_diff as diff
 
 spec = importlib.util.spec_from_file_location('build_itemdb', ROOT / 'tools/build_itemdb.py')
 builder = importlib.util.module_from_spec(spec)
@@ -128,6 +130,110 @@ class SaveTests(unittest.TestCase):
                                         'changes': [{'path': '/1', 'key': '7b', 'type': 2, 'before': '02', 'hex': '03'}]}))
             des_editor.cmd_patch(str(path), str(patch), str(out))
             self.assertEqual([1, 3], [f.value for f in save.load(str(out)).records])
+
+
+class StructureTests(unittest.TestCase):
+    """Fixed-slot array recovery, slot addressing and the differential harness."""
+
+    STATE = 0x7516F500
+
+    def array_save(self, values, state=None):
+        state = self.STATE if state is None else state
+        sf = save.SaveFile()
+        sf.records = [save.Field(arrays.key_for_state(state, str(index)), save.T_I32,
+                                 int(value).to_bytes(4, 'little', signed=True))
+                      for index, value in enumerate(values)]
+        return sf
+
+    def parsed(self, sf):
+        return save.SaveFile(sf.build())
+
+    def test_slot_key_set_is_unchanged_by_the_relabelling(self):
+        observed = {((prefix ^ (0x30 + digit)) * items.P) & items.M
+                    for prefix in (0x1544B3EC, 0x1444B25A, 0x1344B0C6, 0x1244AF34)
+                    for digit in range(10)}
+        self.assertEqual(observed, set(items.ALL_SLOT_KEYS))
+        self.assertEqual(40, len(observed))
+
+    def test_slot_key_follows_the_observed_file_order(self):
+        # first two records of the real profile-0 array, in file order
+        self.assertEqual(0x582724E7, items.slot_key(0))
+        self.assertEqual(0x57272354, items.slot_key(1))
+        self.assertEqual(0xC61F834C, items.slot_key(30))
+
+    def test_canonical_state_labels_slots_from_zero(self):
+        members = [save.Field(arrays.key_for_state(self.STATE, str(index)), save.T_I32, b'\0' * 4)
+                   for index in range(4)]
+        self.assertEqual(self.STATE, arrays.canonical_state(members, self.STATE ^ 0x07))
+
+    def test_discovery_finds_a_contiguous_digit_array(self):
+        sf = self.parsed(self.array_save([105, 9962, 113]))
+        groups = arrays.discover(sf)
+        self.assertEqual(1, len(groups))
+        self.assertEqual(self.STATE, groups[0]['state'])
+        self.assertEqual([105, 9962, 113], [f.value for f in groups[0]['members']])
+        self.assertEqual('012', ''.join(slot['char'] for slot in arrays.report(sf)[0]['slots']))
+
+    def test_a_gap_stops_array_detection(self):
+        sf = self.array_save([105, 9962, 113])
+        sf.records.insert(1, save.Field(0xDEADBEEF, save.T_U8, b'\x00'))
+        self.assertEqual([], arrays.discover(self.parsed(sf)))
+
+    def test_set_and_clear_slot_round_trip(self):
+        sf = self.parsed(self.array_save([105, 9962, 113, 116]))
+        arrays.set_slot(sf, self.STATE, '2', 1002)
+        arrays.clear_slot(sf, self.STATE, '3')
+        again = self.parsed(sf)
+        self.assertEqual([105, 9962, 1002, -1],
+                         [f.value for f in arrays.discover(again)[0]['members']])
+        self.assertEqual(sf.build(), again.build())
+
+    def test_set_slot_rejects_unknown_state_and_non_integer(self):
+        sf = self.parsed(self.array_save([105, 9962, 113]))
+        before = sf.build()
+        for call in (lambda: arrays.set_slot(sf, 0x12345678, '0', 1),
+                     lambda: arrays.set_slot(sf, self.STATE, 'x', 1),
+                     lambda: arrays.set_slot(sf, self.STATE, '0', 't')):
+            with self.assertRaises(ValueError):
+                call()
+        self.assertEqual(before, sf.build())
+
+    def test_blob_header_and_embedded_records(self):
+        head = (3).to_bytes(4, 'little') + (188).to_bytes(4, 'little') + bytes.fromhex('b13668dff82e7044')
+        self.assertEqual({'version': 3, 'count': 188, 'signature': 'b13668dff82e7044',
+                          'size': 16}, arrays.blob_header(head))
+        self.assertIsNone(arrays.blob_header(b'\x01' * 16))
+        record = ((7).to_bytes(4, 'little') + (9).to_bytes(4, 'little')
+                  + (0x11223344).to_bytes(4, 'little') + b'\x08' + (5).to_bytes(4, 'little', signed=True))
+        self.assertEqual([{'offset': 16, 'key': 0x11223344, 'value': 5, 'name': None}],
+                         arrays.blob_records(head + record))
+
+    def test_diff_of_a_save_with_itself_is_empty(self):
+        sf = self.parsed(self.array_save([1, 2, 3]))
+        delta = diff.compare(sf, sf)
+        self.assertEqual(([], [], []), (delta['added'], delta['removed'], delta['changed']))
+
+    def test_diff_reports_changed_added_and_removed(self):
+        before = save.SaveFile()
+        before.records = [save.Field(1, save.T_U8, b'\x01'), save.Field(2, save.T_U8, b'\x09')]
+        after = save.SaveFile()
+        after.records = [save.Field(1, save.T_U8, b'\x02'), save.Field(3, save.T_U16, b'\x05\x00')]
+        delta = diff.compare(before, after)
+        self.assertEqual(1, len(delta['changed']))
+        self.assertEqual(1, len(delta['added']))
+        self.assertEqual(1, len(delta['removed']))
+        self.assertIn('added', diff.summarise(delta))
+
+    def test_cli_aslot_writes_a_valid_save(self):
+        import des_editor
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'USR-DATA'
+            path.write_bytes(self.array_save([105, 9962, 113]).build())
+            self.assertEqual(0, des_editor.main(['aslot', str(path), '7516f500', '--set', '1=1002']))
+            self.assertEqual(0, des_editor.main(['verify', str(path)]))
+            again = save.SaveFile(path.read_bytes())
+            self.assertEqual([105, 1002, 113],
+                             [f.value for f in arrays.discover(again)[0]['members']])
 
 
 class CatalogTests(unittest.TestCase):
