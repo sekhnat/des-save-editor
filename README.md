@@ -100,7 +100,9 @@ Applying an invalid dump never discards existing edits or modifies undo history.
 - **Archetypes:** numeric IDs are editable, but class-name ordering is not
   verified. The page no longer presents an inferred mapping as fact.
 - **Options:** recognized settings have forms; every other record remains
-  available in All fields and JSON.
+  available in All fields and JSON. Two further settings were recovered by
+  hashing bare names against the executable's string table: `AUTOLOCK`
+  (boolean, true here) and `CAMERASHAKE` (float, 1.0 here).
 - **Observed u16 array:** 31 records followed by count key `CC62FF39` in the
   larger sample, zero records/count zero in the smaller sample. Candidate keys
   come from four observed hash groups. Add/replace/remove is **experimental and

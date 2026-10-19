@@ -47,6 +47,7 @@ LAYOUT = {
         "BRIGHTNESS", "DISPLAYBRIGHTNESS", "VOLUMEMUSIC", "VOLUMEEFFECTS",
         "VOLUMEVOICE", "SUBTITLES", "SHOWHELMET", "CAMERASPEED", "CAMERAMODE",
         "SOUNDTYPE", "COLORBLIND", "GAMEFILTERNAME", "PASSWORD",
+        "AUTOLOCK", "CAMERASHAKE",
     ],
 }
 
@@ -121,6 +122,8 @@ _DEFS = [
     ("GAMEFILTERNAME", "hex", "Colour filter (4 bytes)", 0, 0xFFFFFFFF),
     ("CAMERASPEED", "int", "Camera speed", 0, 10),
     ("CAMERAMODE", "int", "Camera mode", 0, 1),
+    ("CAMERASHAKE", "float", "Camera shake strength", 0, 2),
+    ("AUTOLOCK", "int", "Camera auto-lock", 0, 1),
     ("SOUNDTYPE", "int", "Sound output type", 0, 8),
     ("COLORBLIND", "int", "Colour-blind filter", 0, 8),
     ("PASSWORD", "text", "Network password", 0, 8),
