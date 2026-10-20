@@ -554,6 +554,46 @@ class ParamdefTests(unittest.TestCase):
                     self.assertEqual(start, base)
 
 
+class LoadoutTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location('parse_loadouts', ROOT / 'tools/parse_loadouts.py')
+        cls.loadouts = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.loadouts)
+
+    def test_statements_arguments_and_quirks(self):
+        text = ('waitForLevelLoading\nprint "Applying player loadout"\n*stage "General"\n'
+                '\tcp11_setPlayerName name = "Soul Gooder"\n\tcp11_numSpellSlotsUnlocked 1\n'
+                '\tcp11_addGoods id = 1000 quantity = 6 // Crescent Moon Grass\r\n*endstage\n'
+                '*gowaitForLevelLoading\n')
+        rows = self.loadouts.parse(text, 'x.txt')
+        self.assertEqual(['cp11_setPlayerName', 'cp11_numSpellSlotsUnlocked', 'cp11_addGoods'],
+                         [r['command'] for r in rows])
+        self.assertEqual({'name': 'Soul Gooder'}, rows[0]['args'])
+        self.assertEqual([1], rows[1]['positional'])
+        self.assertEqual(({'id': 1000, 'quantity': 6}, 'Crescent Moon Grass', 'General'),
+                         (rows[2]['args'], rows[2]['comment'], rows[2]['stage']))
+
+    def test_unparseable_lines_raise_or_are_recorded(self):
+        bad = 'cp11_setPlayerName name = Berserker"\nmystery 1\ncp11_setSouls souls = 5\n'
+        with self.assertRaises(ValueError):
+            self.loadouts.parse(bad, 'x.txt')
+        errors = []
+        rows = self.loadouts.parse(bad, 'x.txt', errors)
+        self.assertEqual(['cp11_setSouls'], [r['command'] for r in rows])
+        self.assertEqual(2, len(errors))
+
+    @unittest.skipUnless(HAVE_GAME, 'no game files (set DES_GAME_DIR to run this)')
+    def test_game_loadouts_agree_with_the_catalog_and_level_formula(self):
+        errors = []
+        report = self.loadouts.check(self.loadouts.load(GAME, errors), items.load_catalog(), errors)
+        self.assertGreater(report['ids_checked'], 6000)
+        self.assertLessEqual(len(report['missing_ids']), 2)      # Official Cap, Moon Mace
+        self.assertGreater(len(report['soul_levels']), 50)
+        self.assertEqual([], report['soul_level_mismatches'])   # SL = sum(base stats) - 80
+        self.assertLessEqual(len(report['unparsed_lines']), 1)
+
+
 class CatalogTests(unittest.TestCase):
     def test_bnd3_bad_bounds_rejected(self):
         with self.assertRaises(ValueError):
