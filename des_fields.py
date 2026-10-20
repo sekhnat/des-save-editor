@@ -68,9 +68,9 @@ _DEFS = [
     ("WORLDSTATUS_MIRRORMODE", "int", "Mirror mode", 0, 1, ""),
     ("MISC_HASUNLOCKEDNEXUSSTATUE", "int", "Nexus statue unlocked", 0, 1, ""),
     # ---- counts of indexed record families (structural; read-only in the page)
-    ("EQUIPMENT_INVENTORY_COUNT", "int", "Inventory entries", 0, 100,
+    ("EQUIPMENT_INVENTORY_COUNT", "int", "Inventory entries", 0, 2048,
      "Number of EQUIPMENT_INVENTORY## entries. Structural: changing it alone corrupts the inventory."),
-    ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Storage box entries", 0, 100,
+    ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Storage box entries", 0, 2048,
      "Number of EQUIPMENT_STORAGEBOX## entries. Structural: changing it alone does not add items."),
     ("DEADENEMIES_COUNT", "int", "Dead enemy indices", 0, 10_000,
      "Number of DEADENEMIES_INDICES#### records (enemies that stay dead)."),
@@ -164,16 +164,20 @@ LAYOUT = {
 # Indexed record families, named by printf templates in the game executable
 # (e.g. "Equipment_Inventory%02d_EquipId"). Each expands to one key per index.
 # (template, highest index) - the bound covers every index the format can
-# print with its width, not a verified game limit.
+# print with its width, not a verified game limit. "%02d" prints a third digit
+# from 100 on, so those names exist too. The original PS3 game holds up to
+# 0x800 inventory entries (Wulf2k/DeS-SaveEdit), so inventory and storage go
+# to 2047; the PS5 limit itself is unknown (the samples hold at most 72).
+BOX_LAST = 2047
 FAMILIES = [
     ("DEADENEMIES_INDICES%04d", 9999),
     ("EQUIPMENT_EQUIPITEM%02d", 99),
-    *[(f"EQUIPMENT_INVENTORY%02d_{part}", 99) for part in (
+    *[(f"EQUIPMENT_INVENTORY%02d_{part}", BOX_LAST) for part in (
         "DISPLAYID", "DURABILITY_ACCUMULATEDHITS", "DURABILITY_CURRENT",
         "EQUIPID", "INDEX", "QUANTITY", "TYPE", "VARIATIONID")],
     ("EQUIPMENT_SLOT%02d_EQUIPMENTID", 99),
     ("EQUIPMENT_SLOT%02d_INVENTORYID", 99),
-    *[(f"EQUIPMENT_STORAGEBOX%02d_{part}", 99) for part in (
+    *[(f"EQUIPMENT_STORAGEBOX%02d_{part}", BOX_LAST) for part in (
         "DISPLAYID", "DURABILITY", "DURABILITY_ACCUMULATEDHITS", "EQUIPTYPEID",
         "HIGHQUANTITY", "LOWQUANTITY")],
     ("MIRACLES_EQUIPPED%02d", 99),

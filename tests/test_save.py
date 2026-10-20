@@ -225,6 +225,23 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual([(0, 0, 'Buckler')],
                          [(r['slot'], r['inventory'], r['name']) for r in inventory.equipment(sf)])
 
+    def test_entries_past_index_99_are_read_and_edited(self):
+        # "%02d" prints three digits from 100 on; the original game holds 0x800 entries
+        many = [(0x40000000, 1001 + n % 5, 1 + n % 90, 0) for n in range(300)]
+        sf = save.SaveFile(inventory_save(many, [(0x40000000 | 2000, 7)] * 130).build())
+        rows = inventory.inventory(sf)
+        self.assertEqual(list(range(300)), [r['index'] for r in rows])
+        self.assertTrue(all(r['complete'] and r['name'] for r in rows))
+        self.assertEqual(130, len(inventory.storage(sf)))
+        inventory.set_quantity(sf, 250, 77)
+        inventory.set_storage_quantity(sf, 120, 9)
+        again = save.SaveFile(sf.build())
+        self.assertEqual(77, inventory.inventory(again)[250]['quantity'])
+        self.assertEqual(9, inventory.storage(again)[120]['low_quantity'])
+        import des_fields
+        self.assertEqual('EQUIPMENT_INVENTORY250_QUANTITY',
+                         des_fields.field_name(save.name_key('EQUIPMENT_INVENTORY250_QUANTITY')))
+
     def test_edits_change_only_the_addressed_value(self):
         sf = inventory_save(self.ITEMS, [(0x40000000 | 2000, 25)])
         before = sf.build()

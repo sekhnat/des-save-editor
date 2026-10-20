@@ -25,11 +25,13 @@ because the roles of DISPLAYID and VARIATIONID are not verified.
 """
 from __future__ import annotations
 
+import des_fields
 import des_items
 from des_save import T_I32, T_RAW4, T_U8
 
 CATEGORY_BITS = {0x0: 'Weapon', 0x1: 'Armor', 0x2: 'Ring', 0x4: 'Goods'}
-MAX_ENTRIES = 100                              # what a %02d template can address
+MAX_ENTRIES = des_fields.BOX_LAST + 1          # inventory / storage names exist up to here
+MAX_SLOTS = 100                                # equipment slots: what a %02d template can address
 INVENTORY_PARTS = ('INDEX', 'TYPE', 'EQUIPID', 'QUANTITY', 'VARIATIONID', 'DISPLAYID',
                    'DURABILITY_CURRENT', 'DURABILITY_ACCUMULATEDHITS')
 STORAGE_PARTS = ('EQUIPTYPEID', 'LOWQUANTITY', 'HIGHQUANTITY', 'DISPLAYID', 'DURABILITY',
@@ -132,7 +134,7 @@ def equipment(sf, catalog: dict | None = None) -> list[dict]:
     catalog = _catalog() if catalog is None else catalog
     items = {row['ref']: row for row in inventory(sf, catalog)}
     rows = []
-    for index in range(MAX_ENTRIES):
+    for index in range(MAX_SLOTS):
         inv = sf.find(f'EQUIPMENT_SLOT{index:02d}_INVENTORYID')
         equip = sf.find(f'EQUIPMENT_SLOT{index:02d}_EQUIPMENTID')
         if inv is None and equip is None:

@@ -552,8 +552,8 @@ const DEFS = [
   ["KILLBLACK","int","Black phantom kills",0,1000000,""],
   ["WORLDSTATUS_MIRRORMODE","int","Mirror mode",0,1,""],
   ["MISC_HASUNLOCKEDNEXUSSTATUE","int","Nexus statue unlocked",0,1,""],
-  ["EQUIPMENT_INVENTORY_COUNT","int","Inventory entries",0,100,"Number of EQUIPMENT_INVENTORY## entries. Structural: changing it alone corrupts the inventory."],
-  ["EQUIPMENT_STORAGEBOX_COUNT","int","Storage box entries",0,100,"Number of EQUIPMENT_STORAGEBOX## entries. Structural: changing it alone does not add items."],
+  ["EQUIPMENT_INVENTORY_COUNT","int","Inventory entries",0,2048,"Number of EQUIPMENT_INVENTORY## entries. Structural: changing it alone corrupts the inventory."],
+  ["EQUIPMENT_STORAGEBOX_COUNT","int","Storage box entries",0,2048,"Number of EQUIPMENT_STORAGEBOX## entries. Structural: changing it alone does not add items."],
   ["DEADENEMIES_COUNT","int","Dead enemy indices",0,10000,"Number of DEADENEMIES_INDICES#### records (enemies that stay dead)."],
   ["TROPHIES_RING_COUNT","int","Rings recorded for the trophy",0,100,"Number of TROPHIES_RING## records."],
   ["SPELLS_SLOTSUNLOCKED","int","Spell slots unlocked",0,7,""],
@@ -604,22 +604,22 @@ const LAYOUT = [
 const FAMILIES = [
   ["DEADENEMIES_INDICES%04d",9999],
   ["EQUIPMENT_EQUIPITEM%02d",99],
-  ["EQUIPMENT_INVENTORY%02d_DISPLAYID",99],
-  ["EQUIPMENT_INVENTORY%02d_DURABILITY_ACCUMULATEDHITS",99],
-  ["EQUIPMENT_INVENTORY%02d_DURABILITY_CURRENT",99],
-  ["EQUIPMENT_INVENTORY%02d_EQUIPID",99],
-  ["EQUIPMENT_INVENTORY%02d_INDEX",99],
-  ["EQUIPMENT_INVENTORY%02d_QUANTITY",99],
-  ["EQUIPMENT_INVENTORY%02d_TYPE",99],
-  ["EQUIPMENT_INVENTORY%02d_VARIATIONID",99],
+  ["EQUIPMENT_INVENTORY%02d_DISPLAYID",2047],
+  ["EQUIPMENT_INVENTORY%02d_DURABILITY_ACCUMULATEDHITS",2047],
+  ["EQUIPMENT_INVENTORY%02d_DURABILITY_CURRENT",2047],
+  ["EQUIPMENT_INVENTORY%02d_EQUIPID",2047],
+  ["EQUIPMENT_INVENTORY%02d_INDEX",2047],
+  ["EQUIPMENT_INVENTORY%02d_QUANTITY",2047],
+  ["EQUIPMENT_INVENTORY%02d_TYPE",2047],
+  ["EQUIPMENT_INVENTORY%02d_VARIATIONID",2047],
   ["EQUIPMENT_SLOT%02d_EQUIPMENTID",99],
   ["EQUIPMENT_SLOT%02d_INVENTORYID",99],
-  ["EQUIPMENT_STORAGEBOX%02d_DISPLAYID",99],
-  ["EQUIPMENT_STORAGEBOX%02d_DURABILITY",99],
-  ["EQUIPMENT_STORAGEBOX%02d_DURABILITY_ACCUMULATEDHITS",99],
-  ["EQUIPMENT_STORAGEBOX%02d_EQUIPTYPEID",99],
-  ["EQUIPMENT_STORAGEBOX%02d_HIGHQUANTITY",99],
-  ["EQUIPMENT_STORAGEBOX%02d_LOWQUANTITY",99],
+  ["EQUIPMENT_STORAGEBOX%02d_DISPLAYID",2047],
+  ["EQUIPMENT_STORAGEBOX%02d_DURABILITY",2047],
+  ["EQUIPMENT_STORAGEBOX%02d_DURABILITY_ACCUMULATEDHITS",2047],
+  ["EQUIPMENT_STORAGEBOX%02d_EQUIPTYPEID",2047],
+  ["EQUIPMENT_STORAGEBOX%02d_HIGHQUANTITY",2047],
+  ["EQUIPMENT_STORAGEBOX%02d_LOWQUANTITY",2047],
   ["MIRACLES_EQUIPPED%02d",99],
   ["SPELLS_EQUIPPED%02d",99],
   ["TENDENCY_WORLD%02d_BLACKWHITE",99],
@@ -2994,10 +2994,11 @@ const BOX_PARTS = ["EQUIPTYPEID","LOWQUANTITY","HIGHQUANTITY","DISPLAYID","DURAB
 const PART_TYPES = {QUANTITY:T.RAW4, LOWQUANTITY:T.U8, HIGHQUANTITY:T.U8};
 const catOf = value => CAT_BITS[value >>> 28] || null;
 const pad2 = i => String(i).padStart(2,"0");
-const FAMILY_KEYS = new Map();               // "prefix|part" -> 100 precomputed keys
+const BOX_MAX = 2048;                        // inventory / storage entries looked up (des_fields.BOX_LAST + 1)
+const FAMILY_KEYS = new Map();               // "prefix|part" -> precomputed keys
 function familyKeys(prefix, part){
   const id = prefix + "|" + part;
-  if (!FAMILY_KEYS.has(id)) FAMILY_KEYS.set(id, Array.from({length:100}, (_, i) => nameKey(`${prefix}${pad2(i)}_${part}`)));
+  if (!FAMILY_KEYS.has(id)) FAMILY_KEYS.set(id, Array.from({length:BOX_MAX}, (_, i) => nameKey(`${prefix}${pad2(i)}_${part}`)));
   return FAMILY_KEYS.get(id);
 }
 function familyEntries(s, prefix, parts){
@@ -3005,7 +3006,7 @@ function familyEntries(s, prefix, parts){
   if (!s._families || s._families.revision !== s.revision) s._families = {revision:s.revision, rows:new Map()};
   if (s._families.rows.has(cacheKey)) return s._families.rows.get(cacheKey);
   const keys = parts.map(part => familyKeys(prefix, part)), rows = [];
-  for (let i = 0; i < 100; i++){
+  for (let i = 0; i < BOX_MAX; i++){
     const fields = {}; let ambiguous = false;
     parts.forEach((part, p) => {
       const found = (s.byKey.get(keys[p][i]) || []).filter(f => !f.isContainer);

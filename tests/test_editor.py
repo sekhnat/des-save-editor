@@ -214,6 +214,26 @@ class SyntheticBrowserTests(unittest.TestCase):
           return inventoryRows(current().save)[1].quantity === 32;
         }'''))
 
+    def test_entries_past_index_99_count_and_export(self):
+        k = des_save.name_key
+        i32 = lambda v: (v & 0xFFFFFFFF).to_bytes(4, 'little')
+        total = 150
+        records = [des_save.Field(k('EQUIPMENT_INVENTORY_COUNT'), des_save.T_I32, i32(total))]
+        for n in range(total):
+            p = f'EQUIPMENT_INVENTORY{n:02d}_'
+            records += [des_save.Field(k(p + part), des_save.T_I32, i32(value)) for part, value in
+                        (('INDEX', n), ('TYPE', 0x40000000), ('EQUIPID', 1001), ('VARIATIONID', n),
+                         ('DISPLAYID', 0), ('DURABILITY_CURRENT', 0), ('DURABILITY_ACCUMULATEDHITS', 0))]
+            records.append(des_save.Field(k(p + 'QUANTITY'), des_save.T_RAW4, (n + 1).to_bytes(4, 'little')))
+        self.load_bytes(self.build(records))
+        self.assertTrue(self.page.evaluate('''() => {
+          if (inventoryRows(current().save).length !== 150) return false;
+          if (diagnostics().some(d => d[0] === "err")) return false;
+          editCandidate(t => setInvQuantity(t, 120, 55));
+          if (inventoryRows(current().save)[120].quantity !== 55) return false;
+          return !!validatedExport(current());
+        }'''))
+
     def test_dirty_state_is_cached_per_revision(self):
         sf = des_save.SaveFile()
         sf.records = [des_save.Field(1, des_save.T_U8, b'\x00')]

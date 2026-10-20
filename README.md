@@ -171,7 +171,8 @@ Applying an invalid dump never discards existing edits or modifies undo history.
 any string the game ships is a candidate. `tools/build_keydb.py` hashes the
 printable strings of the executable, the prefab files (`scripts/**/*.cgpr`,
 `ui/scripts`), `misc/` and the param definitions, and expands the executable's
-printf templates (`Equipment_Inventory%02d_EquipId` → `…00_…` to `…99_…`). It
+printf templates (`Equipment_Inventory%02d_EquipId` → `…00_…` to `…99_…`; inventory and
+storage names continue to `…2047_…`, the original game's 0x800-entry capacity). It
 prints every match with the types and values seen in your saves. A match is a
 candidate until its type and values fit; nothing is accepted automatically.
 The accepted names live in `des_fields.py`, which also generates the page's
