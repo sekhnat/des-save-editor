@@ -23,13 +23,13 @@ from des_save import (Field, T_BLOB, T_BOOL, T_F32, T_I32, T_U16, T_U8,
                       name_key)
 import des_fields
 import des_items
+import des_world
 
 M = 0xFFFFFFFF
 P = 0x01000193
 P_INV = pow(P, -1, 1 << 32)
 DIGITS = '0123456789'
 EMPTY = -1                     # observed "empty slot" sentinel in i32 arrays
-BLOB_HEADER = 16               # u32 version, u32 count, 8-byte signature
 
 
 # --------------------------------------------------------------------------- #
@@ -236,55 +236,21 @@ def clear_slot(sf, state: int, char: str) -> Field:
 # --------------------------------------------------------------------------- #
 #  Blob containers
 # --------------------------------------------------------------------------- #
-def blob_header(raw: bytes) -> dict | None:
-    """Decode the 16-byte header shared by the large opaque containers."""
-    if len(raw) < BLOB_HEADER:
-        return None
-    version = int.from_bytes(raw[0:4], 'little')
-    count = int.from_bytes(raw[4:8], 'little')
-    signature = raw[8:16]
-    if version != 3:
-        return None
-    return {'version': version, 'count': count,
-            'signature': signature.hex(), 'size': len(raw)}
-
-
-def blob_records(raw: bytes) -> list[dict]:
-    """Extract the embedded ``tag / type / key / value`` records, if present.
-
-    These carry the same FNV keys as the outer save, so they can be named or
-    diffed, but the dense payload around them is not decoded.
-    """
-    found = []
-    needle = (9).to_bytes(4, 'little')
-    start = BLOB_HEADER
-    while True:
-        at = raw.find(needle, start)
-        if at < 0:
-            break
-        start = at + 1
-        if at < 4 or at + 13 > len(raw):      # tag, type, key, value byte + int32
-            continue
-        tag = int.from_bytes(raw[at - 4:at], 'little')
-        key = int.from_bytes(raw[at + 4:at + 8], 'little')
-        vtype = raw[at + 8]
-        if tag != 7 or vtype != 0x08:
-            continue
-        value = int.from_bytes(raw[at + 9:at + 13], 'little', signed=True)
-        found.append({'offset': at - 4, 'key': key, 'value': value,
-                      'name': des_fields.field_name(key)})
-    return found
-
-
 def blobs(sf) -> list[dict]:
-    """Every blob in the save, with header fields and embedded records."""
+    """Every blob in the save; world-state containers are summarised.
+
+    See :mod:`des_world` for the world-state framing.  Other blobs stay opaque.
+    """
     rows = []
     for field, _ in sf.walk():
         if field.type != T_BLOB:
             continue
-        header = blob_header(field.raw)
+        groups = des_world.decode(field.raw)
+        world = None
+        if groups is not None and any(group.entries for group in groups):
+            listed = [entry for _, _, entry in des_world.entries(groups)]
+            world = {'groups': len(groups), 'entries': len(listed),
+                     'parsed': sum(entry.records is not None for entry in listed)}
         rows.append({'key': field.key, 'name': des_fields.field_name(field.key),
-                     'offset': field.offset, 'size': len(field.raw),
-                     'header': header,
-                     'records': blob_records(field.raw) if header else []})
+                     'offset': field.offset, 'size': len(field.raw), 'world': world})
     return sorted(rows, key=lambda row: -row['size'])

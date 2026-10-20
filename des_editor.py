@@ -342,7 +342,7 @@ def cmd_arrays(path: str, as_json: bool) -> int:
 
 
 def cmd_blobs(path: str) -> int:
-    """Describe every blob, including the versioned container header."""
+    """Describe every blob; world-state containers are summarised."""
     sf = des_save.load(path)
     rows = des_arrays.blobs(sf)
     total = sum(row['size'] for row in rows)
@@ -351,14 +351,92 @@ def cmd_blobs(path: str) -> int:
     for row in rows:
         name = row['name'] or f"<{row['key']:08x}>"
         print(f"\n  {name:<28} {row['size']:>7} B  @0x{row['offset']:05x}")
-        header = row['header']
-        if header:
-            print(f"      container v{header['version']}  count {header['count']}  "
-                  f"signature {header['signature']}")
-            print(f"      {len(row['records'])} embedded typed record(s)")
-            for record in row['records'][:8]:
-                print(f"        0x{record['key']:08x} "
-                      f"{record['name'] or '<unnamed>':<26} = {record['value']}")
+        world = row['world']
+        if world:
+            print(f"      world state: {world['groups']} group(s), {world['entries']} "
+                  f"entit{'y' if world['entries'] == 1 else 'ies'}, "
+                  f"{world['parsed']} decoded (see the world command)")
+    return 0
+
+
+def _world_value(record: dict) -> str:
+    value = record['value']
+    if isinstance(value, dict):
+        return f"blob[{value['size']}] {value['hex'][:24]}"
+    if isinstance(value, list):
+        return f"container({len(value)})"
+    if isinstance(value, float):
+        return f"{value:.4g}"
+    return str(value)
+
+
+def cmd_world(path: str, as_json: bool, group: int | None, text: str | None) -> int:
+    """List world-state entities and their decoded records."""
+    import des_world
+    sf = des_save.load(path)
+    index = des_world.default_index()
+    found = des_world.world_blobs(sf)
+    if not found:
+        print(f"{path}\n  no world-state container in this file")
+        return 0
+    needle = (text or '').lower()
+    out = []
+    for blob, groups in found:
+        rows = des_world.describe(groups, index)
+        if group is not None:
+            rows = [row for row in rows if row['group'] == group]
+        if needle:
+            rows = [row for row in rows if needle in json.dumps(row).lower()]
+        out.append({'blob': f"{blob.key:08x}", 'offset': blob.offset,
+                    'groups': len(groups), 'entries': rows})
+    if as_json:
+        print(json.dumps(out, indent=2))
+        return 0
+    print(path)
+    if index is None:
+        print("  (entitydb.bin not found: entities are shown by GUID only)")
+    for blob in out:
+        print(f"\n  world-state blob {blob['blob']}: {blob['groups']} group(s), "
+              f"{len(blob['entries'])} entr{'y' if len(blob['entries']) == 1 else 'ies'} shown")
+        current = None
+        for row in blob['entries']:
+            if row['group'] != current:
+                current = row['group']
+                print(f"\n  group {current}")
+            entity = row['entity'] or ''
+            print(f"    {row['guid']}  kind {row['kind']:<3} {row['size']:>6} B  {entity}")
+            if 'raw' in row:
+                print(f"        (not a record stream; kept raw) {row['raw'][:48]}")
+                continue
+            for record in row['records']:
+                label = record['name'] or f"<{record['key']}>"
+                print(f"        {record['key']}  {label:<34} = {_world_value(record)}")
+    return 0
+
+
+def cmd_wset(path: str, guid: str, assignments: list[str], occurrence: int,
+             out: str | None) -> int:
+    """Experimental same-size edit of scalar records inside one world entity."""
+    import des_world
+    sf = des_save.load(path)
+    found = des_world.world_blobs(sf)
+    if not found:
+        raise ValueError('no world-state container in this file')
+    blob = found[0][0]
+    entity = des_world.parse_guid(guid)
+    for item in assignments:
+        name, sep, text = item.partition('=')
+        if not sep:
+            raise ValueError(f'bad assignment {item!r} (expected KEY=VALUE)')
+        key = int(name, 16) if name.lower().startswith('0x') else name_key(name.strip())
+        value = float(text) if any(c in text for c in '.eE') and not text.lower().startswith('0x') else int(text, 0)
+        blob.raw = des_world.set_value(blob.raw, entity, key, value, occurrence)
+        print(f"  {entity.hex()} {name} -> {value}")
+    dest = out or path
+    if os.path.abspath(dest) == os.path.abspath(path):
+        _backup(path)
+    des_save.save(sf, dest)
+    print(f"  wrote {dest}")
     return 0
 
 
@@ -516,8 +594,22 @@ def main(argv: list[str]) -> int:
     p.add_argument("--clear", action="append", default=[], metavar="CHAR")
     p.add_argument("--out")
 
-    p = sub.add_parser("blobs", help="describe each opaque blob and its container header")
+    p = sub.add_parser("blobs", help="describe each blob; world-state containers are summarised")
     p.add_argument("file")
+
+    p = sub.add_parser("world", help="list world-state entities and their records")
+    p.add_argument("file")
+    p.add_argument("--json", action="store_true", dest="as_json")
+    p.add_argument("--group", type=int)
+    p.add_argument("--filter", dest="text", help="only entries whose GUID, entity, key or name contains TEXT")
+
+    p = sub.add_parser("wset", help="experimental same-size edit of a world-state record")
+    p.add_argument("file")
+    p.add_argument("guid", help="entity GUID, 32 hex digits as the world command prints it")
+    p.add_argument("assignments", nargs="+", metavar="KEY=VALUE")
+    p.add_argument("--occurrence", type=int, default=0, help="n-th record with that key (default 0)")
+    p.add_argument('--experimental', action='store_true', help='acknowledge that world-state meanings are unverified')
+    p.add_argument("--out")
 
     p = sub.add_parser("diff", help="record-level delta between two saves")
     p.add_argument("before")
@@ -527,6 +619,8 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv)
     if a.cmd == 'inv' and not a.experimental:
         ap.error('inv requires --experimental: observed u16 values are not a verified full inventory')
+    if a.cmd == 'wset' and not a.experimental:
+        ap.error('wset requires --experimental: world-state record meanings are unverified')
     if a.cmd == "info":   return cmd_info(a.file)
     if a.cmd == "list":   return cmd_list(a.file)
     if a.cmd == "tree":   return cmd_tree(a.file)
@@ -540,6 +634,8 @@ def main(argv: list[str]) -> int:
     if a.cmd == "arrays":   return cmd_arrays(a.file, a.as_json)
     if a.cmd == "aslot":    return cmd_aslot(a.file, a.state, a.sets, a.clear, a.out)
     if a.cmd == "blobs":    return cmd_blobs(a.file)
+    if a.cmd == "world":    return cmd_world(a.file, a.as_json, a.group, a.text)
+    if a.cmd == "wset":     return cmd_wset(a.file, a.guid, a.assignments, a.occurrence, a.out)
     if a.cmd == "diff":     return cmd_diff(a.before, a.after, a.as_json)
     if a.cmd == "selftest": return cmd_selftest(a.paths)
     if a.cmd == "fields":   return cmd_fields()

@@ -11,15 +11,131 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SAVES = Path(os.environ.get('DES_SAVE_DIR', ROOT.parent / '_SaveData' / 'PPSA01341'))
 HAVE_SAVES = any(SAVES.glob('*/USR-DATA'))
+GAME = Path(os.environ.get('DES_GAME_DIR', ROOT.parent / 'PPSA01342-app'))
+HAVE_GAME = (GAME / 'misc/cachedsavedata').is_dir()
 sys.path.insert(0, str(ROOT))
 import des_save as save
 import des_items as items
 import des_arrays as arrays
 import des_diff as diff
+import des_world as world
 
 spec = importlib.util.spec_from_file_location('build_itemdb', ROOT / 'tools/build_itemdb.py')
 builder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(builder)
+
+
+GUID_A = bytes.fromhex('b13668dff82e7044840eea38f10b0286')
+GUID_B = bytes.fromhex('ca79214aa62b1a4cb67a4ab427a13259')
+GUID_C = bytes.fromhex('668f4b49e8017852b0ef502ef9baaa72')
+
+
+def entry(guid, payload, kind=7):
+    return guid + struct.pack('<II', kind, len(payload)) + payload
+
+
+def record(key, ftype, raw):
+    return struct.pack('<IB', key, ftype) + raw
+
+
+def world_blob():
+    """Two groups: two decodable entries, then one entry kept raw."""
+    first = (record(0xE02849CE, save.T_I32, (0).to_bytes(4, 'little'))
+             + record(0x0D935360, save.T_BOOL, b'\x01'))
+    second = record(0xE9EB7C2A, save.T_U16, b'\x05\x00')
+    unknown = struct.pack('<IB', 0x11223344, 0x10) + b'\xaa\xbb'
+    return (struct.pack('<II', 3, 2) + entry(GUID_A, first) + entry(GUID_B, second, 8)
+            + struct.pack('<II', 3, 1) + entry(GUID_C, unknown, 13))
+
+
+class WorldTests(unittest.TestCase):
+    """World-state framing: strict decode, exact rebuild, same-size edits."""
+
+    def test_decode_and_exact_rebuild(self):
+        raw = world_blob()
+        groups = world.decode(raw)
+        self.assertEqual([2, 1], [len(group.entries) for group in groups])
+        listed = [entry for _, _, entry in world.entries(groups)]
+        self.assertEqual([GUID_A, GUID_B, GUID_C], [entry.guid for entry in listed])
+        self.assertEqual([7, 8, 13], [entry.kind for entry in listed])
+        self.assertEqual([0xE02849CE, 0x0D935360], [r.key for r in listed[0].records])
+        self.assertIsNone(listed[2].records)
+        self.assertEqual(raw, world.encode(groups))
+
+    def test_malformed_framing_is_left_opaque(self):
+        raw = world_blob()
+        bad = [raw[:-1], raw + b'\0', b'\x04' + raw[1:], raw[:4] + b'\xff\xff\x00\x00' + raw[8:],
+               b'', b'\x03\0\0\0', raw[:8] + raw[8:24] + b'\x07\0\0\0\xff\xff\xff\x7f']
+        for data in bad:
+            with self.subTest(data=data[:12].hex()):
+                self.assertIsNone(world.decode(data))
+
+    def test_set_value_changes_exactly_one_value(self):
+        raw = world_blob()
+        edited = world.set_value(raw, GUID_A, 0xE02849CE, 1)
+        self.assertEqual(len(raw), len(edited))
+        self.assertEqual(1, sum(a != b for a, b in zip(raw, edited)))
+        self.assertEqual(1, world.decode(edited)[0].entries[0].records[0].value)
+        self.assertEqual(7, world.decode(world.set_value(raw, GUID_B, 0xE9EB7C2A, 7))[0].entries[1].records[0].value)
+
+    def test_set_value_refuses_what_it_cannot_do_safely(self):
+        raw = world_blob()
+        for args in ((GUID_A, 0x0D935360, 2),            # bool outside 0/1
+                     (GUID_B, 0xE9EB7C2A, 65536),        # u16 overflow
+                     (GUID_B, 0xE9EB7C2A, 1.5),          # fractional integer
+                     (GUID_A, 0xE02849CE, 1, 1),         # occurrence that does not exist
+                     (GUID_C, 0x11223344, 1),            # raw entry
+                     (GUID_A, 0x99999999, 1)):           # unknown key
+            with self.subTest(args=args):
+                with self.assertRaises(ValueError):
+                    world.set_value(raw, *args)
+        with self.assertRaises(ValueError):
+            world.set_value(b'\x01' * 16, GUID_A, 0xE02849CE, 1)
+
+    def test_world_diff_reports_the_changed_entity_record(self):
+        before = save.SaveFile()
+        before.records = [save.Field(0x6D87F588, save.T_BLOB, world_blob())]
+        after = save.SaveFile(before.build())
+        after.records[0].raw = world.set_value(after.records[0].raw, GUID_A, 0xE02849CE, 1)
+        delta = diff.compare(save.SaveFile(before.build()), save.SaveFile(after.build()))['world']
+        self.assertEqual([(GUID_A.hex(), 0xE02849CE, '0', '1')],
+                         [(r['guid'], r['key'], r['before'], r['after']) for r in delta['changed']])
+        self.assertEqual([], delta['added_entities'])
+
+    def test_cli_wset_needs_experimental_and_writes_a_valid_save(self):
+        import des_editor
+        sf = save.SaveFile()
+        sf.records = [save.Field(0x6D87F588, save.T_BLOB, world_blob())]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'USR-DATA'
+            path.write_bytes(sf.build())
+            with self.assertRaises(SystemExit):
+                des_editor.main(['wset', str(path), GUID_A.hex(), '0xe02849ce=1'])
+            self.assertEqual(0, des_editor.main(['wset', str(path), GUID_A.hex(), '0xe02849ce=1',
+                                                 '--experimental']))
+            again = save.SaveFile(path.read_bytes())
+            self.assertTrue(again.checksum_ok())
+            self.assertEqual(1, world.decode(again.records[0].raw)[0].entries[0].records[0].value)
+
+    @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')
+    def test_real_world_blobs_decode_and_rebuild(self):
+        for path in SAVES.glob('*PlayerProfile*/USR-DATA'):
+            with self.subTest(path=path):
+                found = world.world_blobs(save.SaveFile(path.read_bytes()))
+                self.assertEqual([0x6D87F588], [blob.key for blob, _ in found])
+                for blob, groups in found:
+                    self.assertEqual(blob.raw, world.encode(groups))
+                    self.assertEqual(4, len(groups))
+
+    @unittest.skipUnless(HAVE_GAME, 'no game files (set DES_GAME_DIR to run this)')
+    def test_game_baseline_files_use_the_same_framing(self):
+        files = sorted((GAME / 'misc/cachedsavedata').glob('*.txt'))
+        self.assertGreater(len(files), 100)
+        for path in files:
+            raw = path.read_bytes()
+            groups = world.decode(raw)
+            self.assertIsNotNone(groups, path.name)
+            self.assertEqual(raw, world.encode(groups), path.name)
 
 
 class SaveTests(unittest.TestCase):
@@ -198,15 +314,13 @@ class StructureTests(unittest.TestCase):
                 call()
         self.assertEqual(before, sf.build())
 
-    def test_blob_header_and_embedded_records(self):
-        head = (3).to_bytes(4, 'little') + (188).to_bytes(4, 'little') + bytes.fromhex('b13668dff82e7044')
-        self.assertEqual({'version': 3, 'count': 188, 'signature': 'b13668dff82e7044',
-                          'size': 16}, arrays.blob_header(head))
-        self.assertIsNone(arrays.blob_header(b'\x01' * 16))
-        record = ((7).to_bytes(4, 'little') + (9).to_bytes(4, 'little')
-                  + (0x11223344).to_bytes(4, 'little') + b'\x08' + (5).to_bytes(4, 'little', signed=True))
-        self.assertEqual([{'offset': 16, 'key': 0x11223344, 'value': 5, 'name': None}],
-                         arrays.blob_records(head + record))
+    def test_blobs_summarise_world_state(self):
+        sf = save.SaveFile()
+        sf.records = [save.Field(0x6D87F588, save.T_BLOB, world_blob()),
+                      save.Field(0x1234, save.T_BLOB, b'\x01' * 16)]
+        rows = {row['key']: row for row in arrays.blobs(self.parsed(sf))}
+        self.assertEqual({'groups': 2, 'entries': 3, 'parsed': 2}, rows[0x6D87F588]['world'])
+        self.assertIsNone(rows[0x1234]['world'])
 
     def test_diff_of_a_save_with_itself_is_empty(self):
         sf = self.parsed(self.array_save([1, 2, 3]))

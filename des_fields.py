@@ -141,6 +141,16 @@ for _name, _kind, _label, _lo, _hi, _help in _DEFS:
 BY_NAME = {v["name"]: v for v in FIELDS.values()}
 
 
+# Keys that occur inside world-state entries (see des_world.py), not at the
+# top level of the save. key -> name.
+WORLD_NAMES: list[str] = []
+WORLD_KEYS: dict[int, str] = {name_key(name): name for name in WORLD_NAMES}
+
+
+def world_name(key: int) -> str | None:
+    return WORLD_KEYS.get(key)
+
+
 def lookup(key: int) -> dict | None:
     return FIELDS.get(key)
 

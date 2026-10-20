@@ -18,6 +18,7 @@ import collections
 
 import des_fields
 import des_save
+import des_world
 
 M = 0xFFFFFFFF
 P = 0x01000193
@@ -70,6 +71,60 @@ def _arrays(records) -> list[dict]:
         kept.append({'state': state, 'keys_set': keys, 'keys': sorted(keys)})
     return [{key: value for key, value in group.items() if key != 'keys_set'}
             for group in kept]
+
+
+def world_index(sf) -> tuple[dict, dict]:
+    """World-state records keyed by (GUID, key, occurrence within that entity).
+
+    Returns (records, raw_entries): decoded records, and the payload of entries
+    that are kept raw, keyed by GUID.  Entities are matched by GUID, so an entity
+    appearing elsewhere in the blob is not reported as changed.
+    """
+    records: dict[tuple[str, int, int], des_save.Field] = {}
+    raw: dict[str, bytes] = {}
+    for _, groups in des_world.world_blobs(sf):
+        seen: dict[tuple[str, int], int] = {}
+        for _, _, entry in des_world.entries(groups):
+            guid = entry.guid_hex
+            if entry.records is None:
+                raw[guid] = entry.payload
+                continue
+            for record in des_world._walk(entry.records):
+                if record.type == des_save.T_CONTAINER:
+                    continue
+                occurrence = seen.get((guid, record.key), 0)
+                seen[guid, record.key] = occurrence + 1
+                records[guid, record.key, occurrence] = record
+    return records, raw
+
+
+def compare_world(before, after) -> dict:
+    """Entity-level delta inside the world-state containers."""
+    left, left_raw = world_index(before)
+    right, right_raw = world_index(after)
+    left_guids = {guid for guid, _, _ in left} | set(left_raw)
+    right_guids = {guid for guid, _, _ in right} | set(right_raw)
+
+    def row(identity, record, **extra):
+        guid, key, occurrence = identity
+        return {'guid': guid, 'key': key, 'occurrence': occurrence,
+                'name': des_world.record_name(key), **extra}
+
+    return {
+        'added_entities': sorted(right_guids - left_guids),
+        'removed_entities': sorted(left_guids - right_guids),
+        'added': [row(i, right[i], shape=_shape(right[i]))
+                  for i in sorted(set(right) - set(left))],
+        'removed': [row(i, left[i], shape=_shape(left[i]))
+                    for i in sorted(set(left) - set(right))],
+        'changed': [row(i, right[i], before=_shape(left[i]), after=_shape(right[i]))
+                    for i in sorted(set(left) & set(right))
+                    if left[i].type != right[i].type or left[i].raw != right[i].raw],
+        'changed_raw': sorted(guid for guid in set(left_raw) & set(right_raw)
+                              if left_raw[guid] != right_raw[guid]),
+    }
+
+
 def compare(before, after) -> dict:
     """Diff two parsed saves; both must be the same profile kind."""
     left = index(before)
@@ -81,9 +136,9 @@ def compare(before, after) -> dict:
                    or left[identity].raw != right[identity].raw)]
     return {
         'before': {'size': len(before.build()), 'records': len(left),
-                   'checksum_ok': before.checksum_ok},
+                   'checksum_ok': before.checksum_ok()},
         'after': {'size': len(after.build()), 'records': len(right),
-                  'checksum_ok': after.checksum_ok},
+                  'checksum_ok': after.checksum_ok()},
         'added': [{'key': key, 'occurrence': occurrence,
                    'name': des_fields.field_name(key),
                    'shape': _shape(right[(key, occurrence)])}
@@ -98,6 +153,7 @@ def compare(before, after) -> dict:
                      'after': _shape(right[(key, occurrence)])}
                     for key, occurrence in changed],
         'added_arrays': _arrays(added),
+        'world': compare_world(before, after),
     }
 
 
@@ -132,4 +188,16 @@ def summarise(delta: dict) -> str:
                 lines.append(f"  {name:<34} {row['shape']}")
             if len(rows) > 24:
                 lines.append(f"  ... {len(rows) - 24} more")
+    world = delta.get('world')
+    if world and any(world.values()):
+        lines.append('')
+        lines.append(f"world state: {len(world['added_entities'])} entities added, "
+                     f"{len(world['removed_entities'])} removed, {len(world['changed'])} "
+                     f"records changed, {len(world['added'])} added, "
+                     f"{len(world['removed'])} removed, {len(world['changed_raw'])} raw entries changed")
+        for item in world['changed'][:24]:
+            name = item['name'] or f"<{item['key']:08x}>"
+            lines.append(f"  {item['guid']}  {name:<30} {item['before']} -> {item['after']}")
+        if len(world['changed']) > 24:
+            lines.append(f"  ... {len(world['changed']) - 24} more")
     return '\n'.join(lines)
