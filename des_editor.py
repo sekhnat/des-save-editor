@@ -9,6 +9,8 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py set    <USR-DATA> PLAYER_SOULS=12345 PLAYER_CURRENTVITALITY=40
     python3 des_editor.py dump   <USR-DATA> out.json
     python3 des_editor.py patch  <USR-DATA> out.json --out <USR-DATA>
+    python3 des_editor.py items  <USR-DATA>          # inventory, storage, equipment
+    python3 des_editor.py world  <USR-DATA>          # world-state entities
 
 Writing always leaves a timestamped `.bak` copy next to the file and
 recomputes the FNV-1a checksum in the header, so the result is a valid save.

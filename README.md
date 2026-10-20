@@ -5,11 +5,14 @@ editor for the **version-7 decrypted `USR-DATA` files** of `PPSA01341`. No
 server, installation, game assets, or network access is needed to use the page.
 Its content-security policy blocks network requests.
 
-**Important:** the container can be parsed and rebuilt, but the game's entire
-save schema has **not** been decoded. A checksum-valid file is not necessarily
-a game-safe edit. Earlier claims that the full inventory was solved, that
-unmapped IDs were invalid, or that storage contents were absent were too strong.
-The editor now distinguishes observed structure from unverified interpretation.
+**Important:** the container can be parsed and rebuilt, and most of a played
+profile can now be named and read: character, options, inventory, storage box,
+equipment, spells, tendency and per-entity world state. A name recovered from a
+hash is still not proof of gameplay meaning, and a checksum-valid file is not
+necessarily a game-safe edit. Edits beyond the character form are experimental,
+opt-in and limited to values whose size never changes. Earlier versions offered
+the dead-enemy list as an "experimental inventory"; that was wrong (see
+*Dead enemies, not inventory* below).
 
 ## Quick start
 
@@ -41,17 +44,19 @@ A browser download request cannot prove that the download actually completed.
 
 | View | What it provides |
 |---|---|
-| **Editor** | Character, souls, base/current attributes, vitals, resistance, records, options, and coverage warnings |
+| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells and tendency, records, options, coverage warnings; inventory, storage box and equipment slots; recovered arrays |
 | **All fields** | Named and unknown records, strict scalar/text/hex editing, filtering, 100 records per page |
 | **Tree** | Container hierarchy and absolute file offsets, 200 records per page |
-| **Field reference** | All 62 recovered names, hashes, descriptions, and values in the active file |
+| **World state** | Every world-state entity with its level and defining game file, named records, filtering, 200 per page; opt-in same-size edits |
+| **Field reference** | The 78 named fields with editor metadata, hashes, descriptions and values in the active file. A further 12,600 indexed family names and 19 world-state names label records in the other views |
 | **Item catalog** | All 2,291 category-scoped entries, including wide weapon/armor IDs, spells, and skills |
 | **Changes** | Before/after comparison with the immutable original; export conflict-checked scalar patches |
 | **JSON / patches** | Full dump, file import/export, plain field maps, and path-based patches |
 
 Large binary fields open in a separate inspector instead of being converted to
 huge hidden text inputs. The inspector supports strict hex edits and exact
-binary download/import. It does **not** interpret unknown blob formats.
+binary download/import. It does **not** interpret unknown blob formats; the
+world-state container has its own view.
 
 Undo/redo groups typing within a focused field, creates no history entry merely
 for focusing, and preserves redo until an actual edit. History is limited to
@@ -89,20 +94,27 @@ Applying an invalid dump never discards existing edits or modifies undo history.
 
 ## Coverage and important limits
 
-- **Known character fields:** name, archetype ID, gender flag, character slot,
+- **Known character fields:** name, class, gender flag, character slot,
   souls/lifetime souls, all eight base/current attributes, HP/MP/stamina,
   recovery values, resistances, playtime, death/kill/clear counters and several
-  flags. Hash matches establish candidate names, not every gameplay meaning.
+  flags. Hash matches establish names, not every gameplay meaning.
 - **Estimated soul level:** `sum(eight current attributes) - 80` (99 in every
   attribute gives 712). No independently identified soul-level field is edited.
-  The previous `sum - 79` formula was off by one.
+  The developers' loadout scripts confirm the formula: all 77 premade files
+  named `_slNNN` have base stats summing to NNN + 80.
 - **Playtime:** milliseconds; `3,600,000` is one hour.
-- **Archetypes:** numeric IDs are editable, but class-name ordering is not
-  verified. The page no longer presents an inferred mapping as fact.
+- **Classes:** archetype N is `CharaInitParam` row 1000+N. The rows carry no
+  name, so each is identified by its starting weapon (Broadsword → Soldier,
+  Long Sword → Knight, Battle Axe → Hunter, Mace → Priest, Short Sword →
+  Magician, Falchion → Wanderer, Club → Barbarian, Dagger → Thief, Halberd →
+  Temple Knight, Rapier → Royalty). Both samples are archetype 9: the fresh
+  character carries row 1009's exact base stats, and every attribute the others
+  never levelled still matches it. One class has been observed in saves.
 - **Options:** recognized settings have forms; every other record remains
-  available in All fields and JSON. Two further settings were recovered by
-  hashing bare names against the executable's string table: `AUTOLOCK`
-  (boolean, true here) and `CAMERASHAKE` (float, 1.0 here).
+  available in All fields and JSON. Settings recovered from the game's strings
+  include `AUTOLOCK`, `CAMERASHAKE`, `ADAPTIVETRIGGERS`, `AUTOEQUIPNEWITEMS`,
+  `HUDBACKING`, `SUBTITLEBACKING`, `MIDNIGHTMODE`, `RENDERCONFIG` and `MAPUID`;
+  the type and value of each fit a setting, but their effects are not verified.
 - **Inventory, storage box and equipment:** decoded from named records
   (`EQUIPMENT_INVENTORY##_*`, `EQUIPMENT_STORAGEBOX##_*`, `EQUIPMENT_SLOT##_*`),
   whose names come from printf templates in the game executable. The top four
@@ -115,7 +127,9 @@ Applying an invalid dump never discards existing edits or modifies undo history.
   (1–999) and durability, and the storage low-quantity byte (1–255), as
   same-size edits. Adding or removing items and changing item IDs are not
   offered: the roles of `_DISPLAYID` and `_VARIATIONID` are not verified. The
-  `_COUNT` fields are read-only in the form.
+  `_COUNT` fields are read-only in the form. Stack and durability maxima from
+  the equip PARAMs (`maxQuantity`, `maxStorageQuantity`, `durabilityMax`) are
+  shown as hints and not enforced; the samples' durabilities sit at or below them.
 - **Dead enemies, not inventory.** The u16 records once offered as an
   "experimental inventory" are `DEADENEMIES_INDICES####` followed by
   `DEADENEMIES_COUNT` (key `CC62FF39`). The measured key of the first record
@@ -135,6 +149,13 @@ Applying an invalid dump never discards existing edits or modifies undo history.
   `TENDENCY_WORLD##_BLACKWHITE/LEFTRIGHT` floats (observed −180 to 180).
 - **Character-creator presets:** `CCSLOT_{GENDER,ANIMTYPE,VOICETYPE,FACEDATA}_##`
   in five slots; face data is an opaque blob.
+- **World state:** the largest blob (key `6d87f588`) holds per-entity
+  records keyed by entity GUIDs from the game's prefab files: archstones, boss
+  loot, broken objects, chains, statues, moved objects' transforms. 431 of 437
+  entities in the larger sample are labelled with their level and file. Names
+  such as `BOSS_LOOT_VISIBLE` or `O2110_0000_CHAINS_BOL_SAVE` come from the
+  game's own strings; what changing them does in game is not verified, so
+  world edits are opt-in, same-size and experimental.
 - **What "append-only" means here.** A longer-played character held all 320
   records of a fresh one plus 706 more, and no record was missing. The save
   therefore accumulates records, which is why a before/after pair of the *same*
@@ -144,10 +165,17 @@ Applying an invalid dump never discards existing edits or modifies undo history.
 - Browser safety bounds: 16 MiB per save, 100,000 records, 64 container levels,
   32 loaded profiles, 64 MiB loaded originals/bundle. These are editor bounds.
 
-## Recovered structures
+## How names and structures were recovered
 
-Two independent techniques recover structure without knowing a single field
-name, and both are implemented in `des_arrays.py` and in the page.
+**Names from the game files.** Every key is FNV-1a 32 of an uppercase name, so
+any string the game ships is a candidate. `tools/build_keydb.py` hashes the
+printable strings of the executable, the prefab files (`scripts/**/*.cgpr`,
+`ui/scripts`), `misc/` and the param definitions, and expands the executable's
+printf templates (`Equipment_Inventory%02d_EquipId` → `…00_…` to `…99_…`). It
+prints every match with the types and values seen in your saves. A match is a
+candidate until its type and values fit; nothing is accepted automatically.
+The accepted names live in `des_fields.py`, which also generates the page's
+table (`tools/embed_fields.py`).
 
 **Fixed-slot arrays by hash inversion.** A member key is
 `(state ^ ord(suffix_character)) * 0x01000193`, so multiplying the observed key
@@ -161,37 +189,74 @@ way before their names were recovered from the executable.
 The suffix character is only defined up to an XOR of the whole alphabet, so the
 labelling is canonicalised to `0,1,2,...` and then to the smallest matching
 state; Python and the browser return identical results on every sample.
+Canonical letters do not follow the game's index order (slot `'0'` of
+`TROPHIES_RING##` is `TROPHIES_RING06`), so listings also show each member's
+real field name.
 
 **Slot ordering matters.** The four u16 dead-enemy chunks do not label their slots with
 plain digits: chunks 0 and 2 sit one below the plain prefix, so their characters
 run `1,0,3,2,5,4,7,6,9,8`. The 40-key *set* is unchanged, but the index-to-key
 map was wrong before this was measured, which meant "slot 0" addressed slot 1.
-`slot_key(0)` is now `0x582724E7`, the first record in file order.
+`slot_key(0)` is now `0x582724E7`, the first record in file order; it hashes to
+`DEADENEMIES_INDICES0000`.
 
-**Versioned blob containers.** The large opaque containers start with a 16-byte
-header: `u32` version (3), `u32` count, then an 8-byte signature
-`b13668df f82e7044`. The 239 KB container in the larger sample reports
-`count 188`; the 296-byte one in the fresh character reports `count 2`. The
-bodies also carry embedded `tag 7 / type 9 / key / int32` records that use the
-same FNV key space, and those are listed in the `blobs` command. The rest of the
-payload is dense (about 7.3 bits/byte, all 256 byte values present) with **no
-compression and no encryption** — zlib/deflate fails at every offset and the
-byte distribution is far from what either would produce. It is not a
-fixed-stride table either: no periodicity from 16 to 256 bytes.
+**World state.** Blob `6d87f588` is a sequence of groups,
+`u32 version (3) | u32 count | count × entry`, and each entry is
+`16-byte entity GUID | u32 kind | u32 length | typed record stream`. The record
+streams use the same format and key space as the outer save. The 8 bytes once
+reported as a container "signature" (`b13668df f82e7044`) are the first half of
+the archstone entity's GUID. Every sample blob and all 166 baseline files the
+game ships in `misc/cachedsavedata/` decode and rebuild byte-identically.
+Entries that are not a record stream (an unknown type `0x10`, header-only
+containers) keep their raw bytes. Kinds 7, 8 and 13 are preserved without
+interpretation.
+
+**Entity index.** `tools/build_entitydb.py` finds 499,123 GUIDs in the
+prefab files, from index tables (`u32 n, GUID` runs) and reference structs
+(`GUID, 8 bytes, 01, u32, FF FF FF FF, 00`, version and variant checked), plus
+the baseline files. It maps each GUID to its defining file and each world
+folder to a level label voted from `misc/dspointsofinterest.txt`. The result,
+`entitydb.bin` (2.6 MiB), is embedded in the page and decoded only when the
+World state view first opens.
+
+**Param definitions.** `des_gamedata.py` reads the PARAMDEFs (0xB0-byte field
+records with byte sizes and bit fields) and decodes PARAM rows through them,
+but only when a definition accounts for exactly the PARAM row stride: 29 of 32
+tables qualify, and NpcParam, AtkParam and Magic, whose rows the remaster
+extended, are refused. Catalog schema 3 takes the classes and the item limits
+from them.
+
+**Loadouts.** `tools/parse_loadouts.py` reads the developers' 235 automation
+scripts in `misc/loadouts/`. 6,424 of the IDs they add or equip resolve in the
+catalog under the matching category (two do not: Official Cap and Moon Mace).
+The packaged game does not appear to apply loadouts, so they are reference data,
+not a way to create test saves.
 
 **Differential harness.** `des_diff.py` compares two saves record by record,
 using `(key, occurrence)` identity so an insertion elsewhere never renumbers
 anything, and reports added/removed/changed records plus any new digit-suffixed
-array that appears among the added keys. This is the tool that turns a save pair
-into evidence; tendency, equipment and spells will be identified with it, not
-with more dictionaries.
+array that appears among the added keys. Inside world-state containers it
+compares by `(GUID, key, occurrence)`, so a changed flag is reported against its
+entity instead of as "blob changed".
+
+### Identifying a field
+
+1. Back up the save. Load it in Kyty, change **one** thing in game (pick up an
+   item, touch an archstone, open a door), and save.
+2. `python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA`
+3. Read the changed records and world entities. Run
+   `python3 tools/build_keydb.py GAME --save AFTER/USR-DATA` to try names for
+   any key that is still unnamed, and look the entity GUID up with
+   `python3 des_editor.py world AFTER/USR-DATA --filter GUID`.
+4. Record the name in `des_fields.py` (or `WORLD_NAMES`), run
+   `tools/embed_fields.py`, and add a test.
 
 ## Command line
 
 Python's standard library is sufficient:
 
 ```bash
-python3 des_editor.py selftest ../_SaveData/PPSA01341
+python3 des_editor.py selftest /path/to/_SaveData/PPSA01341
 python3 des_editor.py info FILE
 python3 des_editor.py list FILE
 python3 des_editor.py tree FILE
@@ -207,14 +272,18 @@ python3 des_editor.py inv FILE --experimental --qty 9=40 --durability 0=200 --bo
 python3 des_editor.py arrays FILE
 python3 des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
 python3 des_editor.py blobs FILE
-python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA
+python3 des_editor.py world FILE [--json] [--group N] [--filter TEXT]
+python3 des_editor.py wset FILE b13668dff82e7044840eea38f10b0286 BOSS_LOOT_VISIBLE=1 --experimental --out /tmp/USR-DATA
+python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
 
-`arrays` lists the recovered fixed-slot arrays with slot letters, values and
-candidate names; `aslot` writes one slot by array state and suffix character
-(the same letter the listing shows). `blobs` decodes the 16-byte container
-header and lists the embedded typed records. `diff` prints the record-level
-delta, so two saves of the same character can be compared directly:
+`arrays` lists the recovered fixed-slot arrays with family names, slot letters,
+real field names and values; `aslot` writes one slot by array state and suffix
+character (the same letter the listing shows). `blobs` sizes every blob and
+summarises world-state containers; `world` lists their entities with level,
+file and named records, and `wset` makes an experimental same-size edit of one
+record addressed by entity GUID and key. `diff` prints the record-level and
+world-state delta, so two saves of the same character can be compared directly:
 
 ```text
 before    320 records     13709 bytes
@@ -223,8 +292,8 @@ added     706   removed     0   changed    64
 ```
 
 `items` lists the inventory, storage box, equipment slots and the number of
-dead-enemy indices. `inv` requires `--experimental` and only makes same-size
-quantity and durability edits. `set`/`patch`/`inv` create a
+dead-enemy indices. `inv` and `wset` require `--experimental` and only make
+same-size edits. `set`/`patch`/`inv`/`wset`/`aslot` create a
 collision-resistant timestamped backup for in-place writes (`set --no-backup`
 is an explicit opt-out). Edited bytes are validated, written to a temporary
 file, flushed/fsynced, then atomically replace the destination. Failed edits
@@ -259,32 +328,46 @@ and depth. Noncanonical encodings that cannot round-trip are flagged.
 | `0d` | UTF-8 string bytes |
 | `0e` | Opaque binary bytes |
 
+World-state blobs (see *World state* above) nest further record streams:
+
+```
+group  := u32 version (3) | u32 count | count × entry
+entry  := 16-byte entity GUID | u32 kind | u32 length | <length bytes of records>
+```
+
 The browser's binary model indexes fields by hash and path, caches serialized
 snapshots by revision, and serializes into a preallocated typed buffer. Hidden
 views are not rendered. Binary previews read only the first few bytes rather
 than hex-encoding whole blobs on every refresh.
 
-## Rebuild the catalog (optional)
+## Rebuild the embedded tables (optional)
 
-The editor already embeds the catalog. Regeneration requires the game files:
+The editor already embeds everything it needs. Regeneration requires the game
+files (`PPSA01342-app`):
 
 ```bash
-python3 tools/build_itemdb.py /path/to/PPSA01342-app -o itemdb.json
+python3 tools/build_itemdb.py /path/to/PPSA01342-app -o itemdb.json   # catalog, classes, limits
 python3 tools/embed_itemdb.py
+python3 tools/build_entitydb.py /path/to/PPSA01342-app -o entitydb.bin
+python3 tools/embed_entitydb.py
+python3 tools/embed_fields.py                                         # after editing des_fields.py
+python3 tools/build_keydb.py /path/to/PPSA01342-app --save USR-DATA   # name candidates
+python3 tools/parse_loadouts.py /path/to/PPSA01342-app                # loadout checks
 ```
 
-Sources: `cp11demonssouls/dvdroot/param/gameparam/gameparam.parambnd` and
-`text/ds/_cmn/*_name.en-gb.ctxt`. The builder retains `(category, id)` namespaces,
-uses exact PARAM row IDs, and ignores unverified internal-name offsets.
-Counts: Armor 147, Goods 157, Ring 35, Skill 28, Spell 40, Weapon 1884.
-Catalog `hasParam` distinguishes rows backed by a parameter table from text-only
-entries. Both tools offer stdout modes for reproducible build integration.
+Catalog sources: `gameparam.parambnd` with `paramdef.paramdefbnd`, and
+`text/ds/_cmn/*_name.en-gb.ctxt`. The builder keeps `(category, id)`
+namespaces and uses exact PARAM row IDs. Counts: Armor 147, Goods 157, Ring 35,
+Skill 28, Spell 40, Weapon 1884. `hasParam` distinguishes rows backed by a
+parameter table from text-only entries. The embed tools offer `--stdout` or
+`--check` modes for reproducible builds.
 
 ## Verification and performance
 
 From the repository root. Tests that need real saves read `DES_SAVE_DIR`
-(your `_SaveData/PPSA01341` copy) and are skipped, with the reason printed,
-when it is not set:
+(your `_SaveData/PPSA01341` copy), and tests that need the game files read
+`DES_GAME_DIR` (the `PPSA01342-app` folder). They are skipped, with the reason
+printed, when those are not set:
 
 ```bash
 # Standard-library tests only
@@ -292,21 +375,27 @@ python3 -m unittest discover -s tests -p test_save.py -v
 # Full suite; requires Playwright and its Chromium browser in the test environment
 python3 -m unittest discover -s tests -v
 python3 tests/benchmark_editor.py
-python3 tools/embed_fields.py --check   # page field table matches des_fields.py
-python3 des_editor.py selftest ../_SaveData/PPSA01341
+python3 tools/embed_fields.py --check     # page field table matches des_fields.py
+python3 tools/embed_entitydb.py --check   # page carries the current entity index
+python3 des_editor.py selftest /path/to/_SaveData/PPSA01341
 ```
 
-56 tests run in about 15 s (25 format/structure, 31 browser). Regression
+99 tests run in about 16 s (51 format/structure/tools, 48 browser). Regression
 coverage includes all three original files, malformed records, strict
 numeric/hex bounds, atomic imports/writes, undo/redo, async-save races, JSON
 drafts, category collisions, exact binary exports, ZIP contents/CRC, float bit
-preservation, 100 seeded Python/JavaScript differential fixtures, and a check
-that Python and the browser recover identical arrays on every sample. Tests
-never edit the original saves.
+preservation, 100 seeded Python/JavaScript differential fixtures, world-state
+framing on every sample and all 166 game baselines, PARAMDEF layouts, loadout
+checks, and Python/browser agreement on arrays, inventory, world state and
+entity labels. Tests never edit the original saves.
 
 On the 258,582-byte / 1,026-record sample, observed JavaScript refresh time went
 from about **70.5 ms to 0.9 ms** (not a page-load/paint or game benchmark).
 Inactive raw inputs dropped from **1,023 to zero**, and eagerly generated hidden
 JSON from **609,779 characters to zero**. After cache warm-up, 100 unchanged
-dirty checks perform **zero serializations**. Timings vary by machine; structural
-performance assertions are tested instead of fragile wall-clock thresholds.
+dirty checks perform **zero serializations**. With the inventory card, the
+editor view renders in about 6.6 ms on the machine used for that change
+(4.1 ms there before the card). The 3.4 MB embedded entity index is a
+non-executing data block, decoded only when the World state view opens.
+Timings vary by machine; structural performance assertions are tested instead
+of fragile wall-clock thresholds.

@@ -1,7 +1,7 @@
 """Recovered fixed-slot arrays and blob-container introspection.
 
-The save is not only a bag of scalars. Besides the u16 item list handled by
-:mod:`des_items`, it holds several *fixed-slot* arrays whose members share a
+The save is not only a bag of scalars. Besides the u16 dead-enemy list handled
+by :mod:`des_items`, it holds several *fixed-slot* arrays whose members share a
 generated key family: every member key is ``(state ^ ord(digit)) * P`` for one
 per-array FNV state.  That makes the arrays discoverable without knowing any
 name, which is what this module does.
@@ -9,7 +9,9 @@ name, which is what this module does.
 Discovery works by inverting FNV-1a: for an observed key ``k`` the pre-suffix
 state is ``k * P^-1``, and the suffix character is ``state ^ ord(digit)``.
 Grouping keys that resolve to the same state under a digit recovers the whole
-array, even though the human-readable base name is still unknown.
+array without knowing its base name. Most of these arrays have since been
+named from the executable's templates (see des_fields.FAMILIES); listings
+show those names next to the canonical slot letters.
 
 Only structurally verified arrays (contiguous records, ascending offsets) are
 reported as arrays.  Everything else stays opaque on purpose.
