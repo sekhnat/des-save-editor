@@ -15,6 +15,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from des_gamedata import load_params, parse_bnd3, parse_ctxt, parse_param  # noqa: E402
 
+# Creation metadata (add-item): display sort id, initial durability and the
+# stackable-ammunition classification, read from the equip PARAMs.
+CREATION_TABLES = {'Weapon': 'EQUIP_PARAM_WEAPON_ST', 'Armor': 'EQUIP_PARAM_PROTECTOR_ST',
+                   'Ring': 'EQUIP_PARAM_ACCESSORY_ST', 'Goods': 'EQUIP_PARAM_GOODS_ST'}
+AMMO_CATEGORIES = (13, 14)          # weaponCategory: arrows and bolts
 BND_TABLES = {
     'EquipParamGoods.param': 'Goods', 'EquipParamWeapon.param': 'Weapon',
     'EquipParamProtector.param': 'Armor', 'EquipParamAccessory.param': 'Ring',
@@ -78,13 +83,27 @@ def build_catalog(game: str | Path, language: str = 'en-gb') -> dict:
                     value = row.get(source)
                     if value is not None and not (target == 'origin' and value < 0):
                         entry[target] = value
+    # Creation metadata for add-item: display sort position and initial durability
+    # come from the same equip PARAMs, so nothing here is hard-coded per item.
+    # weaponCategory 13/14 mark stackable arrows/bolts.
+    for (kind, item_id), entry in items.items():
+        row = tables.get(CREATION_TABLES.get(kind, ''), {}).get(item_id)
+        if not row:
+            continue
+        if 'sortId' in row:
+            entry['sortId'] = row['sortId']
+        if 'durability' in row and kind in ('Weapon', 'Armor'):
+            entry['durability'] = row['durability']
+        if row.get('weaponCategory') in AMMO_CATEGORIES:
+            entry['ammo'] = True
     classes = _classes(tables.get('CHARACTER_INIT_PARAM', {}), items)
     if not items:
         raise ValueError('No PARAM rows or localized names found in the supplied game folder')
     rows = sorted(items.values(), key=lambda entry: (entry['category'], entry['id']))
-    return {'schema': 3, 'language': language, 'count': len(rows),
+    return {'schema': 4, 'language': language, 'count': len(rows),
             'categories': dict(sorted(Counter(entry['category'] for entry in rows).items())),
-            'note': 'IDs are category-specific. Limits come from the equip PARAMs via their PARAMDEFs.',
+            'note': 'IDs are category-specific. Limits, sort ids, durability and the '
+                    'ammunition classification come from the equip PARAMs via their PARAMDEFs.',
             'classes': classes, 'items': rows}
 
 

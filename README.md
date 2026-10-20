@@ -9,9 +9,11 @@ Its content-security policy blocks network requests.
 profile can now be named and read: character, options, inventory, storage box,
 equipment, spells, tendency and per-entity world state. A name recovered from a
 hash is still not proof of gameplay meaning, and a checksum-valid file is not
-necessarily a game-safe edit. Edits beyond the character form are experimental,
-opt-in and limited to values whose size never changes. Earlier versions offered
-the dead-enemy list as an "experimental inventory"; that was wrong (see
+necessarily a game-safe edit. Edits beyond the character form are experimental
+and opt-in: quantity/durability and storage-quantity edits keep every record
+size, and item creation inserts records that follow the layout measured from
+real saves but has not been verified in game. Earlier versions offered the
+dead-enemy list as an "experimental inventory"; that was wrong (see
 *Dead enemies, not inventory* below).
 
 ## Quick start
@@ -44,7 +46,7 @@ A browser download request cannot prove that the download actually completed.
 
 | View | What it provides |
 |---|---|
-| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells and tendency, records, options, coverage warnings; inventory, storage box and equipment slots; recovered arrays |
+| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells and tendency, records, options, coverage warnings; inventory, storage box and equipment slots with experimental **Add item…**; recovered arrays |
 | **All fields** | Named and unknown records, strict scalar/text/hex editing, filtering, 100 records per page |
 | **Tree** | Container hierarchy and absolute file offsets, 200 records per page |
 | **World state** | Every world-state entity with its level and defining game file, named records, filtering, 200 per page; opt-in same-size edits |
@@ -86,7 +88,8 @@ Unknown or ambiguous keys reject the **entire** patch. Repeated keys must be
 addressed by path using a patch exported from **Changes**; those patches check
 key, type, path and expected original bytes before applying anything.
 Structural changes, such as adding/removing array records, require a full
-`USR-DATA` export rather than a scalar patch.
+`USR-DATA` export rather than a scalar patch. Use the editor's **Add item…**
+action (or the CLI `add`) for item creation instead of hand-crafting records.
 
 Full browser dumps retain keys, types, structure and complete scalar precision.
 Non-finite float values and negative zero use hex to preserve their exact bits.
@@ -125,11 +128,30 @@ Applying an invalid dump never discards existing edits or modifies undo history.
   (which hand, which quick slot) are not verified.
 - **Inventory editing is experimental and opt-in:** inventory quantity
   (1–999) and durability, and the storage low-quantity byte (1–255), as
-  same-size edits. Adding or removing items and changing item IDs are not
-  offered: the roles of `_DISPLAYID` and `_VARIATIONID` are not verified. The
-  `_COUNT` fields are read-only in the form. Stack and durability maxima from
-  the equip PARAMs (`maxQuantity`, `maxStorageQuantity`, `durabilityMax`) are
-  shown as hints and not enforced; the samples' durabilities sit at or below them.
+  same-size edits. The `_COUNT` fields are read-only in the form. Stack and
+  durability maxima from the equip PARAMs (`maxQuantity`, `maxStorageQuantity`,
+  `durabilityMax`) are shown as hints and enforced only by item creation; the
+  samples' durabilities sit at or below them.
+- **Adding items is experimental and opt-in** (the card's *Enable experimental
+  …* toggle, then **Add item…**, or the CLI `add`). Supported rows carry PARAM
+  creation data and are offered with a reason otherwise: weapons, armor, rings
+  and goods with a usable sort ID, initial durability and quantity data.
+  Creation never mutates the loaded save; it returns a candidate that you
+  export explicitly. It preserves the measured record layout: inventory entries
+  use `INDEX == VARIATIONID ==` the next unused 16-bit instance reference
+  (checked against the inventory references, equipment slots, quick items and
+  non-sentinel storage display words) and `DISPLAYID = (PARAM sortId << 16) |
+  ref` — the sort component comes from the same game PARAMs and is never
+  recalculated on existing items. Directly created storage entries carry the
+  observed `-1` display sentinel and only the low quantity byte. Goods and
+  ammunition add units to the destination's single matching stack (refusing
+  ambiguous or over-cap stacks, and storage stacks with a non-zero
+  `HIGHQUANTITY`); weapons, armor and rings are added one copy at a time. A
+  newly recorded ring also appends its ID to the `TROPHIES_RING##` history and
+  its count in the same atomic operation. Layouts that do not match the
+  measured framing (missing/duplicate counts, incomplete or ambiguous entries,
+  nested family records, wrong ordering, exhausted entry or reference bounds)
+  are refused, never repaired.
 - **Dead enemies, not inventory.** The u16 records once offered as an
   "experimental inventory" are `DEADENEMIES_INDICES####` followed by
   `DEADENEMIES_COUNT` (key `CC62FF39`). The measured key of the first record
@@ -270,6 +292,9 @@ python3 des_editor.py dump FILE dump.json
 python3 des_editor.py verify FILE
 python3 des_editor.py items FILE [--json]
 python3 des_editor.py inv FILE --experimental --qty 9=40 --durability 0=200 --box-qty 4=30 --out /tmp/USR-DATA
+python3 des_editor.py add FILE weapon 20700 --experimental                       # Dragon Bone Smasher
+python3 des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
+python3 des_editor.py add FILE ring 123 --experimental                           # records trophy history
 python3 des_editor.py arrays FILE
 python3 des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
 python3 des_editor.py blobs FILE
@@ -293,8 +318,9 @@ added     706   removed     0   changed    64
 ```
 
 `items` lists the inventory, storage box, equipment slots and the number of
-dead-enemy indices. `inv` and `wset` require `--experimental` and only make
-same-size edits. `set`/`patch`/`inv`/`wset`/`aslot` create a
+dead-enemy indices. `inv`, `add` and `wset` require `--experimental`; `add`
+creates a full USR-DATA via the same validated path as the page (backed up and
+atomically replaced when it writes in place). `set`/`patch`/`inv`/`wset`/`aslot` create a
 collision-resistant timestamped backup for in-place writes (`set --no-backup`
 is an explicit opt-out). Edited bytes are validated, written to a temporary
 file, flushed/fsynced, then atomically replace the destination. Failed edits
@@ -360,8 +386,11 @@ Catalog sources: `gameparam.parambnd` with `paramdef.paramdefbnd`, and
 `text/ds/_cmn/*_name.en-gb.ctxt`. The builder keeps `(category, id)`
 namespaces and uses exact PARAM row IDs. Counts: Armor 147, Goods 157, Ring 35,
 Skill 28, Spell 40, Weapon 1884. `hasParam` distinguishes rows backed by a
-parameter table from text-only entries. The embed tools offer `--stdout` or
-`--check` modes for reproducible builds.
+parameter table from text-only entries, and schema-4 rows additionally carry
+`sortId`, initial `durability` and an `ammo` flag (weaponCategory 13/14) as the
+creation metadata for add-item. The embed tools offer `--stdout` or `--check`
+modes for reproducible builds (`tools/embed_itemdb.py --check` covers the page
+block).
 
 ## Verification and performance
 
@@ -381,7 +410,8 @@ python3 tools/embed_entitydb.py --check   # page carries the current entity inde
 python3 des_editor.py selftest /path/to/_SaveData/PPSA01341
 ```
 
-99 tests run in about 16 s (51 format/structure/tools, 48 browser). Regression
+157 tests run in about 30 s without the optional fixture environment (most of
+them format/structure/tools and browser flows). Regression
 coverage includes all three original files, malformed records, strict
 numeric/hex bounds, atomic imports/writes, undo/redo, async-save races, JSON
 drafts, category collisions, exact binary exports, ZIP contents/CRC, float bit

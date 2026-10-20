@@ -16,6 +16,9 @@ EDITOR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(EDITOR))
 import des_save
 import des_arrays
+import des_inventory
+sys.path.insert(0, str(EDITOR / 'tests'))
+import test_save
 
 
 class SyntheticBrowserTests(unittest.TestCase):
@@ -283,6 +286,154 @@ class SyntheticBrowserTests(unittest.TestCase):
         self.assertIn(101, self.page.evaluate(
             'discoverArrays(current().save).flatMap(g => g.members.map(f => f.value))'))
 
+
+class AddItemBrowserTests(SyntheticBrowserTests):
+    """The add-item dialog drives the same rules and bytes as des_inventory."""
+
+    @staticmethod
+    def fixture(**kwargs):
+        entries = [{'cat': 'W', 'id': 150000, 'ref': 0, 'sort': 16101, 'durability': 200},
+                   {'cat': 'G', 'id': 1001, 'quantity': 32, 'sort': 2}]
+        storage = [{'cat': 'G', 'id': 2000, 'quantity': 25}]
+        return test_save.creation_save(entries, storage=storage, rings=[105],
+                                       slot_ref=0, equipitem=5, **kwargs)
+
+    def add_via_dialog(self, search, cat, item_id, destination='inventory', quantity=None):
+        self.page.click('#additem')
+        self.page.select_option('#itemdestination', destination)
+        if quantity is not None:
+            self.page.fill('#itemquantity', str(quantity))
+        self.page.fill('#itemsearch', search)
+        self.page.wait_for_selector(f'#itemlist tr[data-cat="{cat}"][data-id="{item_id}"]')
+        self.page.click(f'#itemlist tr[data-cat="{cat}"][data-id="{item_id}"]')
+        self.page.click('#additemapply')
+
+    def test_dialog_creates_the_same_bytes_as_python(self):
+        source = self.fixture().build()
+        self.load_bytes(source)
+        self.page.check('#experimental')
+        self.add_via_dialog('Dragon Bone', 'W', 20700)
+        made = bytes(self.page.evaluate('current().save.build()'))
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
+        self.assertEqual(expected, made)
+        rows = self.page.evaluate('inventoryRows(current().save).map(r => [r.cat, r.id, r.quantity])')
+        self.assertIn(['W', 20700, 1], rows)
+        self.page.evaluate('doUndo()')
+        self.assertEqual(source, bytes(self.page.evaluate('current().save.build()')))
+        self.page.evaluate('doRedo()')
+        self.assertEqual(expected, bytes(self.page.evaluate('current().save.build()')))
+
+    def test_catalog_row_adds_to_storage_like_python(self):
+        source = self.fixture().build()
+        self.load_bytes(source)
+        self.page.check('#experimental')
+        self.page.click('[data-tab=catalog]')
+        self.page.fill('#catalogsearch', 'Dragon Bone Smasher')
+        self.page.click('#catalogbody tr:has-text("Dragon Bone Smasher") button')
+        self.page.select_option('#itemdestination', 'storage')
+        self.page.click('#additemapply')
+        made = bytes(self.page.evaluate('current().save.build()'))
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700,
+                                                 destination='storage').build()
+        self.assertEqual(expected, made)
+        self.assertNotEqual(source, made)
+
+    def test_dialog_guards_cancellation_and_keyboard_use(self):
+        source = self.fixture().build()
+        self.load_bytes(source)
+        self.assertTrue(self.page.evaluate('!!$("#additem") && $("#additem").disabled'),
+                        'the add button is disabled without the experimental toggle')
+        self.assertEqual(source, bytes(self.page.evaluate('current().save.build()')))
+        self.page.check('#experimental')
+        self.page.evaluate('openItemDialog()')
+        self.assertEqual('itemsearch', self.page.evaluate('document.activeElement.id'))
+        self.page.keyboard.press('Tab')
+        self.assertTrue(self.page.evaluate('document.activeElement.closest("#itemdialog") !== null'))
+        self.page.keyboard.press('Escape')
+        self.assertTrue(self.page.evaluate('$("#itemdialog").classList.contains("hidden")'))
+        # a draft blocks opening
+        self.page.evaluate('$("#json").value = "{}"; $("#json").dispatchEvent(new Event("input"))')
+        self.page.evaluate('openItemDialog()')
+        self.assertIn('draft', self.page.text_content('#message'))
+        self.assertTrue(self.page.evaluate('$("#itemdialog").classList.contains("hidden")'))
+        # stale dialog after an unrelated edit
+        self.page.evaluate('$("#refreshjson").click()')
+        self.page.evaluate('openItemDialog()')
+        self.page.fill('#itemsearch', 'Dragon Bone')
+        self.page.wait_for_selector('#itemlist tr[data-cat="W"][data-id="20700"]')
+        self.page.click('#itemlist tr[data-cat="W"][data-id="20700"]')
+        self.page.evaluate('editCandidate(s => setInvQuantity(s, 0, 5))')
+        with_edits = bytes(self.page.evaluate('current().save.build()'))
+        self.page.click('#additemapply')
+        self.assertIn('reopen', self.page.text_content('#message'))
+        self.assertEqual(with_edits, bytes(self.page.evaluate('current().save.build()')))
+        # cancel records no history and changes nothing
+        self.page.evaluate('doUndo()')
+        clean = bytes(self.page.evaluate('current().save.build()'))
+        self.page.evaluate('openItemDialog()')
+        self.page.keyboard.press('Escape')
+        self.assertTrue(self.page.evaluate('$("#itemdialog").classList.contains("hidden")'))
+        self.assertEqual(clean, bytes(self.page.evaluate('current().save.build()')))
+        self.assertEqual(0, self.page.evaluate('current().undo.length'))
+
+    def test_creation_eligibility_matches_python_catalog(self):
+        import json
+        import des_items
+        doc = json.loads((EDITOR / 'itemdb.json').read_text(encoding='utf-8'))
+        letters = {'Weapon': 'W', 'Armor': 'A', 'Ring': 'R', 'Goods': 'G',
+                   'Spell': 'S', 'Skill': 'K'}
+        expected = {(letters[e['category']], e['id']): des_items.creation_problem(e) is None
+                    for e in doc['items']}
+        got = self.page.evaluate('[...ITEMDB].map(row => [row[2], row[0], creationProblem(row[2], row[0]) === null])')
+        self.assertEqual(expected, {(letter, item_id): ok for letter, item_id, ok in got})
+
+    def test_changes_after_creation_are_real_additions(self):
+        source = self.fixture().build()
+        self.load_bytes(source)
+        self.page.check('#experimental')
+        self.add_via_dialog('Dragon Bone', 'W', 20700)
+        added, changed = self.page.evaluate("""() => {
+          const rows = collectChanges(current());
+          return [rows.filter(c => !c.before).map(c => (c.after.name || "0x" + c.after.key.toString(16))),
+                  rows.filter(c => c.before && c.after).map(c => c.before.name || "0x" + c.before.key.toString(16))];
+        }""")
+        self.assertEqual({f"EQUIPMENT_INVENTORY02_{part}" for part in des_inventory.INVENTORY_PARTS},
+                         set(added))
+        self.assertEqual(['EQUIPMENT_INVENTORY_COUNT'], changed)
+        self.page.click('[data-tab=changes]')
+        self.assertIn('9 changed', self.page.evaluate('$("#changescount").textContent'))
+        self.page.evaluate('downloadPatch()')
+        self.assertIn('Structural changes require a full USR-DATA export',
+                      self.page.text_content('#message'))
+        out = self.page.evaluate('validatedExport(current())')
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
+        self.assertEqual(expected, bytes(out))
+
+    def test_scalar_changes_after_insertion_pair_by_identity(self):
+        source = self.fixture().build()
+        self.load_bytes(source)
+        self.page.check('#experimental')
+        self.add_via_dialog('Dragon Bone', 'W', 20700)
+        self.page.evaluate('setInvQuantity(current().save, 1, 50)')
+        added, changed = self.page.evaluate("""() => {
+          const rows = collectChanges(current());
+          return [rows.filter(c => !c.before).length,
+                  rows.filter(c => c.before && c.after).map(c => c.before.name || "0x" + c.before.key.toString(16))];
+        }""")
+        self.assertEqual(8, added)
+        self.assertEqual({'EQUIPMENT_INVENTORY01_QUANTITY', 'EQUIPMENT_INVENTORY_COUNT'},
+                         set(changed))
+
+    def test_options_profiles_cannot_add_items(self):
+        sf = des_save.SaveFile()
+        sf.records = [des_save.Field(des_save.name_key('BRIGHTNESS'), des_save.T_I32,
+                                     (40).to_bytes(4, 'little'))]
+        self.load_bytes(sf.build())
+        self.assertTrue(self.page.evaluate('document.querySelector("#additem") === null'))
+        self.assertTrue(self.page.evaluate('''() => {
+          try { openItemDialog(); return false; }
+          catch (error) { return String(error.message).includes("Options"); }
+        }'''))
 
 if __name__ == '__main__':
     unittest.main()

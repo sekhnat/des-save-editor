@@ -69,9 +69,9 @@ _DEFS = [
     ("MISC_HASUNLOCKEDNEXUSSTATUE", "int", "Nexus statue unlocked", 0, 1, ""),
     # ---- counts of indexed record families (structural; read-only in the page)
     ("EQUIPMENT_INVENTORY_COUNT", "int", "Inventory entries", 0, 2048,
-     "Number of EQUIPMENT_INVENTORY## entries. Structural: changing it alone corrupts the inventory."),
+     "Number of EQUIPMENT_INVENTORY## entries. Structural: direct edits corrupt the inventory; the Add item workflow updates entries and count atomically."),
     ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Storage box entries", 0, 2048,
-     "Number of EQUIPMENT_STORAGEBOX## entries. Structural: changing it alone does not add items."),
+     "Number of EQUIPMENT_STORAGEBOX## entries. Structural: direct edits do not add items; the Add item workflow updates entries and count atomically."),
     ("DEADENEMIES_COUNT", "int", "Dead enemy indices", 0, 10_000,
      "Number of DEADENEMIES_INDICES#### records (enemies that stay dead)."),
     ("TROPHIES_RING_COUNT", "int", "Rings recorded for the trophy", 0, 100,

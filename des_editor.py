@@ -10,6 +10,7 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py dump   <USR-DATA> out.json
     python3 des_editor.py patch  <USR-DATA> out.json --out <USR-DATA>
     python3 des_editor.py items  <USR-DATA>          # inventory, storage, equipment
+    python3 des_editor.py add    <USR-DATA> weapon 20700 --experimental   # add item (experimental)
     python3 des_editor.py world  <USR-DATA>          # world-state entities
 
 Writing always leaves a timestamped `.bak` copy next to the file and
@@ -335,6 +336,28 @@ def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
     return 0
 
 
+def cmd_add(path: str, category: str, item_id: str, destination: str, quantity: str,
+            out: str | None) -> int:
+    """Experimental item creation, written only after the operation succeeds."""
+    name = {'weapon': 'Weapon', 'armor': 'Armor', 'ring': 'Ring',
+            'goods': 'Goods'}.get(category.strip().lower())
+    if name is None:
+        raise ValueError('category must be one of: armor, goods, ring, weapon')
+    sf = des_save.load(path)
+    numeric_id = int(item_id, 0)
+    created = des_inventory.with_added_item(sf, name, numeric_id, quantity=int(quantity, 0),
+                                            destination=destination)
+    entry = des_inventory._catalog().get((name, numeric_id))
+    label = entry['name'] if entry else '?'
+    print(f"  added {label} ({name} {numeric_id}) to the {destination}")
+    dest = out or path
+    if os.path.abspath(dest) == os.path.abspath(path):
+        _backup(path)
+    des_save.save(created, dest)
+    print(f"  wrote {dest}")
+    return 0
+
+
 def cmd_arrays(path: str, as_json: bool) -> int:
     """List fixed-slot arrays recovered by FNV-state discovery."""
     sf = des_save.load(path)
@@ -582,6 +605,17 @@ def main(argv: list[str]) -> int:
     p.add_argument("file")
     p.add_argument("--json", action="store_true", dest="as_json")
 
+    p = sub.add_parser("add", help="experimental: add an item to the inventory or storage box")
+    p.add_argument("file")
+    p.add_argument("category", help="weapon, armor, ring or goods")
+    p.add_argument("id", help="catalog item id (category-specific)")
+    p.add_argument("--to", choices=("inventory", "storage"), default="inventory",
+                   dest="destination", help="where to add the item (default inventory)")
+    p.add_argument("--quantity", default="1",
+                   help="stack units for goods and ammunition (default 1)")
+    p.add_argument('--experimental', action='store_true',
+                   help='acknowledge that item creation is not yet verified in game')
+    p.add_argument("--out", help="write to this path instead of in place")
     p = sub.add_parser("inv", help="experimental same-size edits of inventory and storage values")
     p.add_argument("file")
     p.add_argument('--experimental', action='store_true',
@@ -639,6 +673,8 @@ def main(argv: list[str]) -> int:
         ap.error('inv requires --experimental: inventory edits are not yet verified in game')
     if a.cmd == 'wset' and not a.experimental:
         ap.error('wset requires --experimental: world-state record meanings are unverified')
+    if a.cmd == 'add' and not a.experimental:
+        ap.error('add requires --experimental: item creation is not yet verified in game')
     if a.cmd == "info":   return cmd_info(a.file)
     if a.cmd == "list":   return cmd_list(a.file)
     if a.cmd == "tree":   return cmd_tree(a.file)
@@ -648,6 +684,8 @@ def main(argv: list[str]) -> int:
     if a.cmd == "dump":   return cmd_dump(a.file, a.out)
     if a.cmd == "patch":  return cmd_patch(a.file, a.patch, a.out)
     if a.cmd == "items":    return cmd_items(a.file, a.as_json)
+    if a.cmd == "add":      return cmd_add(a.file, a.category, a.id, a.destination,
+                                           a.quantity, a.out)
     if a.cmd == "inv":      return cmd_inv(a.file, a.qty, a.durability, a.box_qty, a.out)
     if a.cmd == "arrays":   return cmd_arrays(a.file, a.as_json)
     if a.cmd == "aslot":    return cmd_aslot(a.file, a.state, a.sets, a.clear, a.out)

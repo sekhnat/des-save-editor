@@ -62,6 +62,32 @@ def load_classes(path: str | None = None) -> list[dict]:
         return json.load(stream).get('classes', [])
 
 
+CREATABLE_CATEGORIES = ('Weapon', 'Armor', 'Ring', 'Goods')
+
+
+def creation_problem(entry: dict | None) -> str | None:
+    """Why add-item cannot create this catalog entry, or None when it can.
+
+    Creation needs a PARAM-backed row (schema 4): a usable display sort id for
+    the packed display id, initial durability for weapons and armor, and a
+    stack limit for goods. Text-only rows, placeholder rows (sortId -1, e.g.
+    No Equipment) and unsupported categories stay reference-only.
+    """
+    if not isinstance(entry, dict) or 'category' not in entry:
+        return 'no usable catalog data'
+    if entry['category'] not in CREATABLE_CATEGORIES:
+        return 'only weapons, armor, rings and goods can be added'
+    if 'sortId' not in entry:
+        return 'text-only or outdated catalog entry; no PARAM creation data'
+    sort = entry['sortId']
+    if not isinstance(sort, int) or not 0 <= sort <= 0xFFFF:
+        return 'unused or placeholder PARAM row (no display sort id)'
+    if entry['category'] in ('Weapon', 'Armor') and 'durability' not in entry:
+        return 'weapon/armor PARAM row without durability data'
+    if entry['category'] == 'Goods' and 'maxQuantity' not in entry:
+        return 'goods PARAM row without quantity data'
+    return None
+
 def load_db(path: str | None = None) -> dict[int, dict]:
     """Legacy numeric lookup retaining all category candidates instead of overwriting."""
     grouped = {}
