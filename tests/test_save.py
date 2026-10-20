@@ -118,6 +118,44 @@ class WorldTests(unittest.TestCase):
             self.assertTrue(again.checksum_ok())
             self.assertEqual(1, world.decode(again.records[0].raw)[0].entries[0].records[0].value)
 
+    def test_entity_index_lookup_and_ambiguity(self):
+        import gzip
+        paths = ['cp11/objects/_cmn/o0300_archstone', 'worlds/m02_00_00_00/a/_cmn/m02_00_sec05_towerl']
+        text = ('\n'.join(paths) + '\n\nm02_00\tBoletaria 1-1').encode()
+        prefixes = sorted([GUID_A[:6], GUID_C[:6], b'\xff' * 6])
+        owners = {GUID_A[:6]: 0, GUID_C[:6]: 1, b'\xff' * 6: 0xFFFF}
+        raw = (b'DESE' + struct.pack('<III', 1, len(prefixes), len(text)) + text
+               + b''.join(bytes(p[i] for p in prefixes) for i in range(6))
+               + struct.pack(f'<{len(prefixes)}H', *(owners[p] for p in prefixes)))
+        index = world.EntityIndex(gzip.compress(raw))
+        self.assertEqual('o0300_archstone', index.lookup(GUID_A))
+        self.assertEqual('Boletaria 1-1 · m02_00_sec05_towerl', index.lookup(GUID_C))
+        self.assertIsNone(index.lookup(GUID_B))
+        self.assertIsNone(index.lookup(b'\xff' * 16))              # ambiguous prefix
+        with self.assertRaises(ValueError):
+            world.EntityIndex(gzip.compress(raw[:-1]))
+
+    def test_page_carries_the_current_entity_index(self):
+        spec = importlib.util.spec_from_file_location('embed_entitydb', ROOT / 'tools/embed_entitydb.py')
+        embed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(embed)
+        db = ROOT / 'entitydb.bin'
+        html = (ROOT / 'des_editor.html').read_text(encoding='utf-8')
+        self.assertEqual(html, embed.embed(html, db.read_bytes() if db.exists() else None),
+                         'run tools/embed_entitydb.py')
+
+    @unittest.skipUnless(HAVE_SAVES and (ROOT / 'entitydb.bin').exists(), 'needs sample saves and entitydb.bin')
+    def test_entity_index_labels_the_sample_entities(self):
+        index = world.default_index()
+        self.assertEqual('o0300_archstone', index.lookup(GUID_A))
+        for path in SAVES.glob('*PlayerProfile*/USR-DATA'):
+            with self.subTest(path=path):
+                for _, groups in world.world_blobs(save.SaveFile(path.read_bytes())):
+                    listed = [entry for _, _, entry in world.entries(groups)]
+                    labelled = sum(1 for entry in listed if index.lookup(entry.guid))
+                    # three GUIDs in the larger sample occur nowhere in the game files
+                    self.assertGreaterEqual(labelled, len(listed) - 6)
+
     @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')
     def test_real_world_blobs_decode_and_rebuild(self):
         for path in SAVES.glob('*PlayerProfile*/USR-DATA'):

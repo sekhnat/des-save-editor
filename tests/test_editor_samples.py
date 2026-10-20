@@ -256,6 +256,47 @@ class BrowserTests(unittest.TestCase):
         self.page.locator('[data-field=PLAYER_SOULS]').focus()
         self.assertEqual(1, self.page.evaluate('current().redo.length'))
 
+    def test_world_state_matches_python_and_labels(self):
+        import sys
+        sys.path.insert(0, str(EDITOR))
+        import des_save, des_world
+        index = des_world.default_index()
+        for path in sorted(SAVES.glob('*PlayerProfile*/USR-DATA')):
+            with self.subTest(path=path.parent.name):
+                self.load(path)
+                (blob, groups), = des_world.world_blobs(des_save.load(str(path)))
+                expected = [[r['group'], r['guid'], r['kind'], r['size'],
+                             [[int(x['key'], 16), x['value']] for x in r['records']
+                              if isinstance(x['value'], int)] if 'records' in r else None]
+                            for r in des_world.describe(groups)]
+                got = self.page.evaluate("""() => worldBlobs(current().save)[0].groups.flatMap((entries, g) =>
+                    entries.map(e => [g, e.guid, e.kind, e.size, e.records ? [...worldWalk(e.records)]
+                      .filter(r => r.isInt).map(r => [r.key, r.value]) : null]))""")
+                self.assertEqual(expected, got)
+                if index:
+                    labels = self.page.evaluate("""async () => { await loadEntityIndex();
+                        return worldBlobs(current().save)[0].groups.flat().map(e => entityLabel(e.guid)); }""")
+                    self.assertEqual([index.lookup(entry.guid) for _, _, entry in des_world.entries(groups)], labels)
+
+    def test_world_edit_is_opt_in_undoable_and_exports_valid(self):
+        self.load(LARGE)
+        self.page.click('[data-tab=world]')
+        self.page.fill('#worldfilter', 'b13668dff82e7044840eea38f10b0286')
+        self.page.wait_for_selector('#worldbody tr')
+        self.assertEqual(0, self.page.locator('#worldbody input').count())
+        self.page.check('#worldexperimental')
+        field = self.page.locator('[aria-label="BOSS_LOOT_VISIBLE of b13668dff82e7044840eea38f10b0286"]')
+        before = int(field.input_value())
+        field.fill(str(1 - before))
+        field.dispatch_event('change')
+        value = """() => { const b = worldBlobs(current().save)[0];
+            const e = b.groups.flat().find(x => x.guid === 'b13668dff82e7044840eea38f10b0286');
+            return e.records[0].value; }"""
+        self.assertEqual(1 - before, self.page.evaluate(value))
+        self.assertTrue(self.page.evaluate('new SaveFile(current().save.build()).checksumOk'))
+        self.page.evaluate('doUndo()')
+        self.assertEqual(before, self.page.evaluate(value))
+
     def test_inventory_edits_are_opt_in_and_undoable(self):
         self.load()
         self.page.wait_for_selector('#invcard')
@@ -386,7 +427,7 @@ class BrowserTests(unittest.TestCase):
         self.page.wait_for_selector('#arraycard')
         text = self.page.evaluate("document.querySelector('#arraycard').textContent")
         self.assertIn('Recovered structures', text)
-        self.assertIn('container v3', text)                     # the blob header is surfaced
+        self.assertIn('World state', text)                     # the world container is linked
         self.assertIn('Soul Arrow', text)                      # SPELLS_EQUIPPED00 holds spell 1000
         index = self.page.evaluate(
             """() => [...document.querySelectorAll('#arraycard input[type=number]')]

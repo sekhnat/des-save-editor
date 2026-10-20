@@ -28,7 +28,11 @@ blob always rebuilds byte-identically.
 
 from __future__ import annotations
 
+import bisect
 from dataclasses import dataclass, field as dc_field
+import gzip
+from pathlib import Path
+import re
 import struct
 
 import des_fields
@@ -232,9 +236,67 @@ def describe(groups: list[Group], index=None) -> list[dict]:
     return rows
 
 
-def default_index():
-    """The entity index next to this module, or None (see build_entitydb)."""
-    return None
+class EntityIndex:
+    """GUID -> defining game file, from ``entitydb.bin`` (tools/build_entitydb.py).
+
+    Lookups use the first six bytes of a GUID; prefixes shared by GUIDs from
+    different files are marked ambiguous at build time and never labelled.
+    """
+
+    PREFIX = 6
+    AMBIGUOUS = 0xFFFF
+
+    def __init__(self, blob: bytes):
+        raw = gzip.decompress(blob)
+        if raw[:4] != b'DESE' or len(raw) < 16:
+            raise ValueError('not an entity index')
+        version, count, text_len = struct.unpack_from('<III', raw, 4)
+        if version != 1 or 16 + text_len + count * (self.PREFIX + 2) != len(raw):
+            raise ValueError('unsupported or truncated entity index')
+        paths, _, levels = raw[16:16 + text_len].decode('utf-8').partition('\n\n')
+        self.paths = paths.split('\n')
+        self.levels = dict(line.split('\t', 1) for line in levels.splitlines() if '\t' in line)
+        planes_at = 16 + text_len
+        planes = [raw[planes_at + i * count:planes_at + (i + 1) * count] for i in range(self.PREFIX)]
+        self.keys = [int.from_bytes(bytes(t), 'big') for t in zip(*planes)]
+        column_at = planes_at + self.PREFIX * count
+        self.owner = struct.unpack_from(f'<{count}H', raw, column_at)
+
+    @classmethod
+    def load(cls, path) -> 'EntityIndex':
+        with open(path, 'rb') as handle:
+            return cls(handle.read())
+
+    def path(self, guid: bytes) -> str | None:
+        key = int.from_bytes(guid[:self.PREFIX], 'big')
+        at = bisect.bisect_left(self.keys, key)
+        if at == len(self.keys) or self.keys[at] != key or self.owner[at] == self.AMBIGUOUS:
+            return None
+        return self.paths[self.owner[at]]
+
+    def lookup(self, guid: bytes) -> str | None:
+        """'Level · file' for display, or None when the GUID is not indexed."""
+        path = self.path(guid)
+        if path is None:
+            return None
+        world = re.search(r'm\d\d_\d\d', path)
+        level = self.levels.get(world.group()) if world else None
+        name = path.rsplit('/', 1)[-1]
+        return f'{level} · {name}' if level else name
+
+
+_DEFAULT: list = []
+
+
+def default_index() -> EntityIndex | None:
+    """The entity index next to this module, or None when it is absent or unreadable."""
+    if not _DEFAULT:
+        path = Path(__file__).with_name('entitydb.bin')
+        try:
+            _DEFAULT.append(EntityIndex.load(path))
+        except (OSError, ValueError, EOFError, gzip.BadGzipFile, struct.error):
+            _DEFAULT.append(None)
+    return _DEFAULT[0]
 
 
 def world_blobs(sf) -> list[tuple[Field, list[Group]]]:
