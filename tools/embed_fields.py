@@ -30,9 +30,11 @@ def fields_block() -> str:
     defs = [[m['name'], m['kind'], m['label'], m['lo'], m['hi'], m['help']]
             for m in des_fields.FIELDS.values()]
     layout = [[title, names] for title, names in des_fields.LAYOUT.items()]
+    families = [[template, last] for template, last in des_fields.FAMILIES]
     return (START + '\nconst DEFS = [\n' + ',\n'.join('  ' + _js(row) for row in defs)
             + '\n];\nconst LAYOUT = [\n' + ',\n'.join('  ' + _js(row) for row in layout)
-            + '\n];\n' + END)
+            + '\n];\nconst FAMILIES = [\n' + ',\n'.join('  ' + _js(row) for row in families)
+            + '\n];\nconst WORLD_NAMES = ' + _js(des_fields.WORLD_NAMES) + ';\n' + END)
 
 
 def embed(html: str) -> str:

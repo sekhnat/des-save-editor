@@ -349,7 +349,7 @@ class Field{
     this.key = key; this.type = type; this._raw = raw;
     this.children = children; this.offset = offset; this.path = ""; this.owner = null;
   }
-  get name(){ return FIELD_BY_KEY.get(this.key) || null; }
+  get name(){ return NAME_BY_KEY.get(this.key) || null; }
   get isContainer(){ return this.type === T.CONT; }
   get isFloat(){ return this.type === T.F32; }
   get isText(){ return this.type === T.STR || this.type === T.BLOB; }
@@ -574,7 +574,14 @@ const DEFS = [
   ["AUTOLOCK","int","Camera auto-lock",0,1,""],
   ["SOUNDTYPE","int","Sound output",0,8,""],
   ["COLORBLIND","int","Colour-blind filter",0,8,""],
-  ["PASSWORD","text","Network password",0,8,""]
+  ["PASSWORD","text","Network password",0,8,""],
+  ["ADAPTIVETRIGGERS","int","Adaptive triggers",0,1,""],
+  ["AUTOEQUIPNEWITEMS","int","Auto-equip new items",0,1,""],
+  ["HUDBACKING","int","HUD backing",0,1,""],
+  ["SUBTITLEBACKING","int","Subtitle backing",0,1,""],
+  ["MIDNIGHTMODE","int","Midnight mode",0,1,"Reduced dynamic range audio."],
+  ["RENDERCONFIG","int","Render configuration",0,8,"Graphics mode selection; value meaning not verified."],
+  ["MAPUID","hex","Map UID",0,4294967295,"4 raw bytes; meaning not verified."]
 ];
 const LAYOUT = [
   ["Character",["PLAYER_NAME","PLAYER_ISMALE","PLAYER_ARCHETYPE","PLAYER_NUMBER","ARCHSTONEHOMEINDEX"]],
@@ -586,8 +593,38 @@ const LAYOUT = [
   ["Resistance",["PLAYER_RESISTANCE_POISON","PLAYER_RESISTANCE_PLAGUE"]],
   ["Records",["PLAYTIME","TRUEDEATHCOUNT","DEMONSKILLED","CLEARSTATE","CLEARCOUNT","KILLBLACK"]],
   ["Advanced (unverified)",["PLAYER_SHOPLEVEL","PLAYER_CLEARITEM","PLAYER_CLEARBONUS","PLAYEROFFSET"]],
-  ["Options",["BRIGHTNESS","DISPLAYBRIGHTNESS","VOLUMEMUSIC","VOLUMEEFFECTS","VOLUMEVOICE","SUBTITLES","SHOWHELMET","CAMERASPEED","CAMERAMODE","CAMERASHAKE","AUTOLOCK","SOUNDTYPE","COLORBLIND","GAMEFILTERNAME","PASSWORD"]]
+  ["Options",["BRIGHTNESS","DISPLAYBRIGHTNESS","VOLUMEMUSIC","VOLUMEEFFECTS","VOLUMEVOICE","SUBTITLES","SHOWHELMET","CAMERASPEED","CAMERAMODE","CAMERASHAKE","AUTOLOCK","SOUNDTYPE","COLORBLIND","GAMEFILTERNAME","PASSWORD","ADAPTIVETRIGGERS","AUTOEQUIPNEWITEMS","HUDBACKING","SUBTITLEBACKING","MIDNIGHTMODE","RENDERCONFIG","MAPUID"]]
 ];
+const FAMILIES = [
+  ["DEADENEMIES_INDICES%04d",9999],
+  ["EQUIPMENT_EQUIPITEM%02d",99],
+  ["EQUIPMENT_INVENTORY%02d_DISPLAYID",99],
+  ["EQUIPMENT_INVENTORY%02d_DURABILITY_ACCUMULATEDHITS",99],
+  ["EQUIPMENT_INVENTORY%02d_DURABILITY_CURRENT",99],
+  ["EQUIPMENT_INVENTORY%02d_EQUIPID",99],
+  ["EQUIPMENT_INVENTORY%02d_INDEX",99],
+  ["EQUIPMENT_INVENTORY%02d_QUANTITY",99],
+  ["EQUIPMENT_INVENTORY%02d_TYPE",99],
+  ["EQUIPMENT_INVENTORY%02d_VARIATIONID",99],
+  ["EQUIPMENT_SLOT%02d_EQUIPMENTID",99],
+  ["EQUIPMENT_SLOT%02d_INVENTORYID",99],
+  ["EQUIPMENT_STORAGEBOX%02d_DISPLAYID",99],
+  ["EQUIPMENT_STORAGEBOX%02d_DURABILITY",99],
+  ["EQUIPMENT_STORAGEBOX%02d_DURABILITY_ACCUMULATEDHITS",99],
+  ["EQUIPMENT_STORAGEBOX%02d_EQUIPTYPEID",99],
+  ["EQUIPMENT_STORAGEBOX%02d_HIGHQUANTITY",99],
+  ["EQUIPMENT_STORAGEBOX%02d_LOWQUANTITY",99],
+  ["MIRACLES_EQUIPPED%02d",99],
+  ["SPELLS_EQUIPPED%02d",99],
+  ["TENDENCY_WORLD%02d_BLACKWHITE",99],
+  ["TENDENCY_WORLD%02d_LEFTRIGHT",99],
+  ["TROPHIES_RING%02d",99],
+  ["CCSLOT_ANIMTYPE_%02d",99],
+  ["CCSLOT_FACEDATA_%02d",99],
+  ["CCSLOT_GENDER_%02d",99],
+  ["CCSLOT_VOICETYPE_%02d",99]
+];
+const WORLD_NAMES = ["BOSS_LOOT_VISIBLE","BROKEN","FADEDOUT","SCORCHEDBLENDVALUE","TRANSFORM","TRANSFORMS","TRANSFORMCOUNT","DISABLEDBONEMASK","DISABLEDCONSTRAINTMASK","FROZENBONEMASK","SCALEDBONEMASK","M03_01_SEC01_LIGHTNING_SAVE","M06_00_LAVA_VFX_SAVE","M06_00_WATERWHEEL_VFX_SAVE","MAIDENBLACK_STAFF_FIRE_OFF","O2110_0000_CHAINS_BOL_SAVE","O2110_0001_CHAINS_BOL_SAVE","O2320_FX_ENABLED","SCN000006_STATUESWORDRELEASE_SAVE"];
 /* FIELDS:END */
 
 const FIELD_BY_KEY = new Map();
@@ -597,6 +634,17 @@ for (const [name, kind, label, lo, hi, desc] of DEFS){
   FIELD_BY_KEY.set(m.key, name);
   META.set(name, m);
 }
+/* Indexed families ("EQUIPMENT_INVENTORY%02d_EQUIPID") name records for display
+   only; FIELD_BY_KEY stays the table of fields with editor metadata. */
+const NAME_BY_KEY = new Map(FIELD_BY_KEY);
+for (const [template, last] of FAMILIES){
+  const m = template.match(/%0(\d)d/), width = m ? Number(m[1]) : 0;
+  for (let i = 0; i <= last; i++){
+    const name = template.replace(/%0\d+d/, String(i).padStart(width, "0"));
+    NAME_BY_KEY.set(nameKey(name), name);
+  }
+}
+const WORLD_NAME_BY_KEY = new Map(WORLD_NAMES.map(name => [nameKey(name), name]));
 
 
 /* ===================================================================== *
@@ -3260,6 +3308,7 @@ function renderArrays(){
     for (const f of ordered){
       const row = document.createElement("div"); row.className = "invrow";
       const label = document.createElement("span"); label.className = "n"; label.textContent = suffixOf(f.key, group.state);
+      if (f.name) label.title = f.name;                // the real field name gives the game's index
       const id = document.createElement("span"); id.className = "id"; id.textContent = f.value;
       const name = document.createElement("span"); name.className = "nm" + (ITEM.has(f.value) ? "" : " unknown");
       name.textContent = f.value === -1 ? "empty" : itemName(f.value);

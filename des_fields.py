@@ -92,7 +92,20 @@ _DEFS = [
     ("SOUNDTYPE", "int", "Sound output", 0, 8, ""),
     ("COLORBLIND", "int", "Colour-blind filter", 0, 8, ""),
     ("PASSWORD", "text", "Network password", 0, 8, ""),
+    # Recovered by hashing strings from the game's executable and UI prefabs
+    # (tools/build_keydb.py); types and values corroborate a setting.
+    ("ADAPTIVETRIGGERS", "int", "Adaptive triggers", 0, 1, ""),
+    ("AUTOEQUIPNEWITEMS", "int", "Auto-equip new items", 0, 1, ""),
+    ("HUDBACKING", "int", "HUD backing", 0, 1, ""),
+    ("SUBTITLEBACKING", "int", "Subtitle backing", 0, 1, ""),
+    ("MIDNIGHTMODE", "int", "Midnight mode", 0, 1, "Reduced dynamic range audio."),
+    ("RENDERCONFIG", "int", "Render configuration", 0, 8,
+     "Graphics mode selection; value meaning not verified."),
+    ("MAPUID", "hex", "Map UID", 0, 0xFFFFFFFF, "4 raw bytes; meaning not verified."),
 ]
+# Rejected hash matches: PLAYER_STARTINGGIFT and PLAYER_VOICETYPE match two
+# container keys, but the containers' children (archstone and blob state) do
+# not corroborate those names.
 
 # category -> ordered list of field names (the editor and `list` layout)
 LAYOUT = {
@@ -125,9 +138,39 @@ LAYOUT = {
         "BRIGHTNESS", "DISPLAYBRIGHTNESS", "VOLUMEMUSIC", "VOLUMEEFFECTS",
         "VOLUMEVOICE", "SUBTITLES", "SHOWHELMET", "CAMERASPEED", "CAMERAMODE",
         "CAMERASHAKE", "AUTOLOCK", "SOUNDTYPE", "COLORBLIND", "GAMEFILTERNAME",
-        "PASSWORD",
+        "PASSWORD", "ADAPTIVETRIGGERS", "AUTOEQUIPNEWITEMS", "HUDBACKING",
+        "SUBTITLEBACKING", "MIDNIGHTMODE", "RENDERCONFIG", "MAPUID",
     ],
 }
+
+# Indexed record families, named by printf templates in the game executable
+# (e.g. "Equipment_Inventory%02d_EquipId"). Each expands to one key per index.
+# (template, highest index) - the bound covers every index the format can
+# print with its width, not a verified game limit.
+FAMILIES = [
+    ("DEADENEMIES_INDICES%04d", 9999),
+    ("EQUIPMENT_EQUIPITEM%02d", 99),
+    *[(f"EQUIPMENT_INVENTORY%02d_{part}", 99) for part in (
+        "DISPLAYID", "DURABILITY_ACCUMULATEDHITS", "DURABILITY_CURRENT",
+        "EQUIPID", "INDEX", "QUANTITY", "TYPE", "VARIATIONID")],
+    ("EQUIPMENT_SLOT%02d_EQUIPMENTID", 99),
+    ("EQUIPMENT_SLOT%02d_INVENTORYID", 99),
+    *[(f"EQUIPMENT_STORAGEBOX%02d_{part}", 99) for part in (
+        "DISPLAYID", "DURABILITY", "DURABILITY_ACCUMULATEDHITS", "EQUIPTYPEID",
+        "HIGHQUANTITY", "LOWQUANTITY")],
+    ("MIRACLES_EQUIPPED%02d", 99),
+    ("SPELLS_EQUIPPED%02d", 99),
+    ("TENDENCY_WORLD%02d_BLACKWHITE", 99),
+    ("TENDENCY_WORLD%02d_LEFTRIGHT", 99),
+    ("TROPHIES_RING%02d", 99),
+    ("CCSLOT_ANIMTYPE_%02d", 99),
+    ("CCSLOT_FACEDATA_%02d", 99),
+    ("CCSLOT_GENDER_%02d", 99),
+    ("CCSLOT_VOICETYPE_%02d", 99),
+]
+FAMILY_KEYS: dict[int, str] = {
+    name_key(template % index): template % index
+    for template, last in FAMILIES for index in range(last + 1)}
 
 FIELDS: dict[int, dict] = {}
 for _name, _kind, _label, _lo, _hi, _help in _DEFS:
@@ -143,7 +186,15 @@ BY_NAME = {v["name"]: v for v in FIELDS.values()}
 
 # Keys that occur inside world-state entries (see des_world.py), not at the
 # top level of the save. key -> name.
-WORLD_NAMES: list[str] = []
+WORLD_NAMES: list[str] = [
+    "BOSS_LOOT_VISIBLE", "BROKEN", "FADEDOUT", "SCORCHEDBLENDVALUE",
+    "TRANSFORM", "TRANSFORMS", "TRANSFORMCOUNT", "DISABLEDBONEMASK",
+    "DISABLEDCONSTRAINTMASK", "FROZENBONEMASK", "SCALEDBONEMASK",
+    "M03_01_SEC01_LIGHTNING_SAVE", "M06_00_LAVA_VFX_SAVE",
+    "M06_00_WATERWHEEL_VFX_SAVE", "MAIDENBLACK_STAFF_FIRE_OFF",
+    "O2110_0000_CHAINS_BOL_SAVE", "O2110_0001_CHAINS_BOL_SAVE",
+    "O2320_FX_ENABLED", "SCN000006_STATUESWORDRELEASE_SAVE",
+]
 WORLD_KEYS: dict[int, str] = {name_key(name): name for name in WORLD_NAMES}
 
 
@@ -157,15 +208,12 @@ def lookup(key: int) -> dict | None:
 
 def field_name(key: int) -> str | None:
     meta = FIELDS.get(key)
-    return meta["name"] if meta else None
+    return meta["name"] if meta else FAMILY_KEYS.get(key)
 
 
 def describe(key: int) -> str:
     """The recovered name when known, otherwise just the hex key."""
-    meta = FIELDS.get(key)
-    if not meta:
-        return f"{key:08X}"
-    return f'{meta["name"]}'
+    return field_name(key) or f"{key:08X}"
 
 
 def known_names() -> list[str]:

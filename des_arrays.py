@@ -173,7 +173,8 @@ def report(sf) -> list[dict]:
         slots = [{'char': suffix_of(member.key, group['state']),
                   'key': member.key,
                   'value': member.value,
-                  'name': info['names'].get(member.key)}
+                  'name': info['names'].get(member.key),
+                  'field': des_fields.field_name(member.key)}
                  for member in group['members']]
         slots.sort(key=lambda slot: slot['char'])
         rows.append({'index': index, 'offset': group['first'], 'count': group['count'],

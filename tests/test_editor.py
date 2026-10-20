@@ -58,6 +58,14 @@ class SyntheticBrowserTests(unittest.TestCase):
         self.assertEqual(0, self.page.locator('#alltable input').count())
         self.assertEqual('', self.page.input_value('#json'))
 
+    def test_page_names_match_python(self):
+        import des_fields
+        expected = {**{k: m['name'] for k, m in des_fields.FIELDS.items()}, **des_fields.FAMILY_KEYS}
+        got = dict(self.page.evaluate('[...NAME_BY_KEY.entries()]'))
+        self.assertEqual(expected, got)
+        world = dict(self.page.evaluate('[...WORLD_NAME_BY_KEY.entries()]'))
+        self.assertEqual(des_fields.WORLD_KEYS, world)
+
     def test_signed_int32(self):
         self.assertEqual(-1, self.page.evaluate('new Field(1,T.I32,new Uint8Array([255,255,255,255])).value'))
         self.assertEqual(-2147483648, self.page.evaluate('new Field(1,T.I32,new Uint8Array([0,0,0,128])).value'))

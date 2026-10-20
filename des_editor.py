@@ -329,15 +329,15 @@ def cmd_arrays(path: str, as_json: bool) -> int:
     if as_json:
         print(json.dumps(rows, indent=2))
         return 0
-    print(f"{path}\n  {len(rows)} fixed-slot array(s) recovered structurally "
-          f"(base names still unknown)")
+    print(f"{path}\n  {len(rows)} fixed-slot array(s) recovered structurally; "
+          f"slot letters are canonical, the field name shows the real index")
     for row in rows:
         print(f"\n  @0x{row['offset']:04x}  {row['count']} slots of {row['type']:#04x}"
               f"  state {row['state']:08x}  [{row['kind']}]")
         print(f"      {row['description']}")
         for slot in row['slots']:
             print(f"      slot '{slot['char']}'  0x{slot['key']:08x}  "
-                  f"{slot['value']:>10}  {slot['name'] or ''}")
+                  f"{slot['field'] or '':<26} {slot['value']:>10}  {slot['name'] or ''}")
     return 0
 
 

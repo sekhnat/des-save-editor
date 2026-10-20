@@ -375,6 +375,30 @@ class CatalogTests(unittest.TestCase):
 
 
 class FieldTableTests(unittest.TestCase):
+    def test_family_names_match_the_measured_keys(self):
+        import des_fields
+        # slot_key(0) of the observed u16 array, measured long before its name was known
+        self.assertEqual('DEADENEMIES_INDICES0000', des_fields.field_name(items.slot_key(0)))
+        self.assertEqual('EQUIPMENT_INVENTORY00_EQUIPID', des_fields.field_name(0x5C607E92))
+        # canonical slot letters are only defined up to an XOR of the alphabet,
+        # so the set of names is what the hash inversion establishes
+        self.assertEqual({f'TROPHIES_RING{i:02d}' for i in range(8)},
+                         {des_fields.field_name(arrays.key_for_state(0x7516F500, c)) for c in '01234567'})
+        self.assertEqual('BOSS_LOOT_VISIBLE', des_fields.world_name(0xE02849CE))
+        self.assertIsNone(des_fields.lookup(0x5C607E92))      # names only, no editor metadata
+
+    def test_keydb_template_expansion_and_matching(self):
+        spec = importlib.util.spec_from_file_location('build_keydb', ROOT / 'tools/build_keydb.py')
+        keydb = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(keydb)
+        self.assertEqual('CCSlot_Gender_03', keydb._expand('CCSlot_Gender_%02d')[3])
+        self.assertEqual('DeadEnemies_Indices0042', keydb._expand('DeadEnemies_Indices%04d')[42])
+        key = save.name_key('EQUIPMENT_INVENTORY00_EQUIPID')
+        rows = keydb.match({'EQUIPMENT_INVENTORY00_EQUIPID': {'eboot.bin (template)'}, 'NOPE': {'x'}},
+                           {key: {'types': {save.T_I32}, 'where': {'top'}, 'sample': 150000}})
+        self.assertEqual([f'{key:08x}'], [row['key'] for row in rows])
+        self.assertEqual('EQUIPMENT_INVENTORY00_EQUIPID', rows[0]['known'])
+
     def test_page_field_table_is_generated_from_des_fields(self):
         spec = importlib.util.spec_from_file_location('embed_fields', ROOT / 'tools/embed_fields.py')
         embed = importlib.util.module_from_spec(spec)

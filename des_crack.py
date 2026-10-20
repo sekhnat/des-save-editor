@@ -8,6 +8,7 @@ UPPERCASE, so keys can be matched against candidate names:
     python3 des_crack.py USR-DATA                     # built-in vocabulary
     python3 des_crack.py USR-DATA --depth 2           # also "WORD_WORD"
     python3 des_crack.py USR-DATA --words words.txt   # your own word list
+    python3 des_crack.py USR-DATA --game PPSA01342-app # strings from the game files
 
 Names are tried as-is and with these prefixes, which is the convention the
 game uses:  PLAYER_, PLAYER, PLAYER_BASE, PLAYER_CURRENT, PLAYER_MAX,
@@ -21,6 +22,8 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import os
+from pathlib import Path
 import sys
 
 import des_save
@@ -62,6 +65,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--words", help="extra word list (one per line)")
     ap.add_argument("--depth", type=int, default=1, help="1 or 2 words per name")
     ap.add_argument("--all", action="store_true", help="also show keys that stayed unknown")
+    ap.add_argument("--game", help="also try every string harvested from this game folder "
+                                   "(single names only; see tools/build_keydb.py)")
     a = ap.parse_args(argv)
 
     sf, keys = collect(a.file)
@@ -72,6 +77,13 @@ def main(argv: list[str]) -> int:
     words = sorted(set(words))
 
     found = {}
+    if a.game:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
+        import build_keydb
+        for name in build_keydb.harvest(Path(a.game)):
+            h = des_save.fnv1a(name.encode("ascii"))
+            if h in keys:
+                found[h] = name
     states = [(des_save.fnv1a(p.encode()), p) for p in PREFIXES]
     for w in words:                                   # single word
         for h0, pre in states:
