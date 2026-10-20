@@ -19,6 +19,7 @@ import des_items as items
 import des_arrays as arrays
 import des_diff as diff
 import des_world as world
+import des_inventory as inventory
 
 spec = importlib.util.spec_from_file_location('build_itemdb', ROOT / 'tools/build_itemdb.py')
 builder = importlib.util.module_from_spec(spec)
@@ -138,6 +139,111 @@ class WorldTests(unittest.TestCase):
             self.assertEqual(raw, world.encode(groups), path.name)
 
 
+def inventory_save(entries, storage=()):
+    """Records laid out like the game: count, then 8 records per inventory entry."""
+    k = save.name_key
+    i32 = lambda v: (v & 0xFFFFFFFF).to_bytes(4, 'little')
+    records = [save.Field(k('EQUIPMENT_INVENTORY_COUNT'), save.T_I32, i32(len(entries)))]
+    for n, (type_bits, equip_id, quantity, durability) in enumerate(entries):
+        p = f'EQUIPMENT_INVENTORY{n:02d}_'
+        records += [save.Field(k(p + 'INDEX'), save.T_I32, i32(n)),
+                    save.Field(k(p + 'TYPE'), save.T_I32, i32(type_bits)),
+                    save.Field(k(p + 'EQUIPID'), save.T_I32, i32(equip_id)),
+                    save.Field(k(p + 'QUANTITY'), save.T_RAW4, quantity.to_bytes(4, 'little')),
+                    save.Field(k(p + 'VARIATIONID'), save.T_I32, i32(n)),
+                    save.Field(k(p + 'DISPLAYID'), save.T_I32, i32(0)),
+                    save.Field(k(p + 'DURABILITY_CURRENT'), save.T_I32, i32(durability)),
+                    save.Field(k(p + 'DURABILITY_ACCUMULATEDHITS'), save.T_I32, i32(0))]
+    for n, (typed_id, low) in enumerate(storage):
+        p = f'EQUIPMENT_STORAGEBOX{n:02d}_'
+        records += [save.Field(k(p + 'DISPLAYID'), save.T_I32, i32(0)),
+                    save.Field(k(p + 'EQUIPTYPEID'), save.T_I32, i32(typed_id)),
+                    save.Field(k(p + 'DURABILITY'), save.T_I32, i32(0)),
+                    save.Field(k(p + 'DURABILITY_ACCUMULATEDHITS'), save.T_I32, i32(0)),
+                    save.Field(k(p + 'LOWQUANTITY'), save.T_U8, bytes([low])),
+                    save.Field(k(p + 'HIGHQUANTITY'), save.T_U8, b'\0')]
+    records += [save.Field(k('EQUIPMENT_SLOT00_INVENTORYID'), save.T_I32, i32(0)),
+                save.Field(k('EQUIPMENT_SLOT00_EQUIPMENTID'), save.T_I32, i32(entries[0][1]))]
+    sf = save.SaveFile()
+    sf.records = records
+    return save.SaveFile(sf.build())
+
+
+class InventoryTests(unittest.TestCase):
+    ITEMS = [(0, 150000, 1, 200), (0x10000000, 100100, 1, 98), (0x20000000, 105, 1, 0),
+             (0x40000000, 1001, 32, 0)]
+
+    def test_categories_names_and_quantities(self):
+        sf = inventory_save(self.ITEMS, [(0x40000000 | 2000, 25), (20400, 1)])
+        rows = inventory.inventory(sf)
+        self.assertEqual(['Weapon', 'Armor', 'Ring', 'Goods'], [r['category'] for r in rows])
+        self.assertEqual(['Buckler', 'Silver Coronet', 'Fragrant Ring', 'Half Moon Grass'],
+                         [r['name'] for r in rows])
+        self.assertEqual([1, 1, 1, 32], [r['quantity'] for r in rows])
+        self.assertTrue(all(r['complete'] for r in rows))
+        box = inventory.storage(sf)
+        self.assertEqual([('Goods', 2000, 'Hardstone Shard', 25), ('Weapon', 20400, 'Bastard Sword', 1)],
+                         [(r['category'], r['id'], r['name'], r['low_quantity']) for r in box])
+        self.assertEqual([(0, 0, 'Buckler')],
+                         [(r['slot'], r['inventory'], r['name']) for r in inventory.equipment(sf)])
+
+    def test_edits_change_only_the_addressed_value(self):
+        sf = inventory_save(self.ITEMS, [(0x40000000 | 2000, 25)])
+        before = sf.build()
+        inventory.set_quantity(sf, 3, 99)
+        inventory.set_durability(sf, 0, 150)
+        inventory.set_storage_quantity(sf, 0, 30)
+        after = sf.build()
+        self.assertEqual(len(before), len(after))
+        rows = inventory.inventory(save.SaveFile(after))
+        self.assertEqual((99, 150), (rows[3]['quantity'], rows[0]['durability']))
+        self.assertEqual(30, inventory.storage(save.SaveFile(after))[0]['low_quantity'])
+
+    def test_invalid_edits_are_refused_without_changes(self):
+        sf = inventory_save(self.ITEMS)
+        before = sf.build()
+        for call in (lambda: inventory.set_quantity(sf, 3, 0),
+                     lambda: inventory.set_quantity(sf, 3, 1000),
+                     lambda: inventory.set_quantity(sf, 3, 1.5),
+                     lambda: inventory.set_quantity(sf, 9, 1),
+                     lambda: inventory.set_durability(sf, 0, -1),
+                     lambda: inventory.set_storage_quantity(sf, 0, 1)):
+            with self.assertRaises(ValueError):
+                call()
+        self.assertEqual(before, sf.build())
+
+    def test_incomplete_entries_are_listed_but_not_edited(self):
+        sf = inventory_save(self.ITEMS)
+        sf.records = [f for f in sf.records if f.key != save.name_key('EQUIPMENT_INVENTORY01_QUANTITY')]
+        rows = inventory.inventory(sf)
+        self.assertFalse(rows[1]['complete'])
+        with self.assertRaises(ValueError):
+            inventory.set_durability(sf, 1, 10)
+
+    def test_cli_inv_needs_experimental_and_writes_a_valid_save(self):
+        import des_editor
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'USR-DATA'
+            path.write_bytes(inventory_save(self.ITEMS).build())
+            with self.assertRaises(SystemExit):
+                des_editor.main(['inv', str(path), '--qty', '3=50'])
+            self.assertEqual(0, des_editor.main(['inv', str(path), '--qty', '3=50', '--experimental']))
+            self.assertEqual(50, inventory.inventory(save.SaveFile(path.read_bytes()))[3]['quantity'])
+
+    @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')
+    def test_every_sample_item_resolves_and_counts_match(self):
+        for path in SAVES.glob('*PlayerProfile*/USR-DATA'):
+            with self.subTest(path=path):
+                sf = save.SaveFile(path.read_bytes())
+                rows = inventory.inventory(sf)
+                self.assertEqual(sf.get('EQUIPMENT_INVENTORY_COUNT'), len(rows))
+                self.assertTrue(all(r['complete'] and r['name'] for r in rows))
+                box = inventory.storage(sf)
+                self.assertEqual(sf.get('EQUIPMENT_STORAGEBOX_COUNT') or 0, len(box))
+                self.assertTrue(all(r['name'] for r in box))
+                self.assertEqual(sf.get('DEADENEMIES_COUNT') or 0, len(items.dead_enemies(sf)))
+
+
 class SaveTests(unittest.TestCase):
     def test_signed_int_round_trip(self):
         f = save.Field(1, save.T_I32, b'\xff' * 4)
@@ -181,23 +287,6 @@ class SaveTests(unittest.TestCase):
                 sf = save.SaveFile(original)
                 self.assertTrue(sf.checksum_ok())
                 self.assertEqual(original, sf.build())
-
-    def test_empty_array_inserts_before_its_count(self):
-        sf = save.SaveFile()
-        count = save.Field(items.COUNT_KEY, save.T_U16, b'\0\0')
-        tail = save.Field(1, save.T_U8, b'\0')
-        sf.records = [count, tail]
-        items.set_inventory(sf, [113])
-        self.assertEqual([items.slot_key(0), items.COUNT_KEY, 1], [f.key for f in sf.records])
-        self.assertEqual(1, count.value)
-
-    def test_invalid_array_write_is_atomic(self):
-        sf = save.SaveFile()
-        sf.records = [save.Field(items.COUNT_KEY, save.T_U16, b'\0\0')]
-        before = sf.build()
-        with self.assertRaises(ValueError):
-            items.set_inventory(sf, [100, 70000])
-        self.assertEqual(before, sf.build())
 
     def test_slot_index_bounds(self):
         for index in (-1, 40, 1.5):

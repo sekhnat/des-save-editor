@@ -103,36 +103,38 @@ Applying an invalid dump never discards existing edits or modifies undo history.
   available in All fields and JSON. Two further settings were recovered by
   hashing bare names against the executable's string table: `AUTOLOCK`
   (boolean, true here) and `CAMERASHAKE` (float, 1.0 here).
-- **Observed u16 array:** 31 records followed by count key `CC62FF39` in the
-  larger sample, zero records/count zero in the smaller sample. Candidate keys
-  come from four observed hash groups. Add/replace/remove is **experimental and
-  opt-in**, validates the entire operation before mutation, and inserts new
-  records before the count even for an empty array. The editor supports 40
-  candidate keys; **40 is not a verified game inventory limit**. The array's
-  relationship to the general inventory is unresolved.
+- **Inventory, storage box and equipment:** decoded from named records
+  (`EQUIPMENT_INVENTORY##_*`, `EQUIPMENT_STORAGEBOX##_*`, `EQUIPMENT_SLOT##_*`),
+  whose names come from printf templates in the game executable. The top four
+  bits of `_TYPE` / `_EQUIPTYPEID` give the category (0 weapon, 1 armor,
+  2 ring, 4 goods), and with it every item in both samples resolves to a
+  catalog name. `_QUANTITY` holds a little-endian count. Equipment slots
+  reference inventory entries through their `_INDEX` value; slot meanings
+  (which hand, which quick slot) are not verified.
+- **Inventory editing is experimental and opt-in:** inventory quantity
+  (1–999) and durability, and the storage low-quantity byte (1–255), as
+  same-size edits. Adding or removing items and changing item IDs are not
+  offered: the roles of `_DISPLAYID` and `_VARIATIONID` are not verified. The
+  `_COUNT` fields are read-only in the form.
+- **Dead enemies, not inventory.** The u16 records once offered as an
+  "experimental inventory" are `DEADENEMIES_INDICES####` followed by
+  `DEADENEMIES_COUNT` (key `CC62FF39`). The measured key of the first record
+  hashes to `DEADENEMIES_INDICES0000`. Their values (including the former
+  "unmapped" `127 128 129 …`) are enemy indices, not item IDs. Item insertion
+  into this list has been removed; it is shown read-only.
 - **Catalog IDs are category-specific.** For example, Goods 1000 is Crescent
   Moon Grass while Spell 1000 is Soul Arrow. They are separate records, never
-  merged. IDs above 65535 remain searchable; they cannot be put into u16 slots.
-  Some rows are unused/test/unlabelled data. A catalog match is not proof that
-  a save field encodes that item.
-- **Unmapped values:** `127 128 129 130 140 146 152 153 159 171` in the observed
-  array remain unresolved. Preserve them; absence from item tables does not
-  prove they should be deleted. Both param bundles were re-audited: all 33
-  tables in `gameparam.parambnd` and `gameparamna.parambnd` were searched, the
-  two bundles differ only in `TalkParam`, and three of the ten (`129 146 159`)
-  occur in no parameter table at all. No additive remap into a known ID space
-  works, so they are not equipment rows under a different numbering.
-- **Storage:** `EQUIPMENT_STORAGEBOX_COUNT` is read-only in the form. Storage
-  contents may be in opaque or unidentified records. Changing a count alone
-  does not add storage items. Equipment, stack quantities, learned spells,
-  tendency, appearance and general progression are not fully mapped.
-- **More fixed-slot arrays exist.** Besides the u16 list, six 32-bit arrays were
-  recovered by hash inversion (see *Recovered structures* below). Their base
-  names are unknown, so the editor labels their slots by suffix character. One
-  of them holds ring IDs and starts with two entries on a fresh character; two
-  seven-slot arrays use `-1` as an empty-slot sentinel and one of them already
-  contains a consumable. Treat all of them as experimental until a differential
-  test confirms their meaning.
+  merged. Some rows are unused/test/unlabelled data.
+- **Fixed-slot arrays** recovered by hash inversion now have names:
+  `SPELLS_EQUIPPED##` and `MIRACLES_EQUIPPED##` (seven slots, `-1` empty),
+  `TROPHIES_RING##` with `TROPHIES_RING_COUNT` (rings recorded for the
+  trophy), and `EQUIPMENT_EQUIPITEM##` (inventory refs of the quick items).
+  One four-slot array of small integers is still unnamed. Spell and miracle
+  slot counts are `SPELLS_SLOTSUNLOCKED` / `MIRACLES_SLOTSUNLOCKED`.
+- **Tendency:** `TENDENCY_PLAYER_BLACKWHITE/LEFTRIGHT` and seven
+  `TENDENCY_WORLD##_BLACKWHITE/LEFTRIGHT` floats (observed −180 to 180).
+- **Character-creator presets:** `CCSLOT_{GENDER,ANIMTYPE,VOICETYPE,FACEDATA}_##`
+  in five slots; face data is an opaque blob.
 - **What "append-only" means here.** A longer-played character held all 320
   records of a fresh one plus 706 more, and no record was missing. The save
   therefore accumulates records, which is why a before/after pair of the *same*
@@ -153,13 +155,14 @@ by the modular inverse of the FNV prime (`0x359C449B`) and XOR-ing a candidate
 character recovers the state that all members of one array share. Grouping
 keys that resolve to the same state under a digit, then requiring contiguous
 records with a constant stride, yields whole arrays even though the base name
-is unknown. Six 32-bit arrays and the four u16 item chunks come out this way.
+is unknown. Six 32-bit arrays and the four u16 dead-enemy chunks came out this
+way before their names were recovered from the executable.
 
 The suffix character is only defined up to an XOR of the whole alphabet, so the
 labelling is canonicalised to `0,1,2,...` and then to the smallest matching
 state; Python and the browser return identical results on every sample.
 
-**Slot ordering matters.** The four u16 chunks do not label their slots with
+**Slot ordering matters.** The four u16 dead-enemy chunks do not label their slots with
 plain digits: chunks 0 and 2 sit one below the plain prefix, so their characters
 run `1,0,3,2,5,4,7,6,9,8`. The 40-key *set* is unchanged, but the index-to-key
 map was wrong before this was measured, which meant "slot 0" addressed slot 1.
@@ -199,8 +202,8 @@ python3 des_editor.py set FILE 0x637eb85e=1
 python3 des_editor.py patch FILE edits.patch.json --out /tmp/USR-DATA
 python3 des_editor.py dump FILE dump.json
 python3 des_editor.py verify FILE
-python3 des_editor.py items FILE
-python3 des_editor.py inv FILE --experimental --add 113 --out /tmp/USR-DATA
+python3 des_editor.py items FILE [--json]
+python3 des_editor.py inv FILE --experimental --qty 9=40 --durability 0=200 --box-qty 4=30 --out /tmp/USR-DATA
 python3 des_editor.py arrays FILE
 python3 des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
 python3 des_editor.py blobs FILE
@@ -219,8 +222,9 @@ after    1026 records    258582 bytes
 added     706   removed     0   changed    64
 ```
 
-`items` lists observed values and candidate names, not a proven full inventory.
-The `inv` command requires `--experimental`. `set`/`patch`/`inv` create a
+`items` lists the inventory, storage box, equipment slots and the number of
+dead-enemy indices. `inv` requires `--experimental` and only makes same-size
+quantity and durability edits. `set`/`patch`/`inv` create a
 collision-resistant timestamped backup for in-place writes (`set --no-backup`
 is an explicit opt-out). Edited bytes are validated, written to a temporary
 file, flushed/fsynced, then atomically replace the destination. Failed edits

@@ -27,6 +27,7 @@ import time
 import des_arrays
 import des_diff
 import des_fields
+import des_inventory
 import des_items
 import des_save
 from des_save import SaveFile, name_key
@@ -81,12 +82,12 @@ def cmd_info(path: str) -> int:
         print(f"  play time       : {s['playtime_s']:.0f} s "
               f"({s['playtime_s']/3600:.2f} h)   [raw {s['playtime_ms']:.0f}]")
     print(f"  deaths          : {s['deaths']}")
-    ids = des_items.inventory_ids(sf)
-    if ids:
-        db = des_items.load_db()
-        known = sum(1 for i in ids if i in db)
-        print(f"  inventory       : {len(ids)} item(s), {known} resolved "
-              f"(see `items` command)")
+    items = des_inventory.inventory(sf)
+    if items:
+        known = sum(1 for row in items if row['name'])
+        stored = des_inventory.storage(sf)
+        print(f"  inventory       : {len(items)} entries, {known} named; "
+              f"storage {len(stored)} (see `items` command)")
     return 0
 
 
@@ -269,56 +270,59 @@ def cmd_patch(path: str, patch_path: str, out: str | None) -> int:
     return 0
 
 
-def cmd_items(path: str) -> int:
-    """List observed u16 values and category-aware candidate names."""
+def cmd_items(path: str, as_json: bool) -> int:
+    """List the inventory, the storage box and the equipment slots."""
     sf = des_save.load(path)
-    db = des_items.load_db()
-    ids = des_items.inventory_ids(sf)
-    if not db:
+    catalog = des_inventory._catalog()
+    if not catalog:
         print("itemdb.json not found next to this script - run tools/build_itemdb.py",
               file=sys.stderr)
-    print(f"{path}\n  {len(ids)} observed u16 record(s); experimental name candidates, not a verified full inventory")
-    for i, item_id in enumerate(ids, 1):
-        e = db.get(item_id)
-        name = e["name"] if e else "unknown item id"
-        cat = e["category"] if e else "?"
-        print(f"  {i:2d}. {item_id:6d}  {name:<40} {cat}")
+    doc = {'inventory': des_inventory.inventory(sf, catalog),
+           'storage': des_inventory.storage(sf, catalog),
+           'equipment': des_inventory.equipment(sf, catalog),
+           'dead_enemies': des_items.dead_enemies(sf)}
+    if as_json:
+        print(json.dumps(doc, indent=2))
+        return 0
+    print(f"{path}\n\n  inventory ({len(doc['inventory'])} entries)")
+    for row in doc['inventory']:
+        mark = '' if row['complete'] else '  [incomplete]'
+        print(f"    {row['index']:2d}  ref {row['ref']!s:>3}  {row['category'] or '?':<6} {row['id']:>7}  "
+              f"{row['name'] or 'unknown id':<34} x{row['quantity']:<4} "
+              f"durability {row['durability']}{mark}")
+    print(f"\n  storage box ({len(doc['storage'])} entries)")
+    for row in doc['storage']:
+        mark = '' if row['complete'] else '  [incomplete]'
+        print(f"    {row['index']:2d}  {row['category'] or '?':<6} {row['id']:>7}  "
+              f"{row['name'] or 'unknown id':<34} x{row['low_quantity']:<4} "
+              f"durability {row['durability']}{mark}")
+    print(f"\n  equipment slots ({len(doc['equipment'])} occupied; slot meanings not verified)")
+    for row in doc['equipment']:
+        print(f"    slot {row['slot']:2d}  ref {row['inventory']!s:>3}  {row['id']!s:>7}  "
+              f"{row['name'] or ''}")
+    print(f"\n  dead enemy indices: {len(doc['dead_enemies'])}")
     return 0
 
 
-def cmd_inv(path: str, add: list[int], rm: list[int], sets: list[str],
-            out: str | None) -> int:
-    """Add / remove / replace inventory entries."""
+def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
+            box_quantities: list[str], out: str | None) -> int:
+    """Experimental same-size edits of inventory and storage values."""
     sf = des_save.load(path)
-    ids = des_items.inventory_ids(sf)
-    for spec in sets:
-        idx, _, val = spec.partition("=")
-        i, v = int(idx) - 1, int(val, 0)
-        if not 0 <= i < len(ids):
-            print(f"slot {i + 1} does not exist", file=sys.stderr)
-            return 2
-        print(f"  slot {i + 1}: {ids[i]} -> {v}")
-        ids[i] = v
-    for i in sorted((int(x) - 1 for x in rm), reverse=True):
-        if not 0 <= i < len(ids):
-            print(f"slot {i + 1} does not exist", file=sys.stderr)
-            return 2
-        print(f"  removed slot {i + 1} ({ids[i]})")
-        del ids[i]
-    for v in add:
-        print(f"  added {v}")
-        ids.append(v)
-    des_items.set_inventory(sf, ids)
+    for specs, setter, label in ((quantities, des_inventory.set_quantity, 'quantity'),
+                                 (durabilities, des_inventory.set_durability, 'durability'),
+                                 (box_quantities, des_inventory.set_storage_quantity,
+                                  'storage quantity')):
+        for spec in specs:
+            index, sep, value = spec.partition('=')
+            if not sep:
+                raise ValueError(f'bad assignment {spec!r} (expected INDEX=VALUE)')
+            setter(sf, int(index), int(value, 0))
+            print(f"  {label} {int(index):02d} -> {int(value, 0)}")
     dest = out or path
     if os.path.abspath(dest) == os.path.abspath(path):
         _backup(path)
     des_save.save(sf, dest)
-    db = des_items.load_db()
-    print(f"  wrote {dest}: {len(ids)} item(s), count field "
-          f"{sf.find(des_items.COUNT_KEY).value}")
-    for i, item_id in enumerate(sorted(ids), 1):
-        e = db.get(item_id)
-        print(f"    {i:2d}. {item_id:6d}  {e['name'] if e else '?'}")
+    print(f"  wrote {dest}")
     return 0
 
 
@@ -332,7 +336,8 @@ def cmd_arrays(path: str, as_json: bool) -> int:
     print(f"{path}\n  {len(rows)} fixed-slot array(s) recovered structurally; "
           f"slot letters are canonical, the field name shows the real index")
     for row in rows:
-        print(f"\n  @0x{row['offset']:04x}  {row['count']} slots of {row['type']:#04x}"
+        print(f"\n  {row['family'] or 'unnamed array'}")
+        print(f"  @0x{row['offset']:04x}  {row['count']} slots of {row['type']:#04x}"
               f"  state {row['state']:08x}  [{row['kind']}]")
         print(f"      {row['description']}")
         for slot in row['slots']:
@@ -564,15 +569,19 @@ def main(argv: list[str]) -> int:
     p = sub.add_parser("dump")
     p.add_argument("file"); p.add_argument("out", nargs="?")
 
-    p = sub.add_parser("items", help="list observed u16 values with candidate item names")
+    p = sub.add_parser("items", help="list the inventory, storage box and equipment slots")
     p.add_argument("file")
+    p.add_argument("--json", action="store_true", dest="as_json")
 
-    p = sub.add_parser("inv", help="experimental observed-u16-array editing (not a verified inventory)")
+    p = sub.add_parser("inv", help="experimental same-size edits of inventory and storage values")
     p.add_argument("file")
-    p.add_argument('--experimental', action='store_true', help='acknowledge unverified inventory semantics')
-    p.add_argument("--add", action="append", default=[], type=lambda x: int(x, 0))
-    p.add_argument("--rm", action="append", default=[], metavar="SLOT")
-    p.add_argument("--set", action="append", default=[], dest="sets", metavar="SLOT=ID")
+    p.add_argument('--experimental', action='store_true',
+                   help='acknowledge that edits are not yet verified in game')
+    p.add_argument("--qty", action="append", default=[], metavar="INDEX=N",
+                   help="inventory stack size (1..999)")
+    p.add_argument("--durability", action="append", default=[], metavar="INDEX=N")
+    p.add_argument("--box-qty", action="append", default=[], dest="box_qty", metavar="INDEX=N",
+                   help="storage stack size (1..255, low byte)")
     p.add_argument("--out")
 
     p = sub.add_parser("selftest", help="validate the parser against real saves")
@@ -618,7 +627,7 @@ def main(argv: list[str]) -> int:
 
     a = ap.parse_args(argv)
     if a.cmd == 'inv' and not a.experimental:
-        ap.error('inv requires --experimental: observed u16 values are not a verified full inventory')
+        ap.error('inv requires --experimental: inventory edits are not yet verified in game')
     if a.cmd == 'wset' and not a.experimental:
         ap.error('wset requires --experimental: world-state record meanings are unverified')
     if a.cmd == "info":   return cmd_info(a.file)
@@ -629,8 +638,8 @@ def main(argv: list[str]) -> int:
     if a.cmd == "set":    return cmd_set(a.file, a.assignments, a.out, a.no_backup)
     if a.cmd == "dump":   return cmd_dump(a.file, a.out)
     if a.cmd == "patch":  return cmd_patch(a.file, a.patch, a.out)
-    if a.cmd == "items":    return cmd_items(a.file)
-    if a.cmd == "inv":      return cmd_inv(a.file, a.add, a.rm, a.sets, a.out)
+    if a.cmd == "items":    return cmd_items(a.file, a.as_json)
+    if a.cmd == "inv":      return cmd_inv(a.file, a.qty, a.durability, a.box_qty, a.out)
     if a.cmd == "arrays":   return cmd_arrays(a.file, a.as_json)
     if a.cmd == "aslot":    return cmd_aslot(a.file, a.state, a.sets, a.clear, a.out)
     if a.cmd == "blobs":    return cmd_blobs(a.file)

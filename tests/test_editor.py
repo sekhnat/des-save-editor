@@ -191,21 +191,27 @@ class SyntheticBrowserTests(unittest.TestCase):
           return rejected && typeChecked && blob().hex === 'aabbccdd';
         }'''))
 
-    def test_experimental_array_edit_inserts_before_the_count(self):
-        sf = des_save.SaveFile()
-        sf.records = [des_save.Field(1, des_save.T_U8, b'\x00'),
-                      des_save.Field(int('CC62FF39', 16), des_save.T_U16, b'\x00\x00'),
-                      des_save.Field(2, des_save.T_U8, b'\x00')]
-        self.load_bytes(sf.build())
+    def test_inventory_rows_and_atomic_edits(self):
+        k = des_save.name_key
+        i32 = lambda v: (v & 0xFFFFFFFF).to_bytes(4, 'little')
+        records = [des_save.Field(k('EQUIPMENT_INVENTORY_COUNT'), des_save.T_I32, i32(2))]
+        for n, (bits, item, qty) in enumerate([(0, 150000, 1), (0x40000000, 1001, 32)]):
+            p = f'EQUIPMENT_INVENTORY{n:02d}_'
+            records += [des_save.Field(k(p + part), des_save.T_I32, i32(value)) for part, value in
+                        (('INDEX', n), ('TYPE', bits), ('EQUIPID', item), ('VARIATIONID', n),
+                         ('DISPLAYID', 0), ('DURABILITY_CURRENT', 200), ('DURABILITY_ACCUMULATEDHITS', 0))]
+            records.append(des_save.Field(k(p + 'QUANTITY'), des_save.T_RAW4, qty.to_bytes(4, 'little')))
+        self.load_bytes(self.build(records))
+        self.assertEqual([['W', 150000, 'Buckler', 1], ['G', 1001, 'Half Moon Grass', 32]],
+                         self.page.evaluate('inventoryRows(current().save).map(r => [r.cat, r.id, r.name, r.quantity])'))
         self.assertTrue(self.page.evaluate('''() => {
           const before = current().save.build();
-          try { setInv(current().save, [100, 70000]); return false; } catch (_) {}
+          for (const bad of [0, 1000, 1.5]) { try { setInvQuantity(current().save, 1, bad); return false; } catch (_) {} }
           if (!bytesEq(before, current().save.build())) return false;
-          editCandidate(s => setInv(s, [113, 1000]));
-          const list = current().save.records;
-          const values = invSlots(current().save).map(f => f.value);
-          return list.findIndex(f => f.key === COUNT_KEY) > list.findIndex(f => f.type === T.U16)
-                 && values[0] === 113 && values[1] === 1000 && current().save.get(COUNT_KEY) === 2;
+          editCandidate(s => setInvQuantity(s, 1, 50));
+          if (inventoryRows(current().save)[1].quantity !== 50) return false;
+          doUndo();
+          return inventoryRows(current().save)[1].quantity === 32;
         }'''))
 
     def test_dirty_state_is_cached_per_revision(self):

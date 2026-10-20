@@ -18,6 +18,7 @@ reported as arrays.  Everything else stays opaque on purpose.
 from __future__ import annotations
 
 import collections
+import re
 
 from des_save import (Field, T_BLOB, T_BOOL, T_F32, T_I32, T_U16, T_U8,
                       name_key)
@@ -112,6 +113,19 @@ def key_for_state(state: int, char: str) -> int:
     return ((state ^ ord(char)) * P) & M
 
 
+# Arrays whose recovered family name fixes the catalog category of their values.
+FAMILY_CATEGORY = {'SPELLS_EQUIPPED': 'Spell', 'MIRACLES_EQUIPPED': 'Spell', 'TROPHIES_RING': 'Ring'}
+
+
+def family_of(group: dict) -> str | None:
+    """Common family name of an array's members, digits replaced by ##."""
+    names = [des_fields.field_name(member.key) for member in group['members']]
+    if not all(names):
+        return None
+    bases = {re.sub(r'\d+(?=_[A-Z]+$|$)', '##', name) for name in names}
+    return bases.pop() if len(bases) == 1 else None
+
+
 def label(group: dict, catalog: list[dict] | None = None) -> dict:
     """Describe an array: what it likely holds, and its decoded values.
 
@@ -143,7 +157,14 @@ def label(group: dict, catalog: list[dict] | None = None) -> dict:
     else:
         kind, description = 'values', 'fixed-slot list of 32-bit values'
     names = {}
-    if kind == 'id slots':
+    family = family_of(group)
+    category = next((cat for prefix, cat in FAMILY_CATEGORY.items()
+                     if family and family.startswith(prefix)), None)
+    if category:
+        lookup = {entry['id']: entry['name'] for entry in catalog if entry['category'] == category}
+        for member, value in zip(group['members'], values):
+            names[member.key] = 'empty' if value == EMPTY else lookup.get(value)
+    elif kind == 'id slots':
         for member, value in zip(group['members'], values):
             candidates = by_id.get(value)
             names[member.key] = (
@@ -151,7 +172,7 @@ def label(group: dict, catalog: list[dict] | None = None) -> dict:
                 if candidates else ('empty' if value == EMPTY else None))
     group['names'] = names
     return {'kind': kind, 'description': description, 'values': values,
-            'names': names, 'filled': len(filled)}
+            'names': names, 'filled': len(filled), 'family': family}
 
 
 def suffix_of(key: int, state: int) -> str:

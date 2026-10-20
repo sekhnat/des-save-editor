@@ -80,7 +80,7 @@
   .okbox{border-left:3px solid var(--ok);background:#12251a;padding:10px 14px;border-radius:6px;font-size:12.5px}
   /* inventory */
   .invlist{margin-top:10px;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-  .invrow{display:grid;grid-template-columns:44px 70px 1fr 86px 96px 40px;gap:6px;align-items:center;
+  .invrow{display:grid;grid-template-columns:44px 70px 1fr 86px 80px 80px;gap:6px;align-items:center;
           padding:5px 10px;border-bottom:1px solid #1c232b;font-size:12.5px}
   .invrow:last-child{border-bottom:none}
   .invrow:hover{background:#1a212a}
@@ -96,11 +96,6 @@
             max-height:74vh;display:flex;flex-direction:column;box-shadow:0 20px 60px #000a}
   .modalbox header{padding:12px 16px;border-bottom:1px solid var(--line);background:none;position:static}
   .modalbox .body{overflow:auto;padding:6px}
-  .pickrow{display:grid;grid-template-columns:64px 1fr 90px;gap:10px;padding:6px 10px;border-radius:6px;
-           cursor:pointer;font-size:12.5px}
-  .pickrow:hover{background:#232b36}
-  .pickrow .pid{font-family:var(--mono);color:var(--dim)}
-  .pickrow .pcat{font-size:10.5px;color:#6d7a8b;text-transform:uppercase;letter-spacing:.6px}
   /* undo / diagnostics / tree / reference */
   button:disabled{opacity:.38;cursor:default}
   .diag{display:flex;flex-direction:column;gap:6px;margin-top:10px}
@@ -132,17 +127,16 @@
   #message{position:sticky;top:82px;z-index:25;max-height:180px;overflow:auto;white-space:pre-wrap;margin-bottom:16px}#message:empty{display:none}
   .tabs{flex-wrap:wrap}.bar input,.bar select{width:auto;max-width:100%}
   .pages{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 0;color:var(--dim);font-size:12px}
-  .invlist{max-height:360px;overflow:auto}.invrow{grid-template-columns:32px 62px minmax(140px,1fr) 110px 82px 40px}
-  .pickrow{width:100%;text-align:left;margin-bottom:4px}
+  .invlist{max-height:360px;overflow:auto}.invrow{grid-template-columns:32px 62px minmax(140px,1fr) 86px 80px 80px}
   .modalbox textarea{width:100%;min-height:240px;resize:vertical;background:#0f1318;color:var(--fg);font:12px/1.5 var(--mono);padding:12px}
   .modalbox footer{padding:12px 16px;border-top:1px solid var(--line)}
   .trow .tn{overflow-wrap:anywhere}.trow .tv{white-space:pre-wrap}
   @media(max-width:700px){
     header{padding:12px}main{padding:12px}.card{padding:14px}.grid{grid-template-columns:1fr}
     input[type=text],input[type=number],select{font-size:16px}
-    .invrow{grid-template-columns:24px 50px minmax(90px,1fr) 66px 34px}.invrow .cat{display:none}
+    .invrow{grid-template-columns:24px 50px minmax(90px,1fr) 60px 60px}.invrow .cat{display:none}
     .invrow button{padding:4px}.trow{grid-template-columns:65px minmax(110px,1fr) 36px minmax(80px,1fr);gap:5px}
-    .modal{padding-top:3vh}.modalbox{max-height:90vh}.pickrow{grid-template-columns:58px 1fr 65px}
+    .modal{padding-top:3vh}.modalbox{max-height:90vh}
     .scroll{overflow:auto}#alltable{min-width:700px}table.ref{min-width:760px}
   }
 </style>
@@ -236,7 +230,7 @@
 
     <div id="tab-catalog" class="hidden card">
       <h2>Item catalog</h2>
-      <p class="note">Category-specific game IDs. Weapons, armor, spells and skills remain searchable even when their IDs do not fit a u16 record. Catalog presence is not proof of a save-field mapping.</p>
+      <p class="note">Category-specific game IDs. The inventory and storage views resolve items through their category bits; spells and skills are listed for reference.</p>
       <div class="bar"><input id="catalogsearch" type="text" placeholder="Search all item names / IDs" aria-label="Search item catalog">
         <select id="catalogcategory" aria-label="Catalog category"><option value="">All categories</option><option value="G">Goods</option><option value="W">Weapons</option><option value="A">Armor</option><option value="R">Rings</option><option value="S">Spells</option><option value="K">Skills</option></select></div>
       <div class="scroll"><table><thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Scope</th></tr></thead><tbody id="catalogbody"></tbody></table></div>
@@ -261,14 +255,6 @@
     </div>
 
     <div class="warnbox" id="tips"></div>
-  </div>
-  <div id="picker" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="picktitle">
-    <div class="modalbox">
-      <header><div class="flexh"><b id="picktitle">Choose an experimental candidate</b><button id="closepicker" aria-label="Close item picker">Close</button></div>
-        <p class="small" id="pickhint"></p><input id="pickersearch" type="text" placeholder="Search candidate names / IDs…" aria-label="Search item candidates">
-        <select id="pickcategory" aria-label="Candidate category"><option value="">All equipment categories</option><option value="G">Goods</option><option value="W">Weapons</option><option value="A">Armor</option><option value="R">Rings</option></select></header>
-      <div class="body" id="pickerbody"></div><footer id="pickerpages" class="pages"></footer>
-    </div>
   </div>
   <div id="blobeditor" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="blobtitle">
     <div class="modalbox"><header><div class="flexh"><b id="blobtitle">Binary field</b><button id="closeblob">Close</button></div><p class="small">Opaque bytes. Export/import binary or edit strict hex; unknown formats are not interpreted.</p></header>
@@ -555,7 +541,14 @@ const DEFS = [
   ["KILLBLACK","int","Black phantom kills",0,1000000,""],
   ["WORLDSTATUS_MIRRORMODE","int","Mirror mode",0,1,""],
   ["MISC_HASUNLOCKEDNEXUSSTATUE","int","Nexus statue unlocked",0,1,""],
-  ["EQUIPMENT_STORAGEBOX_COUNT","int","Storage box count (read-only)",0,100000,"Counter only. Contents and their relationship to this counter have not been decoded; changing the counter alone is unsafe."],
+  ["EQUIPMENT_INVENTORY_COUNT","int","Inventory entries",0,100,"Number of EQUIPMENT_INVENTORY## entries. Structural: changing it alone corrupts the inventory."],
+  ["EQUIPMENT_STORAGEBOX_COUNT","int","Storage box entries",0,100,"Number of EQUIPMENT_STORAGEBOX## entries. Structural: changing it alone does not add items."],
+  ["DEADENEMIES_COUNT","int","Dead enemy indices",0,10000,"Number of DEADENEMIES_INDICES#### records (enemies that stay dead)."],
+  ["TROPHIES_RING_COUNT","int","Rings recorded for the trophy",0,100,"Number of TROPHIES_RING## records."],
+  ["SPELLS_SLOTSUNLOCKED","int","Spell slots unlocked",0,7,""],
+  ["MIRACLES_SLOTSUNLOCKED","int","Miracle slots unlocked",0,7,""],
+  ["TENDENCY_PLAYER_BLACKWHITE","float","Character tendency (black/white)",-1000,1000,"Observed world tendency values range from -180 to 180."],
+  ["TENDENCY_PLAYER_LEFTRIGHT","float","Character tendency (left/right)",-1000,1000,""],
   ["PLAYER_SHOPLEVEL","int","Shop level (unverified)",0,10000,"Hash name recovered, but the meaning of the value is not confirmed."],
   ["PLAYER_CLEARITEM","int","Clear item flag",0,255,""],
   ["PLAYER_CLEARBONUS","float","Clear bonus",-1000000000.0,1000000000.0,""],
@@ -589,7 +582,9 @@ const LAYOUT = [
   ["Attributes",["PLAYER_CURRENTVITALITY","PLAYER_CURRENTINTELLIGENCE","PLAYER_CURRENTENDURANCE","PLAYER_CURRENTSTRENGTH","PLAYER_CURRENTDEXTERITY","PLAYER_CURRENTMAGIC","PLAYER_CURRENTFAITH","PLAYER_CURRENTLUCK"]],
   ["Attributes (base)",["PLAYER_BASEVITALITY","PLAYER_BASEINTELLIGENCE","PLAYER_BASEENDURANCE","PLAYER_BASESTRENGTH","PLAYER_BASEDEXTERITY","PLAYER_BASEMAGIC","PLAYER_BASEFAITH","PLAYER_BASELUCK"]],
   ["Vitals",["PLAYER_CURRENTHP","PLAYER_CURRENTMAXHP","PLAYER_BASEMAXHP","PLAYER_CURRENTMP","PLAYER_CURRENTMAXMP","PLAYER_BASEMAXMP","PLAYER_CURRENTSP","PLAYER_CURRENTMAXSP","PLAYER_BASEMAXSP","PLAYER_RECOVERMP","PLAYER_RECOVERSP"]],
-  ["Progress flags",["WORLDSTATUS_MIRRORMODE","MISC_HASUNLOCKEDNEXUSSTATUE","EQUIPMENT_STORAGEBOX_COUNT"]],
+  ["Progress flags",["WORLDSTATUS_MIRRORMODE","MISC_HASUNLOCKEDNEXUSSTATUE"]],
+  ["Spells and tendency",["SPELLS_SLOTSUNLOCKED","MIRACLES_SLOTSUNLOCKED","TENDENCY_PLAYER_BLACKWHITE","TENDENCY_PLAYER_LEFTRIGHT"]],
+  ["Counts (read-only)",["EQUIPMENT_INVENTORY_COUNT","EQUIPMENT_STORAGEBOX_COUNT","DEADENEMIES_COUNT","TROPHIES_RING_COUNT"]],
   ["Resistance",["PLAYER_RESISTANCE_POISON","PLAYER_RESISTANCE_PLAGUE"]],
   ["Records",["PLAYTIME","TRUEDEATHCOUNT","DEMONSKILLED","CLEARSTATE","CLEARCOUNT","KILLBLACK"]],
   ["Advanced (unverified)",["PLAYER_SHOPLEVEL","PLAYER_CLEARITEM","PLAYER_CLEARBONUS","PLAYEROFFSET"]],
@@ -2957,38 +2952,97 @@ for (const [id,name,cat] of ITEMDB){
 }
 const itemName = id => ITEM.has(id) ? ITEM.get(id).map(e => e.name).join(" / ") : `Unmapped value #${id}`;
 const itemCat = id => ITEM.has(id) ? [...new Set(ITEM.get(id).map(e => CATNAME[e.cat]))].join(" / ") : "Unmapped";
-/* Measured FNV state of each 10-slot chunk: the value the still-unknown base
-   name hashes to before the slot character is appended, recovered by inverting
-   FNV-1a over the observed member keys.  Chunks 0 and 2 sit one below their
-   plain prefix, so their slot characters run 1,0,3,2,5,4,7,6,9,8.  Both
-   readings give the same 40-key set; only the index -> key labelling differs. */
+/* DEADENEMIES_INDICES####: indices of enemies that stay dead, followed by
+   DEADENEMIES_COUNT.  Measured FNV state of each 10-key chunk (chunks 0 and 2
+   sit one below their plain prefix).  These keys are excluded from array
+   discovery and shown read-only. */
 const SLOT_STATES = [0x1544B3ED,0x1444B25A,0x1344B0C7,0x1244AF34];
-const SLOT_PREFIXES = SLOT_STATES.map((state,i) => (i === 0 || i === 2) ? state ^ 1 : state);
-const COUNT_KEY = 0xCC62FF39;
+const COUNT_KEY = 0xCC62FF39;                       // DEADENEMIES_COUNT
 function slotKey(i){
-  if (!Number.isInteger(i) || i < 0 || i >= 40) throw new Error("Only four observed key groups are supported (0–39)");
+  if (!Number.isInteger(i) || i < 0 || i >= 40) throw new Error("Only the 40 measured keys are supported (0–39)");
   return Math.imul(SLOT_STATES[Math.floor(i/10)] ^ (0x30+i%10),0x01000193) >>> 0;
 }
 const ALL_SLOT_KEYS = Array.from({length:40},(_,i) => slotKey(i));
 const SLOT_KEY_SET = new Set(ALL_SLOT_KEYS);
 function allLists(s){ return [s.records,...s.flat.filter(([f]) => f.isContainer).map(([f]) => f.children)]; }
-function invSlots(s){ return s.flat.filter(([f]) => f.type === T.U16 && SLOT_KEY_SET.has(f.key)).map(([f]) => f); }
-function invIds(s){ return invSlots(s).map(f => f.value); }
-function setInv(s, values){
-  // This is an experimental observed u16 array, NOT a verified general inventory.
-  if (!Array.isArray(values) || values.length > 40) throw new Error("At most 40 observed array keys are supported");
-  for (const v of values) numericBytes(T.U16,v);
-  const ids = [...values].sort((a,b) => a-b), slots = invSlots(s), counts = s.findAll(COUNT_KEY);
-  if (counts.length !== 1 || counts[0].type !== T.U16) throw new Error("A unique u16 array count is required");
-  const cf = counts[0], list = allLists(s).find(rows => rows.includes(cf));
-  if (new Set(slots.map(f => f.key)).size !== slots.length || slots.some(f => !list.includes(f))) throw new Error("Ambiguous array layout; raw inspection is required");
-  const countAt = list.indexOf(cf), start = countAt - slots.length;
-  if (start < 0 || slots.some((f,i) => list[start+i] !== f)) throw new Error("Array records must be contiguous immediately before the count");
-  if (cf.value !== slots.length) throw new Error("Array count mismatch; inspect the raw records before editing");
-  if (ids.length === slots.length && slots.every((f,i) => f.value === ids[i])) return;
-  const used = new Set(slots.map(f => f.key)), spare = ALL_SLOT_KEYS.filter(k => !used.has(k));
-  const next = ids.map((value,i) => new Field(slots[i] ? slots[i].key : spare.shift(),T.U16,numericBytes(T.U16,value)));
-  list.splice(start,slots.length,...next); cf.value = ids.length; s.reindex();
+function deadEnemies(s){ return s.flat.filter(([f]) => f.type === T.U16 && (f.name || "").startsWith("DEADENEMIES_INDICES")).map(([f]) => f.value); }
+
+/* Inventory, storage box and equipment slots, read from their named records
+   (see des_inventory.py).  The top four bits of _TYPE / _EQUIPTYPEID give the
+   category; _QUANTITY is a 4-byte little-endian count.  Only same-size edits of
+   quantity and durability are offered. */
+const CAT_BITS = {0:"W",1:"A",2:"R",4:"G"};
+const ITEM_BY_CAT = new Map(ITEMDB.map(([id,name,cat]) => [cat+":"+id, name]));
+const INV_PARTS = ["INDEX","TYPE","EQUIPID","QUANTITY","VARIATIONID","DISPLAYID","DURABILITY_CURRENT","DURABILITY_ACCUMULATEDHITS"];
+const BOX_PARTS = ["EQUIPTYPEID","LOWQUANTITY","HIGHQUANTITY","DISPLAYID","DURABILITY","DURABILITY_ACCUMULATEDHITS"];
+const PART_TYPES = {QUANTITY:T.RAW4, LOWQUANTITY:T.U8, HIGHQUANTITY:T.U8};
+const catOf = value => CAT_BITS[value >>> 28] || null;
+const pad2 = i => String(i).padStart(2,"0");
+function familyEntries(s, prefix, parts){
+  const rows = [];
+  for (let i = 0; i < 100; i++){
+    const fields = {}; let ambiguous = false;
+    for (const part of parts){
+      const found = s.findAll(`${prefix}${pad2(i)}_${part}`);
+      if (found.length > 1) ambiguous = true;
+      if (found.length) fields[part] = found[0];
+    }
+    const present = Object.keys(fields); if (!present.length) continue;
+    const typed = present.every(part => fields[part].type === (PART_TYPES[part] ?? T.I32));
+    rows.push({index:i, fields, complete:present.length === parts.length && typed && !ambiguous});
+  }
+  return rows;
+}
+function partValue(fields, part){
+  const f = fields[part]; if (!f) return null;
+  return f.type === T.RAW4 ? new DataView(f.raw.buffer, f.raw.byteOffset, 4).getUint32(0, true) : f.value;
+}
+function inventoryRows(s){
+  return familyEntries(s,"EQUIPMENT_INVENTORY",INV_PARTS).map(({index,fields,complete}) => {
+    const type = partValue(fields,"TYPE"), cat = type === null ? null : catOf(type), id = partValue(fields,"EQUIPID");
+    return {index, complete, cat, id, name:ITEM_BY_CAT.get(cat+":"+id) || null, quantity:partValue(fields,"QUANTITY"),
+            durability:partValue(fields,"DURABILITY_CURRENT"), ref:partValue(fields,"INDEX")};
+  });
+}
+function storageRows(s){
+  return familyEntries(s,"EQUIPMENT_STORAGEBOX",BOX_PARTS).map(({index,fields,complete}) => {
+    const typed = partValue(fields,"EQUIPTYPEID"), cat = typed === null ? null : catOf(typed);
+    const id = typed === null ? null : (typed & 0x0FFFFFFF);
+    return {index, complete, cat, id, name:ITEM_BY_CAT.get(cat+":"+id) || null, low:partValue(fields,"LOWQUANTITY"),
+            high:partValue(fields,"HIGHQUANTITY"), durability:partValue(fields,"DURABILITY")};
+  });
+}
+function equipmentRows(s){
+  const items = new Map(inventoryRows(s).map(row => [row.ref, row])), rows = [];
+  for (let i = 0; i < 100; i++){
+    const inv = s.find(`EQUIPMENT_SLOT${pad2(i)}_INVENTORYID`), eq = s.find(`EQUIPMENT_SLOT${pad2(i)}_EQUIPMENTID`);
+    if (!inv && !eq) continue;
+    const item = inv ? items.get(inv.value) : null, cat = item ? item.cat : null, id = eq ? eq.value : null;
+    rows.push({slot:i, inventory:inv ? inv.value : null, id, cat, name:ITEM_BY_CAT.get(cat+":"+id) || (item ? item.name : null)});
+  }
+  return rows;
+}
+function editableEntry(s, prefix, parts, index){
+  const entry = familyEntries(s,prefix,parts).find(row => row.index === index);
+  if (!entry) throw new Error(`${prefix}${pad2(index)} does not exist in this save`);
+  if (!entry.complete) throw new Error(`${prefix}${pad2(index)} is incomplete or ambiguous; edit it by field name`);
+  return entry.fields;
+}
+function wholeNumber(value, lo, hi, what){
+  if (!Number.isInteger(value) || value < lo || value > hi) throw new Error(`${what} must be a whole number ${lo}–${hi}`);
+  return value;
+}
+function setInvQuantity(s, index, quantity){
+  const raw = new Uint8Array(4); new DataView(raw.buffer).setUint32(0, wholeNumber(quantity,1,999,"Quantity"), true);
+  editableEntry(s,"EQUIPMENT_INVENTORY",INV_PARTS,index).QUANTITY.raw = raw;
+}
+function setInvDurability(s, index, durability){
+  editableEntry(s,"EQUIPMENT_INVENTORY",INV_PARTS,index).DURABILITY_CURRENT.value = wholeNumber(durability,0,9999,"Durability");
+}
+function setBoxQuantity(s, index, quantity){
+  const fields = editableEntry(s,"EQUIPMENT_STORAGEBOX",BOX_PARTS,index);
+  if (fields.HIGHQUANTITY.value !== 0) throw new Error("HIGHQUANTITY is non-zero; its meaning is not verified");
+  fields.LOWQUANTITY.value = wholeNumber(quantity,1,255,"Storage quantity");
 }
 
 /* Session, snapshots and rendering are intentionally separate from the binary model. */
@@ -3077,7 +3131,7 @@ function loadFiles(items){
 }
 function select(i){
   if(i < 0 || i >= state.files.length) return;
-  if(!closeBlob()) return; closePicker(); state.active = i; $("#work").classList.remove("hidden"); $("#drop").classList.add("compact");
+  if(!closeBlob()) return; state.active = i; $("#work").classList.remove("hidden"); $("#drop").classList.add("compact");
   state.rendered.clear(); renderEditor();
 }
 function renderFiles(){
@@ -3106,14 +3160,15 @@ function diagnostics(e = current()){
     const value = s.get("PLAYER_CURRENT"+kind), max = s.get("PLAYER_CURRENTMAX"+kind);
     if(typeof value === "number" && typeof max === "number" && value > max) out.push(["warn",`${kind} ${value} exceeds its effective maximum ${max}.`]);
   }
-  const slots = invSlots(s), cf = s.find(COUNT_KEY);
-  if(cf && cf.value !== slots.length) out.push(["err",`Observed u16 array: count ${cf.value}, records ${slots.length}. Inspect raw fields before exporting.`]);
-  if(slots.length){
-    const unknown = slots.filter(f => !ITEM.has(f.value)).map(f => f.value);
-    if(unknown.length) out.push(["info",`Unmapped u16 values: ${unknown.join(", ")}. Their meaning is unresolved; preserve them rather than assuming they are invalid items.`]);
-  }
-  if(s.get("EQUIPMENT_STORAGEBOX_COUNT") > 0) out.push(["info","Storage contents are not decoded. The storage count is read-only in the form; changing the counter does not create stored items."]);
-  if(e.experimental) out.push(["warn","Experimental array editing enabled. The u16 list is not proven to be the full inventory; a name match is not proof of item category or in-game behavior."]);
+  const dead = deadEnemies(s), cf = s.find(COUNT_KEY);
+  if(cf && cf.value !== dead.length) out.push(["err",`Dead enemies: DEADENEMIES_COUNT ${cf.value}, records ${dead.length}. Inspect raw fields before exporting.`]);
+  const inv = inventoryRows(s), invCount = s.get("EQUIPMENT_INVENTORY_COUNT");
+  if(typeof invCount === "number" && invCount !== inv.length) out.push(["err",`Inventory: EQUIPMENT_INVENTORY_COUNT ${invCount}, entries ${inv.length}.`]);
+  const box = storageRows(s), boxCount = s.get("EQUIPMENT_STORAGEBOX_COUNT");
+  if(typeof boxCount === "number" && boxCount !== box.length) out.push(["err",`Storage box: EQUIPMENT_STORAGEBOX_COUNT ${boxCount}, entries ${box.length}.`]);
+  const unnamed = [...inv, ...box].filter(row => !row.name).length;
+  if(unnamed) out.push(["info",`${unnamed} inventory/storage entr${unnamed === 1 ? "y does" : "ies do"} not match a catalog item; preserve them.`]);
+  if(e.experimental) out.push(["warn","Experimental inventory editing enabled. Quantity and durability edits keep every record size, but they have not been verified in game."]);
   return out;
 }
 function refreshDiagnostics(){
@@ -3205,7 +3260,7 @@ function fieldRow(name){
   const input = document.createElement("input"); input.type = "text"; input.dataset.field = name;
   const err = bindFieldInput(input,f,f.type === T.RAW4 ? "hex" : "value",meta);
   label.htmlFor = input.id;
-  if(name === "EQUIPMENT_STORAGEBOX_COUNT") input.readOnly = true;
+  if(name.endsWith("_COUNT")) input.readOnly = true;   // structural counts
   if(f.isInt || f.isFloat) input.inputMode = f.isFloat ? "decimal" : "numeric";
   const desc = document.createElement("span"); desc.className = "desc"; desc.textContent = meta.desc;
   row.append(label,input,err,desc); return row;
@@ -3229,7 +3284,7 @@ const suffixOf = (key, state) => String.fromCharCode(((Math.imul(key, P_INV) >>>
 
 /* A member key only fixes (state ^ character), so an XOR of the whole alphabet
    relabels every slot.  Pick the labelling that reads 0,1,2,... so the result is
-   deterministic and matches the inventory chunks, whose slots are 0..9. */
+   deterministic.  Hover a slot to see its real field name and index. */
 function canonicalState(members, state){
   const wanted = [..."0123456789"].slice(0, members.length);
   const bases = members.map(f => Math.imul(f.key, P_INV) >>> 0);
@@ -3289,6 +3344,21 @@ function arrayKind(values){
   return "32-bit values";
 }
 
+/* Base name of an array whose members carry a recovered family name. */
+function arrayFamily(group){
+  const names = group.members.map(f => f.name).filter(Boolean).map(n => n.replace(/\d+(?=_[A-Z]+$|$)/, "##"));
+  return names.length === group.members.length && new Set(names).size === 1 ? names[0] : null;
+}
+/* Values resolve in the category the family implies; unnamed arrays keep the
+   category-ambiguous catalog lookup. */
+function arrayValueName(family, value, refs, kind){
+  if (value === -1) return "empty";
+  if (!family) return kind.startsWith("id list") ? itemName(value) : "";
+  if (family && /^(SPELLS|MIRACLES)_EQUIPPED/.test(family)) return ITEM_BY_CAT.get("S:"+value) || `Unknown spell ${value}`;
+  if (family && family.startsWith("TROPHIES_RING")) return ITEM_BY_CAT.get("R:"+value) || `Unknown ring ${value}`;
+  if (family && family.startsWith("EQUIPMENT_EQUIPITEM")){ const item = refs.get(value); return item ? `inventory ref ${value}: ${item.name || "unknown"}` : `inventory ref ${value}`; }
+  return itemName(value);
+}
 function renderArrays(){
   const e = current(); if (!e) return;
   const arrays = discoverArrays(e.save);
@@ -3298,11 +3368,12 @@ function renderArrays(){
     .filter(b => b.version === 3);
   if (!arrays.length && !blobs.length) return;
   const card = document.createElement("section"); card.className = "card"; card.id = "arraycard";
-  card.innerHTML = '<h2>Recovered structures</h2><p class="note">Fixed-slot arrays found by inverting the key hash, not by name — the base names are still unknown, so these are shown as slot letters. -1 is the observed empty-slot sentinel. Editing is experimental.</p>';
+  card.innerHTML = '<h2>Recovered structures</h2><p class="note">Fixed-slot arrays found by inverting the key hash. Slot letters are canonical; hover one for its real field name and index. -1 is the observed empty-slot sentinel. Editing is experimental.</p>';
+  const refs = new Map(inventoryRows(e.save).map(row => [row.ref, row]));
   for (const group of arrays){
-    const values = group.members.map(f => f.value);
+    const values = group.members.map(f => f.value), family = arrayFamily(group);
     const head = document.createElement("div"); head.className = "bar";
-    head.innerHTML = `<strong>${group.count} slots</strong> <span class="small">state ${group.state.toString(16).padStart(8,"0")} · ${escapeHtml(arrayKind(values))}</span>`;
+    head.innerHTML = `<strong>${escapeHtml(family || "Unnamed array")} · ${group.count} slots</strong> <span class="small">state ${group.state.toString(16).padStart(8,"0")} · ${escapeHtml(arrayKind(values))}</span>`;
     const list = document.createElement("div"); list.className = "invlist";
     const ordered = [...group.members].sort((a, b) => suffixOf(a.key, group.state).localeCompare(suffixOf(b.key, group.state)));
     for (const f of ordered){
@@ -3310,8 +3381,8 @@ function renderArrays(){
       const label = document.createElement("span"); label.className = "n"; label.textContent = suffixOf(f.key, group.state);
       if (f.name) label.title = f.name;                // the real field name gives the game's index
       const id = document.createElement("span"); id.className = "id"; id.textContent = f.value;
-      const name = document.createElement("span"); name.className = "nm" + (ITEM.has(f.value) ? "" : " unknown");
-      name.textContent = f.value === -1 ? "empty" : itemName(f.value);
+      const name = document.createElement("span"), valueName = arrayValueName(family, f.value, refs, arrayKind(values));
+      name.className = "nm" + (/^(Unmapped|Unknown)/.test(valueName) ? " unknown" : ""); name.textContent = valueName;
       const input = document.createElement("input"); input.type = "number"; input.value = f.value;
       input.setAttribute("aria-label", `Slot ${suffixOf(f.key, group.state)} value`);
       input.onchange = () => editCandidate(s => {
@@ -3337,62 +3408,57 @@ function renderArrays(){
 }
 
 function renderInventory(){
-  const e = current(), ids = invIds(e.save); if(!e.save.find(COUNT_KEY) && !ids.length) return;
+  const e = current(), s = e.save, inv = inventoryRows(s), box = storageRows(s), eq = equipmentRows(s), dead = deadEnemies(s);
+  if (!inv.length && !box.length && !eq.length && !dead.length) return;
   const card = document.createElement("section"); card.className = "card"; card.id = "invcard";
-  card.innerHTML = '<h2>Observed u16 array · experimental inventory mapping</h2><p class="note">Names below are candidate matches, not a verified inventory. Equipment, stack counts, spells and storage are not fully mapped. The 40-key editing limit is a safety bound, not a proven game limit. Keep unmapped values.</p>';
+  card.innerHTML = '<h2>Inventory, storage and equipment</h2><p class="note">Read from the EQUIPMENT_INVENTORY##, EQUIPMENT_STORAGEBOX## and EQUIPMENT_SLOT## records; names come from the category bits and the catalog. Equipment slot meanings are not verified. Adding or removing items is not supported.</p>';
   const toggle = document.createElement("label"), checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.id = "experimental"; checkbox.checked = e.experimental;
-  toggle.append(checkbox,document.createTextNode(" Enable experimental add / replace / remove"));
+  toggle.append(checkbox,document.createTextNode(" Enable experimental quantity / durability edits"));
   checkbox.onchange = () => { e.experimental = checkbox.checked; state.rendered.delete("editor"); renderForm(); };
   const bar = document.createElement("div"); bar.className = "bar";
-  const search = document.createElement("input"); search.type = "text"; search.placeholder = "Filter observed values…"; search.value = e.invFilter || ""; search.setAttribute("aria-label","Filter observed values");
+  const search = document.createElement("input"); search.type = "text"; search.placeholder = "Filter items…"; search.value = e.invFilter || ""; search.setAttribute("aria-label","Filter items");
   search.oninput = () => { e.invFilter = search.value; renderInventoryOnly(); };
-  const add = document.createElement("button"); add.textContent = "+ Add value…"; add.disabled = !e.experimental || ids.length >= 40; add.onclick = () => openPicker("add");
-  const count = document.createElement("span"); count.className = "small"; count.textContent = `${ids.length} observed records · count ${e.save.get(COUNT_KEY)}`;
-  bar.append(search,add,count); const list = document.createElement("div"); list.id = "invlist"; list.className = "invlist";
-  card.append(toggle,bar,list); $("#tab-editor").append(card); fillInvList(list,ids);
+  const count = document.createElement("span"); count.className = "small";
+  count.textContent = `${inv.length} inventory · ${box.length} storage · ${eq.length} equipped · ${dead.length} dead-enemy indices`;
+  bar.append(search,count); const list = document.createElement("div"); list.id = "invlist";
+  card.append(toggle,bar,list); $("#tab-editor").append(card); fillInvList(list);
 }
-function fillInvList(host,ids){
-  const e = current(), q = (e.invFilter || "").toLowerCase(); host.replaceChildren();
-  ids.forEach((id,i) => {
-    if(q && !`${id} ${itemName(id)} ${itemCat(id)}`.toLowerCase().includes(q)) return;
-    const row = document.createElement("div"); row.className = "invrow";
-    row.innerHTML = `<span class="n">${i+1}</span><span class="id">${id}</span><span class="nm${ITEM.has(id) ? "" : " unknown"}">${escapeHtml(itemName(id))}</span><span class="cat">${escapeHtml(itemCat(id))}</span>`;
-    const change = document.createElement("button"); change.textContent = "Change…"; change.disabled = !e.experimental; change.onclick = () => openPicker("set",i);
-    const remove = document.createElement("button"); remove.textContent = "✕"; remove.disabled = !e.experimental; remove.setAttribute("aria-label",`Remove observed value ${i+1}`);
-    remove.onclick = () => editCandidate(s => { const next = invIds(s); next.splice(i,1); setInv(s,next); });
-    row.append(change,remove); host.append(row);
+const CATLABEL = {W:"Weapon",A:"Armor",R:"Ring",G:"Goods"};
+function numberInput(value, label, enabled, apply){
+  const input = document.createElement("input"); input.type = "number"; input.value = value ?? ""; input.disabled = !enabled;
+  input.setAttribute("aria-label",label);
+  input.onchange = () => editCandidate(s => apply(s, Number(input.value)));
+  return input;
+}
+function fillInvList(host){
+  const e = current(), s = e.save, q = (e.invFilter || "").toLowerCase(); host.replaceChildren();
+  const match = row => !q || `${row.id} ${row.name || ""} ${CATLABEL[row.cat] || ""}`.toLowerCase().includes(q);
+  const section = (title, rows, build) => {
+    const head = document.createElement("div"); head.className = "bar"; head.innerHTML = `<strong>${escapeHtml(title)}</strong>`;
+    const list = document.createElement("div"); list.className = "invlist";
+    for (const row of rows.filter(match)) list.append(build(row));
+    host.append(head, list);
+  };
+  const itemRow = (n, row) => {
+    const el = document.createElement("div"); el.className = "invrow";
+    el.innerHTML = `<span class="n">${n}</span><span class="id">${row.id ?? "?"}</span><span class="nm${row.name ? "" : " unknown"}">${escapeHtml(row.name || "Unknown id")}</span><span class="cat">${escapeHtml(CATLABEL[row.cat] || "?")}</span>`;
+    return el;
+  };
+  section("Inventory", inventoryRows(s), row => {
+    const el = itemRow(pad2(row.index), row), ok = e.experimental && row.complete;
+    el.append(numberInput(row.quantity, `Quantity of inventory entry ${row.index}`, ok, (c, v) => setInvQuantity(c, row.index, v)),
+              numberInput(row.durability, `Durability of inventory entry ${row.index}`, ok, (c, v) => setInvDurability(c, row.index, v)));
+    return el;
   });
+  section("Storage box", storageRows(s), row => {
+    const el = itemRow(pad2(row.index), row), ok = e.experimental && row.complete && row.high === 0;
+    el.append(numberInput(row.low, `Quantity of storage entry ${row.index}`, ok, (c, v) => setBoxQuantity(c, row.index, v)));
+    return el;
+  });
+  section("Equipment slots (meanings not verified)", equipmentRows(s), row => itemRow(`#${row.slot}`, row));
 }
-function renderInventoryOnly(){ const host = $("#invlist"); if(host) fillInvList(host,invIds(current().save)); }
-let pickState = null;
+function renderInventoryOnly(){ const host = $("#invlist"); if(host) fillInvList(host); }
 const CATALOG = ITEMDB.map(([id,name,cat]) => ({id,name,cat,search:`${id} ${name} ${CATNAME[cat] || "Unknown"}`.toLowerCase()})).sort((a,b) => a.name.localeCompare(b.name) || a.id-b.id);
-function openPicker(mode,index){
-  const e = current(); if(!e || !e.experimental) return;
-  pickState = {mode,index,entry:e,token:token(e),focus:document.activeElement,page:0};
-  $("#pickhint").textContent = "Experimental u16 candidate — category must match the game's expectations";
-  $("#picker").classList.remove("hidden"); $("#pickersearch").value = ""; renderPicker(); $("#pickersearch").focus();
-}
-function closePicker(){
-  if(!pickState) return;
-  const focus = pickState.focus; pickState = null; $("#picker").classList.add("hidden"); if(focus && focus.isConnected) focus.focus();
-}
-function renderPicker(){
-  if(!pickState) return;
-  const q = $("#pickersearch").value.toLowerCase(), cat = $("#pickcategory").value;
-  const rows = CATALOG.filter(e => e.id <= 65535 && ["G","W","A","R"].includes(e.cat) && (!q || e.search.includes(q)) && (!cat || cat === e.cat));
-  const host = $("#pickerbody"); host.replaceChildren();
-  const page = Math.min(pickState.page,Math.max(0,Math.ceil(rows.length/80)-1)); pickState.page = page;
-  for(const item of rows.slice(page*80,page*80+80)){
-    const b = document.createElement("button"); b.className = "pickrow";
-    b.innerHTML = `<span class="pid">${item.id}</span><span>${escapeHtml(item.name)}</span><span class="pcat">${CATNAME[item.cat]}</span>`;
-    b.onclick = () => {
-      if(current() !== pickState.entry || token(current()) !== pickState.token){ closePicker(); return fail(new Error("Save changed while the picker was open; try again")); }
-      const {mode,index} = pickState; closePicker();
-      editCandidate(s => { const ids = invIds(s); if(mode === "add") ids.push(item.id); else ids[index] = item.id; setInv(s,ids); });
-    }; host.append(b);
-  }
-  pager($("#pickerpages"),rows.length,page,80,next => { pickState.page = next; renderPicker(); });
-}
 function pager(host,total,page,size,change){
   host.replaceChildren(); const pages = Math.max(1,Math.ceil(total/size));
   const prev = document.createElement("button"), next = document.createElement("button"), info = document.createElement("span");
@@ -3453,7 +3519,7 @@ function renderCatalog(){
   const host = $("#catalogbody"); host.replaceChildren();
   for(const e of rows.slice(page*100,page*100+100)){
     const row = document.createElement("tr");
-    for(const text of [e.id,e.name,CATNAME[e.cat] || "Unknown",e.id > 65535 ? "32-bit id; not a u16 candidate" : "Category-specific id"]){ const td = document.createElement("td"); td.textContent = text; row.append(td); }
+    for(const text of [e.id,e.name,CATNAME[e.cat] || "Unknown","Category-specific id"]){ const td = document.createElement("td"); td.textContent = text; row.append(td); }
     host.append(row);
   }
   pager($("#catalogpages"),rows.length,page,100,next => { state.catalogPage = next; renderCatalog(); });
@@ -3694,8 +3760,6 @@ $("#copyjson").onclick = async () => {
 $("#filter").oninput = () => { if(current()){ current().pages.all = 0; renderAll(); } };
 $("#reffilter").oninput = renderRef;
 for(const id of ["#catalogsearch","#catalogcategory"]) $(id).oninput = () => { state.catalogPage = 0; renderCatalog(); };
-for(const id of ["#pickersearch","#pickcategory"]) $(id).oninput = () => { if(pickState){ pickState.page = 0; renderPicker(); } };
-$("#closepicker").onclick = closePicker; $("#picker").onclick = event => { if(event.target.id === "picker") closePicker(); };
 $("#closeblob").onclick = () => closeBlob(); $("#applyblob").onclick = applyBlob;
 $("#downloadblob").onclick = () => { if(blobState) downloadBytes(blobState.field.raw,`field-${blobState.field.key.toString(16)}.bin`); };
 $("#importblob").onchange = async event => {
@@ -3707,16 +3771,16 @@ window.addEventListener("beforeunload",event => {
   if(state.files.some(e => isUnsaved(e) || e.invalid.size || e.jsonDirty) || blobState && $("#blobhex").value !== blobState.field.hex){ event.preventDefault(); event.returnValue = ""; }
 });
 document.addEventListener("keydown",event => {
-  if(event.key === "Escape"){ closePicker(); closeBlob(); return; }
-  if(event.key === "Tab" && (pickState || blobState)){
-    const dialog = pickState ? $("#picker") : $("#blobeditor"), focusable = [...dialog.querySelectorAll("button:not(:disabled),input,select,textarea")].filter(el => el.getClientRects().length > 0);
+  if(event.key === "Escape"){ closeBlob(); return; }
+  if(event.key === "Tab" && blobState){
+    const dialog = $("#blobeditor"), focusable = [...dialog.querySelectorAll("button:not(:disabled),input,select,textarea")].filter(el => el.getClientRects().length > 0);
     const first = focusable[0], last = focusable.at(-1);
     if(event.shiftKey && document.activeElement === first){ event.preventDefault(); last.focus(); }
     else if(!event.shiftKey && document.activeElement === last){ event.preventDefault(); first.focus(); }
   }
   if(!(event.ctrlKey || event.metaKey)) return;
   const key = event.key.toLowerCase();
-  if(key === "s"){ event.preventDefault(); if(!pickState && !blobState) saveFile(); return; }
+  if(key === "s"){ event.preventDefault(); if(!blobState) saveFile(); return; }
   // Textareas and inputs keep their native text undo (especially unapplied JSON).
   if(event.target.matches("input,textarea,select")) return;
   if(key === "z" || key === "y"){ event.preventDefault(); key === "y" || event.shiftKey ? doRedo() : doUndo(); }

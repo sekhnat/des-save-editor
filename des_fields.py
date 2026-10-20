@@ -67,8 +67,21 @@ _DEFS = [
     # ---- progress flags ---------------------------------------------------
     ("WORLDSTATUS_MIRRORMODE", "int", "Mirror mode", 0, 1, ""),
     ("MISC_HASUNLOCKEDNEXUSSTATUE", "int", "Nexus statue unlocked", 0, 1, ""),
-    ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Storage box count (read-only)", 0, 100_000,
-     "Counter only. Contents and their relationship to this counter have not been decoded; changing the counter alone is unsafe."),
+    # ---- counts of indexed record families (structural; read-only in the page)
+    ("EQUIPMENT_INVENTORY_COUNT", "int", "Inventory entries", 0, 100,
+     "Number of EQUIPMENT_INVENTORY## entries. Structural: changing it alone corrupts the inventory."),
+    ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Storage box entries", 0, 100,
+     "Number of EQUIPMENT_STORAGEBOX## entries. Structural: changing it alone does not add items."),
+    ("DEADENEMIES_COUNT", "int", "Dead enemy indices", 0, 10_000,
+     "Number of DEADENEMIES_INDICES#### records (enemies that stay dead)."),
+    ("TROPHIES_RING_COUNT", "int", "Rings recorded for the trophy", 0, 100,
+     "Number of TROPHIES_RING## records."),
+    # ---- spells and tendency ---------------------------------------------
+    ("SPELLS_SLOTSUNLOCKED", "int", "Spell slots unlocked", 0, 7, ""),
+    ("MIRACLES_SLOTSUNLOCKED", "int", "Miracle slots unlocked", 0, 7, ""),
+    ("TENDENCY_PLAYER_BLACKWHITE", "float", "Character tendency (black/white)", -1000, 1000,
+     "Observed world tendency values range from -180 to 180."),
+    ("TENDENCY_PLAYER_LEFTRIGHT", "float", "Character tendency (left/right)", -1000, 1000, ""),
     # ---- advanced / not fully verified -----------------------------------
     ("PLAYER_SHOPLEVEL", "int", "Shop level (unverified)", 0, 10_000,
      "Hash name recovered, but the meaning of the value is not confirmed."),
@@ -122,9 +135,14 @@ LAYOUT = {
         "PLAYER_CURRENTSP", "PLAYER_CURRENTMAXSP", "PLAYER_BASEMAXSP",
         "PLAYER_RECOVERMP", "PLAYER_RECOVERSP",
     ],
-    "Progress flags": [
-        "WORLDSTATUS_MIRRORMODE", "MISC_HASUNLOCKEDNEXUSSTATUE",
-        "EQUIPMENT_STORAGEBOX_COUNT",
+    "Progress flags": ["WORLDSTATUS_MIRRORMODE", "MISC_HASUNLOCKEDNEXUSSTATUE"],
+    "Spells and tendency": [
+        "SPELLS_SLOTSUNLOCKED", "MIRACLES_SLOTSUNLOCKED",
+        "TENDENCY_PLAYER_BLACKWHITE", "TENDENCY_PLAYER_LEFTRIGHT",
+    ],
+    "Counts (read-only)": [
+        "EQUIPMENT_INVENTORY_COUNT", "EQUIPMENT_STORAGEBOX_COUNT",
+        "DEADENEMIES_COUNT", "TROPHIES_RING_COUNT",
     ],
     "Resistance": ["PLAYER_RESISTANCE_POISON", "PLAYER_RESISTANCE_PLAGUE"],
     "Records": [

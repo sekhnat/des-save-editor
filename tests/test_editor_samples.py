@@ -167,16 +167,23 @@ class BrowserTests(unittest.TestCase):
         self.assertFalse(self.page.locator('#save').is_disabled())
         self.assertEqual(424242, self.page.evaluate("current().save.get('PLAYER_SOULS')"))
 
-    def test_empty_array_inserted_before_count_and_invalid_edit_atomic(self):
-        self.load()
-        self.assertTrue(self.page.evaluate('''() => {
-          const s=current().save, before=s.build();
-          try { setInv(s,[100,70000]); return false; } catch (_) {}
-          if(!bytesEq(before,s.build())) return false;
-          setInv(s,[113]);
-          const list=allLists(s).find(list=>list.includes(s.find(COUNT_KEY)));
-          return list.indexOf(invSlots(s)[0]) < list.indexOf(s.find(COUNT_KEY)) && s.get(COUNT_KEY)===1;
-        }'''))
+    def test_inventory_storage_and_equipment_match_python(self):
+        import sys
+        sys.path.insert(0, str(EDITOR))
+        import des_inventory, des_save
+        cats = {'Weapon': 'W', 'Armor': 'A', 'Ring': 'R', 'Goods': 'G', None: None}
+        for path in sorted(SAVES.glob('*PlayerProfile*/USR-DATA')):
+            with self.subTest(path=path.parent.name):
+                self.load(path)
+                sf = des_save.load(str(path))
+                self.assertEqual([[r['index'], cats[r['category']], r['id'], r['name'], r['quantity'], r['durability']]
+                                  for r in des_inventory.inventory(sf)],
+                                 self.page.evaluate('inventoryRows(current().save).map(r => [r.index, r.cat, r.id, r.name, r.quantity, r.durability])'))
+                self.assertEqual([[r['index'], cats[r['category']], r['id'], r['name'], r['low_quantity']]
+                                  for r in des_inventory.storage(sf)],
+                                 self.page.evaluate('storageRows(current().save).map(r => [r.index, r.cat, r.id, r.name, r.low])'))
+                self.assertEqual([[r['slot'], r['inventory'], r['id'], r['name']] for r in des_inventory.equipment(sf)],
+                                 self.page.evaluate('equipmentRows(current().save).map(r => [r.slot, r.inventory, r.id, r.name])'))
 
     def test_download_preserves_original_and_has_valid_checksum(self):
         self.load()
@@ -249,17 +256,20 @@ class BrowserTests(unittest.TestCase):
         self.page.locator('[data-field=PLAYER_SOULS]').focus()
         self.assertEqual(1, self.page.evaluate('current().redo.length'))
 
-    def test_experimental_mapping_is_opt_in(self):
+    def test_inventory_edits_are_opt_in_and_undoable(self):
         self.load()
-        self.assertFalse(self.page.is_checked('#experimental'))
-        self.assertTrue(self.page.get_by_text('+ Add value…', exact=True).is_disabled())
+        self.page.wait_for_selector('#invcard')
+        self.assertIn('Inventory, storage and equipment', self.page.text_content('#invcard'))
+        quantity = self.page.locator('[aria-label="Quantity of inventory entry 0"]')
+        self.assertTrue(quantity.is_disabled())
         self.page.check('#experimental')
-        self.page.get_by_text('+ Add value…', exact=True).click()
-        self.page.fill('#pickersearch', 'Cling Ring')
-        self.page.locator('.pickrow').first.click()
-        self.assertEqual([113], self.page.evaluate('invIds(current().save)'))
+        quantity = self.page.locator('[aria-label="Quantity of inventory entry 0"]')
+        before = self.page.evaluate('inventoryRows(current().save)[0].quantity')
+        quantity.fill(str(before + 1))
+        quantity.dispatch_event('change')
+        self.assertEqual(before + 1, self.page.evaluate('inventoryRows(current().save)[0].quantity'))
         self.page.evaluate('doUndo()')
-        self.assertEqual([], self.page.evaluate('invIds(current().save)'))
+        self.assertEqual(before, self.page.evaluate('inventoryRows(current().save)[0].quantity'))
 
     def test_blob_edit_is_undoable_and_download_is_exact(self):
         self.load()
@@ -377,7 +387,7 @@ class BrowserTests(unittest.TestCase):
         text = self.page.evaluate("document.querySelector('#arraycard').textContent")
         self.assertIn('Recovered structures', text)
         self.assertIn('container v3', text)                     # the blob header is surfaced
-        self.assertIn('Crescent Moon Grass', text)             # the 7-slot item array
+        self.assertIn('Soul Arrow', text)                      # SPELLS_EQUIPPED00 holds spell 1000
         index = self.page.evaluate(
             """() => [...document.querySelectorAll('#arraycard input[type=number]')]
                      .findIndex(el => el.value === '1000')""")
