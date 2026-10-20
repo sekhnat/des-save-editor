@@ -17,12 +17,27 @@ START = '/* ITEMDB:START */'
 END = '/* ITEMDB:END */'
 
 
+def _row(entry: dict) -> list:
+    """[id, name, category] plus [limit, storage limit] when the PARAMs give them.
+
+    limit is maxQuantity for goods and durabilityMax for weapons and armor.
+    """
+    row = [entry['id'], entry['name'], CATS.get(entry['category'], '?')]
+    limit = entry.get('maxQuantity', entry.get('durabilityMax'))
+    if limit is not None:
+        row += [limit, entry.get('maxStorageQuantity')]
+    return row
+
+
 def catalog_block(doc: dict) -> str:
-    rows = [[entry['id'], entry['name'], CATS.get(entry['category'], '?')] for entry in doc['items']]
+    rows = [_row(entry) for entry in doc['items']]
     # Escaping < prevents a localized name from terminating the inline script.
     encoded = [json.dumps(row, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
                .replace('\u2028', '\\u2028').replace('\u2029', '\\u2029') for row in rows]
-    return START + '\nconst ITEMDB = [\n' + ',\n'.join(encoded) + '\n];\n' + END + '\n'
+    classes = json.dumps([[c['archetype'], c['name'], c['row']] for c in doc.get('classes', [])],
+                         ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
+    return (START + '\nconst ITEMDB = [\n' + ',\n'.join(encoded) + '\n];\n'
+            + 'const CLASSES = ' + classes + ';\n' + END + '\n')
 
 
 def main() -> int:

@@ -13,13 +13,32 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from des_gamedata import parse_bnd3, parse_ctxt, parse_param  # noqa: E402
+from des_gamedata import load_params, parse_bnd3, parse_ctxt, parse_param  # noqa: E402
 
 BND_TABLES = {
     'EquipParamGoods.param': 'Goods', 'EquipParamWeapon.param': 'Weapon',
     'EquipParamProtector.param': 'Armor', 'EquipParamAccessory.param': 'Ring',
     'Magic.param': 'Spell', 'Skill.param': 'Skill',
 }
+# Per-category limits read through the PARAMDEFs (field names are the game's own).
+LIMITS = {
+    'Goods': ('EQUIP_PARAM_GOODS_ST', {'maxQuantity': 'maxQuantity',
+                                       'maxStorageQuantity': 'maxStorageQuantity'}),
+    'Weapon': ('EQUIP_PARAM_WEAPON_ST', {'durabilityMax': 'durabilityMax',
+                                         'originEquipWep': 'origin'}),
+    'Armor': ('EQUIP_PARAM_PROTECTOR_ST', {'durabilityMax': 'durabilityMax'}),
+}
+# CharaInitParam rows 1000-1009 are the ten starting classes. The rows carry
+# no class name, so each is identified by its starting right-hand weapon,
+# which is unique per class in the original game.
+CLASS_ROW_BASE = 1000
+CLASS_BY_WEAPON = {
+    'Broadsword': 'Soldier', 'Long Sword': 'Knight', 'Battle Axe': 'Hunter',
+    'Mace': 'Priest', 'Short Sword': 'Magician', 'Falchion': 'Wanderer',
+    'Club': 'Barbarian', 'Dagger': 'Thief', 'Halberd': 'Temple Knight',
+    'Rapier': 'Royalty',
+}
+STATS = ('baseVit', 'baseWil', 'baseEnd', 'baseStr', 'baseDex', 'baseMag', 'baseFai', 'baseLuc')
 TEXT_TABLES = {'goods': 'Goods', 'weapon': 'Weapon', 'protector': 'Armor',
                'accessory': 'Ring', 'magic': 'Spell', 'skill': 'Skill'}
 
@@ -47,13 +66,42 @@ def build_catalog(game: str | Path, language: str = 'en-gb') -> dict:
                                          {'id': item_id, 'category': category,
                                           'name': f'Unlabelled {category} {item_id}'})
                 entry['hasParam'] = True
+    try:
+        tables = load_params(game)
+    except (OSError, ValueError):
+        tables = {}
+    for category, (table, wanted) in LIMITS.items():
+        for (kind, item_id), entry in items.items():
+            row = tables.get(table, {}).get(item_id) if kind == category else None
+            if row:
+                for source, target in wanted.items():
+                    value = row.get(source)
+                    if value is not None and not (target == 'origin' and value < 0):
+                        entry[target] = value
+    classes = _classes(tables.get('CHARACTER_INIT_PARAM', {}), items)
     if not items:
         raise ValueError('No PARAM rows or localized names found in the supplied game folder')
     rows = sorted(items.values(), key=lambda entry: (entry['category'], entry['id']))
-    return {'schema': 2, 'language': language, 'count': len(rows),
+    return {'schema': 3, 'language': language, 'count': len(rows),
             'categories': dict(sorted(Counter(entry['category'] for entry in rows).items())),
-            'note': 'IDs are category-specific; save-field mappings are not established by this catalog.',
-            'items': rows}
+            'note': 'IDs are category-specific. Limits come from the equip PARAMs via their PARAMDEFs.',
+            'classes': classes, 'items': rows}
+
+
+def _classes(rows: dict[int, dict], items: dict) -> list[dict]:
+    """Starting classes: archetype N is CharaInitParam row 1000+N."""
+    out = []
+    for archetype in range(10):
+        row = rows.get(CLASS_ROW_BASE + archetype)
+        if not row:
+            continue
+        weapon = items.get(('Weapon', row['equip_Wep_Right']), {}).get('name')
+        stats = [row[name] for name in STATS]
+        out.append({'archetype': archetype, 'row': CLASS_ROW_BASE + archetype,
+                    'name': CLASS_BY_WEAPON.get(weapon), 'startingWeapon': weapon,
+                    'baseStats': stats, 'soulLevel': sum(stats) - 80,
+                    'source': 'CharaInitParam row; class identified by its starting weapon'})
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:

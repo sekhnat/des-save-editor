@@ -23,7 +23,7 @@ _DEFS = [
     ("PLAYER_NAME", "text", "Character name", 0, 16,
      "The name shown on the character select screen (16 characters in game)."),
     ("PLAYER_ARCHETYPE", "int", "Class / archetype id", 0, 9,
-     "Numeric archetype. The class-name mapping has not been verified; preserve it unless you know the correct id."),
+     "Starting class: archetype N is CharaInitParam row 1000+N (both samples, archetype 9, carry that row's exact base stats). Class names come from each row's starting weapon."),
     ("PLAYER_ISMALE", "int", "Gender (isMale)", 0, 1,
      "Gender flag as the game names it."),
     ("ARCHSTONEHOMEINDEX", "int", "Home archstone", 0, 20,

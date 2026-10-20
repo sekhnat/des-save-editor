@@ -16,8 +16,10 @@ the high bits of ``_EQUIPTYPEID`` in the storage box (0 weapon, 1 armor,
 2 ring, 4 goods). With that, every item in the sample saves resolves to a
 catalog entry. ``_QUANTITY`` is a 4-byte record holding a little-endian count.
 
-Editing is limited to values whose meaning is corroborated and whose size
-never changes: inventory quantity and durability, and the storage low-quantity
+Stack and durability limits from the equip PARAMs (catalog schema 3) are
+reported as hints; they are not enforced, because a save may legitimately hold
+other values. Editing is limited to values whose meaning is corroborated and
+whose size never changes: inventory quantity and durability, and the storage low-quantity
 byte. Adding or removing entries and changing item IDs are not offered,
 because the roles of DISPLAYID and VARIATIONID are not verified.
 """
@@ -42,8 +44,18 @@ def category(value: int) -> str | None:
     return CATEGORY_BITS.get((value & 0xFFFFFFFF) >> 28)
 
 
-def _catalog() -> dict[tuple[str, int], str]:
-    return {(entry['category'], entry['id']): entry['name'] for entry in des_items.load_catalog()}
+def _catalog() -> dict[tuple[str, int], dict]:
+    return {(entry['category'], entry['id']): entry for entry in des_items.load_catalog()}
+
+
+def _name(catalog: dict, kind, item_id):
+    entry = catalog.get((kind, item_id))
+    return entry['name'] if entry else None
+
+
+def _limit(catalog: dict, kind, item_id, field: str):
+    entry = catalog.get((kind, item_id))
+    return entry.get(field) if entry else None
 
 
 def _entries(sf, prefix: str, parts: tuple[str, ...]) -> list[dict]:
@@ -83,7 +95,9 @@ def inventory(sf, catalog: dict | None = None) -> list[dict]:
         item_id = _value(f, 'EQUIPID')
         rows.append({'index': entry['index'], 'complete': entry['complete'],
                      'category': kind, 'id': item_id,
-                     'name': catalog.get((kind, item_id)),
+                     'name': _name(catalog, kind, item_id),
+                     'max_quantity': _limit(catalog, kind, item_id, 'maxQuantity'),
+                     'max_durability': _limit(catalog, kind, item_id, 'durabilityMax'),
                      'quantity': _value(f, 'QUANTITY'),
                      'durability': _value(f, 'DURABILITY_CURRENT'),
                      'hits': _value(f, 'DURABILITY_ACCUMULATEDHITS'),
@@ -104,7 +118,8 @@ def storage(sf, catalog: dict | None = None) -> list[dict]:
         low, high = _value(f, 'LOWQUANTITY'), _value(f, 'HIGHQUANTITY')
         rows.append({'index': entry['index'], 'complete': entry['complete'],
                      'category': kind, 'id': item_id,
-                     'name': catalog.get((kind, item_id)),
+                     'name': _name(catalog, kind, item_id),
+                     'max_quantity': _limit(catalog, kind, item_id, 'maxStorageQuantity'),
                      'low_quantity': low, 'high_quantity': high,
                      'durability': _value(f, 'DURABILITY'),
                      'hits': _value(f, 'DURABILITY_ACCUMULATEDHITS'),
@@ -127,7 +142,7 @@ def equipment(sf, catalog: dict | None = None) -> list[dict]:
         item_id = equip.value if equip is not None else None
         rows.append({'slot': index, 'inventory': inv.value if inv is not None else None,
                      'id': item_id, 'category': kind,
-                     'name': catalog.get((kind, item_id)) or (item['name'] if item else None)})
+                     'name': _name(catalog, kind, item_id) or (item['name'] if item else None)})
     return rows
 
 

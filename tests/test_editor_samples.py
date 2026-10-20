@@ -176,9 +176,10 @@ class BrowserTests(unittest.TestCase):
             with self.subTest(path=path.parent.name):
                 self.load(path)
                 sf = des_save.load(str(path))
-                self.assertEqual([[r['index'], cats[r['category']], r['id'], r['name'], r['quantity'], r['durability']]
+                self.assertEqual([[r['index'], cats[r['category']], r['id'], r['name'], r['quantity'], r['durability'],
+                                   r['max_quantity'], r['max_durability']]
                                   for r in des_inventory.inventory(sf)],
-                                 self.page.evaluate('inventoryRows(current().save).map(r => [r.index, r.cat, r.id, r.name, r.quantity, r.durability])'))
+                                 self.page.evaluate('inventoryRows(current().save).map(r => [r.index, r.cat, r.id, r.name, r.quantity, r.durability, r.maxQuantity, r.maxDurability])'))
                 self.assertEqual([[r['index'], cats[r['category']], r['id'], r['name'], r['low_quantity']]
                                   for r in des_inventory.storage(sf)],
                                  self.page.evaluate('storageRows(current().save).map(r => [r.index, r.cat, r.id, r.name, r.low])'))

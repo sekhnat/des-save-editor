@@ -477,6 +477,83 @@ class StructureTests(unittest.TestCase):
                              [f.value for f in arrays.discover(again)[0]['members']])
 
 
+class ParamdefTests(unittest.TestCase):
+    """PARAMDEF layout: byte sizes, bit fields, and refusal of mismatched rows."""
+
+    @staticmethod
+    def paramdef(kind, fields):
+        import des_gamedata
+        head = struct.pack('<IHHH', 0, 0x30, 1, len(fields)) + b'\0\0' + kind.encode().ljust(0x20, b'\0')
+        head = head.ljust(0x30, b'\0')
+        body = b''
+        for display_type, size, name in fields:
+            rec = bytearray(des_gamedata.PARAMDEF_FIELD)
+            rec[0x40:0x40 + len(display_type)] = display_type.encode()
+            struct.pack_into('<i', rec, 0x64, size)
+            rec[0x90:0x90 + len(name)] = name.encode()
+            body += bytes(rec)
+        return head + body
+
+    @staticmethod
+    def param(kind, rows, stride):
+        head = bytearray(0x30)
+        struct.pack_into('<H', head, 0x0A, len(rows))
+        head[0x0C:0x0C + len(kind)] = kind.encode()
+        index = b''
+        data = b''
+        start = 0x30 + 12 * len(rows)
+        for n, (row_id, payload) in enumerate(rows):
+            index += struct.pack('<III', row_id, start + n * stride, 0)
+            data += payload.ljust(stride, b'\0')
+        return bytes(head) + index + data
+
+    def test_layout_with_bit_fields_reads_values(self):
+        import des_gamedata
+        definition = self.paramdef('T_ST', [('s32', 4, 'hp'), ('u8', 1, 'a:1'), ('u8', 1, 'b:3'),
+                                            ('u8', 1, 'c:4'), ('u16', 2, 'n')])
+        layout, size = des_gamedata.paramdef_layout(des_gamedata.parse_paramdef(definition)['fields'])
+        self.assertEqual(7, size)          # s32 + one byte shared by 1+3+4 bits + u16
+        packed = 1 | (0b101 << 1) | (1 << 4)
+        payload = struct.pack('<i', 450) + bytes([packed]) + struct.pack('<H', 99)
+        self.assertEqual([0, 4, 4, 4, 5], [field['offset'] for field in layout])
+        rows = des_gamedata.read_param(definition, self.param('T_ST', [(7, payload)], 7))
+        self.assertEqual({'hp': 450, 'a': 1, 'b': 0b101, 'c': 1, 'n': 99}, {k: rows[7][k] for k in 'hp a b c n'.split()})
+
+    def test_mismatched_row_size_or_type_is_refused(self):
+        import des_gamedata
+        definition = self.paramdef('T_ST', [('s32', 4, 'hp')])
+        rows = [(1, b''), (2, b'')]
+        with self.assertRaises(ValueError):
+            des_gamedata.read_param(definition, self.param('T_ST', rows, 8))     # rows were extended
+        with self.assertRaises(ValueError):
+            des_gamedata.read_param(definition, self.param('OTHER_ST', rows, 4))
+
+    @unittest.skipUnless(HAVE_GAME, 'no game files (set DES_GAME_DIR to run this)')
+    def test_game_tables_and_classes(self):
+        import des_gamedata
+        tables = des_gamedata.load_params(GAME)
+        self.assertIn('CHARACTER_INIT_PARAM', tables)
+        self.assertNotIn('MAGIC_PARAM_ST', tables)          # remaster extended its rows
+        self.assertEqual(50, tables['EQUIP_PARAM_GOODS_ST'][1000]['maxQuantity'])
+        catalog = builder.build_catalog(GAME, 'en-gb')
+        names = [c['name'] for c in catalog['classes']]
+        self.assertEqual(['Soldier', 'Knight', 'Hunter', 'Priest', 'Magician', 'Wanderer',
+                          'Barbarian', 'Thief', 'Temple Knight', 'Royalty'], names)
+
+    @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')
+    def test_sample_archetypes_match_their_class_rows(self):
+        classes = {c['archetype']: c for c in items.load_classes()}
+        stats = ['VITALITY', 'INTELLIGENCE', 'ENDURANCE', 'STRENGTH', 'DEXTERITY', 'MAGIC', 'FAITH', 'LUCK']
+        for path in SAVES.glob('*PlayerProfile*/USR-DATA'):
+            with self.subTest(path=path):
+                sf = save.SaveFile(path.read_bytes())
+                base = [sf.get('PLAYER_BASE' + name) for name in stats]
+                start = classes[sf.get('PLAYER_ARCHETYPE')]['baseStats']
+                self.assertTrue(all(b >= c for b, c in zip(base, start)), (base, start))
+                if sum(base) - 80 == classes[sf.get('PLAYER_ARCHETYPE')]['soulLevel']:
+                    self.assertEqual(start, base)
+
+
 class CatalogTests(unittest.TestCase):
     def test_bnd3_bad_bounds_rejected(self):
         with self.assertRaises(ValueError):

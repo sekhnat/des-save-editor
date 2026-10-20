@@ -53,6 +53,15 @@ def load_catalog(path: str | None = None) -> list[dict]:
         return json.load(stream)['items']
 
 
+def load_classes(path: str | None = None) -> list[dict]:
+    """Starting classes from catalog schema 3 (archetype -> name, base stats)."""
+    path = Path(path) if path is not None else Path(__file__).with_name('itemdb.json')
+    if not path.exists():
+        return []
+    with path.open(encoding='utf-8') as stream:
+        return json.load(stream).get('classes', [])
+
+
 def load_db(path: str | None = None) -> dict[int, dict]:
     """Legacy numeric lookup retaining all category candidates instead of overwriting."""
     grouped = {}

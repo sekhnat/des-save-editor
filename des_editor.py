@@ -68,6 +68,11 @@ def cmd_info(path: str) -> int:
         print("  (no PLAYER_* fields - this looks like the options profile)")
         return 0
     print(f"  name            : {s['name']!r}")
+    archetype = sf.get("PLAYER_ARCHETYPE")
+    match = next((c for c in des_items.load_classes() if c['archetype'] == archetype), None)
+    if match:
+        print(f"  class           : {match['name'] or '?'} (archetype {archetype}, "
+              f"CharaInitParam row {match['row']})")
     print(f"  souls           : {s['souls']:,}" if isinstance(s['souls'], int) else s['souls'])
     if "soul_level" in s:
         print(f"  soul level      : {s['soul_level']}  (derived from attributes)")
@@ -287,9 +292,11 @@ def cmd_items(path: str, as_json: bool) -> int:
     print(f"{path}\n\n  inventory ({len(doc['inventory'])} entries)")
     for row in doc['inventory']:
         mark = '' if row['complete'] else '  [incomplete]'
+        limit = f"/{row['max_quantity']}" if row['max_quantity'] else ''
+        durability = f"{row['durability']}" + (f"/{row['max_durability']}" if row['max_durability'] else '')
         print(f"    {row['index']:2d}  ref {row['ref']!s:>3}  {row['category'] or '?':<6} {row['id']:>7}  "
-              f"{row['name'] or 'unknown id':<34} x{row['quantity']:<4} "
-              f"durability {row['durability']}{mark}")
+              f"{row['name'] or 'unknown id':<34} x{str(row['quantity']) + limit:<7} "
+              f"durability {durability}{mark}")
     print(f"\n  storage box ({len(doc['storage'])} entries)")
     for row in doc['storage']:
         mark = '' if row['complete'] else '  [incomplete]'
