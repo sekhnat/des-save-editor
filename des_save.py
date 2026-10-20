@@ -17,7 +17,7 @@ Each field is:
 
     type 0x02  u8
     type 0x03  u16
-    type 0x04  4 raw bytes (big-endian u32 in the files seen)
+    type 0x04  4 opaque bytes (never assume an integer byte order)
     type 0x06  container: LEB128 child count, then that many fields
     type 0x08  i32
     type 0x0A  f32

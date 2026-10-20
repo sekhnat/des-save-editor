@@ -6,8 +6,8 @@ so a field is "known" once its name has been recovered::
 
     fnv1a("PLAYER_SOULS") == 0x76FD62AF   ->  the souls field
 
-`FIELDS` maps the 32-bit key to presentation metadata used by both the
-CLI and the HTML editor.
+This module is the single source of field metadata. The CLI reads it directly
+and ``tools/embed_fields.py`` writes the same table into ``des_editor.html``.
 """
 
 from des_save import name_key
@@ -15,17 +15,94 @@ from des_save import name_key
 ATTRS = ["VITALITY", "INTELLIGENCE", "ENDURANCE", "STRENGTH",
          "DEXTERITY", "MAGIC", "FAITH", "LUCK"]
 
-# category -> ordered list of field names (used for the editor layout)
+# (name, kind, label, lo, hi, help)
+#   kind: "int" | "float" | "text" | "hex"
+#   label: short UI label; help: longer explanation, may be empty
+_DEFS = [
+    # ---- character -------------------------------------------------------
+    ("PLAYER_NAME", "text", "Character name", 0, 16,
+     "The name shown on the character select screen (16 characters in game)."),
+    ("PLAYER_ARCHETYPE", "int", "Class / archetype id", 0, 9,
+     "Numeric archetype. The class-name mapping has not been verified; preserve it unless you know the correct id."),
+    ("PLAYER_ISMALE", "int", "Gender (isMale)", 0, 1,
+     "Gender flag as the game names it."),
+    ("ARCHSTONEHOMEINDEX", "int", "Home archstone", 0, 20,
+     "Archstone the character returns to."),
+    ("PLAYER_NUMBER", "int", "Character slot", 0, 20, "Index of this character."),
+    # ---- souls -----------------------------------------------------------
+    ("PLAYER_SOULS", "int", "Souls", 0, 999_999_999, "Souls currently carried."),
+    ("PLAYER_CUMULATIVESOULS", "int", "Souls (lifetime)", 0, 2_000_000_000,
+     "Total souls ever collected with this character."),
+    # ---- attributes ------------------------------------------------------
+    *[(f"PLAYER_CURRENT{a}", "int", a.capitalize(), 1, 99,
+       "Attribute value used by the level-up screen.") for a in ATTRS],
+    *[(f"PLAYER_BASE{a}", "int", f"{a.capitalize()} (base)", 1, 99,
+       "Stored base value of the same attribute.") for a in ATTRS],
+    # ---- vitals ----------------------------------------------------------
+    ("PLAYER_CURRENTHP", "int", "HP (current)", 0, 100_000, ""),
+    ("PLAYER_CURRENTMAXHP", "int", "HP (max, effective)", 0, 100_000,
+     "Max HP the game shows — reduced in soul form."),
+    ("PLAYER_BASEMAXHP", "int", "HP (body form max)", 0, 100_000,
+     "Body-form maximum, derived from Vitality."),
+    ("PLAYER_CURRENTMP", "int", "MP (current)", 0, 100_000, ""),
+    ("PLAYER_CURRENTMAXMP", "int", "MP (max, effective)", 0, 100_000, ""),
+    ("PLAYER_BASEMAXMP", "int", "MP (base)", 0, 100_000, "Derived from Intelligence."),
+    ("PLAYER_CURRENTSP", "int", "Stamina (current)", 0, 100_000, ""),
+    ("PLAYER_CURRENTMAXSP", "int", "Stamina (max, effective)", 0, 100_000, ""),
+    ("PLAYER_BASEMAXSP", "int", "Stamina (max)", 0, 100_000, ""),
+    ("PLAYER_RECOVERMP", "int", "MP recovery", 0, 100_000, "Regeneration bonus."),
+    ("PLAYER_RECOVERSP", "int", "Stamina recovery", 0, 100_000, "Regeneration bonus."),
+    # ---- resistance ------------------------------------------------------
+    ("PLAYER_RESISTANCE_POISON", "int", "Poison resistance", 0, 100_000, ""),
+    ("PLAYER_RESISTANCE_PLAGUE", "int", "Plague resistance", 0, 100_000, ""),
+    # ---- records / progress ---------------------------------------------
+    ("PLAYTIME", "float", "Play time (ms)", 0, 1e12,
+     "Milliseconds. 3 600 000 = one hour."),
+    ("TRUEDEATHCOUNT", "int", "Deaths", 0, 1_000_000, ""),
+    ("DEMONSKILLED", "int", "Demons killed", 0, 1_000_000, ""),
+    ("CLEARSTATE", "int", "Clear state", 0, 1_000, ""),
+    ("CLEARCOUNT", "int", "Clear count", 0, 1_000,
+     "Number of finished playthroughs (NG+ level)."),
+    ("KILLBLACK", "int", "Black phantom kills", 0, 1_000_000, ""),
+    # ---- progress flags ---------------------------------------------------
+    ("WORLDSTATUS_MIRRORMODE", "int", "Mirror mode", 0, 1, ""),
+    ("MISC_HASUNLOCKEDNEXUSSTATUE", "int", "Nexus statue unlocked", 0, 1, ""),
+    ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Storage box count (read-only)", 0, 100_000,
+     "Counter only. Contents and their relationship to this counter have not been decoded; changing the counter alone is unsafe."),
+    # ---- advanced / not fully verified -----------------------------------
+    ("PLAYER_SHOPLEVEL", "int", "Shop level (unverified)", 0, 10_000,
+     "Hash name recovered, but the meaning of the value is not confirmed."),
+    ("PLAYER_CLEARITEM", "int", "Clear item flag", 0, 255, ""),
+    ("PLAYER_CLEARBONUS", "float", "Clear bonus", -1e9, 1e9, ""),
+    ("PLAYEROFFSET", "int", "Player record offset (unverified)", -1, 1_000_000,
+     "Recovered field name; value meaning is unverified."),
+    # ---- options profile -------------------------------------------------
+    ("BRIGHTNESS", "int", "Brightness", 0, 100, ""),
+    ("DISPLAYBRIGHTNESS", "float", "Display brightness", 0, 2, ""),
+    ("VOLUMEMUSIC", "float", "Music volume", 0, 1, ""),
+    ("VOLUMEEFFECTS", "float", "Effects volume", 0, 1, ""),
+    ("VOLUMEVOICE", "float", "Voice volume", 0, 1, ""),
+    ("SUBTITLES", "int", "Subtitles", 0, 1, ""),
+    ("SHOWHELMET", "int", "Show helmet", 0, 1, ""),
+    ("GAMEFILTERNAME", "hex", "Colour filter", 0, 0xFFFFFFFF, "4 raw bytes."),
+    ("CAMERASPEED", "int", "Camera speed", 0, 10, ""),
+    ("CAMERAMODE", "int", "Camera mode", 0, 1, ""),
+    ("CAMERASHAKE", "float", "Camera shake", 0, 2, "Camera shake strength."),
+    ("AUTOLOCK", "int", "Camera auto-lock", 0, 1, ""),
+    ("SOUNDTYPE", "int", "Sound output", 0, 8, ""),
+    ("COLORBLIND", "int", "Colour-blind filter", 0, 8, ""),
+    ("PASSWORD", "text", "Network password", 0, 8, ""),
+]
+
+# category -> ordered list of field names (the editor and `list` layout)
 LAYOUT = {
     "Character": [
         "PLAYER_NAME", "PLAYER_ISMALE", "PLAYER_ARCHETYPE", "PLAYER_NUMBER",
         "ARCHSTONEHOMEINDEX",
     ],
-    "Souls": [
-        "PLAYER_SOULS", "PLAYER_CUMULATIVESOULS",
-    ],
+    "Souls": ["PLAYER_SOULS", "PLAYER_CUMULATIVESOULS"],
     "Attributes": [f"PLAYER_CURRENT{a}" for a in ATTRS],
-    "Base attributes": [f"PLAYER_BASE{a}" for a in ATTRS],
+    "Attributes (base)": [f"PLAYER_BASE{a}" for a in ATTRS],
     "Vitals": [
         "PLAYER_CURRENTHP", "PLAYER_CURRENTMAXHP", "PLAYER_BASEMAXHP",
         "PLAYER_CURRENTMP", "PLAYER_CURRENTMAXMP", "PLAYER_BASEMAXMP",
@@ -36,103 +113,27 @@ LAYOUT = {
         "WORLDSTATUS_MIRRORMODE", "MISC_HASUNLOCKEDNEXUSSTATUE",
         "EQUIPMENT_STORAGEBOX_COUNT",
     ],
-    "Resistance": [
-        "PLAYER_RESISTANCE_POISON", "PLAYER_RESISTANCE_PLAGUE",
-    ],
+    "Resistance": ["PLAYER_RESISTANCE_POISON", "PLAYER_RESISTANCE_PLAGUE"],
     "Records": [
         "PLAYTIME", "TRUEDEATHCOUNT", "DEMONSKILLED", "CLEARSTATE",
         "CLEARCOUNT", "KILLBLACK",
     ],
+    "Advanced (unverified)": [
+        "PLAYER_SHOPLEVEL", "PLAYER_CLEARITEM", "PLAYER_CLEARBONUS", "PLAYEROFFSET",
+    ],
     "Options": [
         "BRIGHTNESS", "DISPLAYBRIGHTNESS", "VOLUMEMUSIC", "VOLUMEEFFECTS",
         "VOLUMEVOICE", "SUBTITLES", "SHOWHELMET", "CAMERASPEED", "CAMERAMODE",
-        "SOUNDTYPE", "COLORBLIND", "GAMEFILTERNAME", "PASSWORD",
-        "AUTOLOCK", "CAMERASHAKE",
+        "CAMERASHAKE", "AUTOLOCK", "SOUNDTYPE", "COLORBLIND", "GAMEFILTERNAME",
+        "PASSWORD",
     ],
 }
 
-# name -> (kind, description, lo, hi)
-#   kind: "int" | "float" | "text" | "hex"
-_DEFS = [
-    # ---- character -------------------------------------------------------
-    ("PLAYER_NAME", "text", "Character name (max 16 characters in game)", 0, 16),
-    ("PLAYER_ARCHETYPE", "int", "Numeric archetype id (class-name mapping unverified)", 0, 9),
-    ("PLAYER_NUMBER", "int", "Character slot number", 0, 20),
-    ("PLAYER_ISMALE", "int", "Gender flag (isMale): 0 or 1", 0, 1),
-    ("ARCHSTONEHOMEINDEX", "int", "Home archstone index (where you respawn)", 0, 20),
-    # ---- souls -----------------------------------------------------------
-    ("PLAYER_SOULS", "int", "Souls currently carried", 0, 999_999_999),
-    ("PLAYER_CUMULATIVESOULS", "int", "Total souls collected over the character's life", 0, 2_000_000_000),
-    # ---- attributes ------------------------------------------------------
-    ("PLAYER_CURRENTVITALITY", "int", "Vitality (level-up screen value)", 1, 99),
-    ("PLAYER_CURRENTINTELLIGENCE", "int", "Intelligence", 1, 99),
-    ("PLAYER_CURRENTENDURANCE", "int", "Endurance", 1, 99),
-    ("PLAYER_CURRENTSTRENGTH", "int", "Strength", 1, 99),
-    ("PLAYER_CURRENTDEXTERITY", "int", "Dexterity", 1, 99),
-    ("PLAYER_CURRENTMAGIC", "int", "Magic", 1, 99),
-    ("PLAYER_CURRENTFAITH", "int", "Faith", 1, 99),
-    ("PLAYER_CURRENTLUCK", "int", "Luck", 1, 99),
-    ("PLAYER_BASEVITALITY", "int", "Vitality (base value stored with the character)", 1, 99),
-    ("PLAYER_BASEINTELLIGENCE", "int", "Intelligence (base)", 1, 99),
-    ("PLAYER_BASEENDURANCE", "int", "Endurance (base)", 1, 99),
-    ("PLAYER_BASESTRENGTH", "int", "Strength (base)", 1, 99),
-    ("PLAYER_BASEDEXTERITY", "int", "Dexterity (base)", 1, 99),
-    ("PLAYER_BASEMAGIC", "int", "Magic (base)", 1, 99),
-    ("PLAYER_BASEFAITH", "int", "Faith (base)", 1, 99),
-    ("PLAYER_BASELUCK", "int", "Luck (base)", 1, 99),
-    # ---- vitals ----------------------------------------------------------
-    ("PLAYER_CURRENTHP", "int", "Current HP", 0, 100_000),
-    ("PLAYER_CURRENTMAXHP", "int", "Max HP (effective, soul-form adjusted)", 0, 100_000),
-    ("PLAYER_BASEMAXHP", "int", "Max HP (body form)", 0, 100_000),
-    ("PLAYER_CURRENTMP", "int", "Current MP", 0, 100_000),
-    ("PLAYER_CURRENTMAXMP", "int", "Max MP (effective)", 0, 100_000),
-    ("PLAYER_BASEMAXMP", "int", "Max MP (body form)", 0, 100_000),
-    ("PLAYER_CURRENTSP", "int", "Current stamina", 0, 100_000),
-    ("PLAYER_CURRENTMAXSP", "int", "Max stamina (effective)", 0, 100_000),
-    ("PLAYER_BASEMAXSP", "int", "Max stamina", 0, 100_000),
-    ("PLAYER_RECOVERMP", "int", "MP regeneration bonus", 0, 100_000),
-    ("PLAYER_RECOVERSP", "int", "Stamina regeneration bonus", 0, 100_000),
-    # ---- resistance ------------------------------------------------------
-    ("PLAYER_RESISTANCE_POISON", "int", "Poison resistance", 0, 100_000),
-    ("PLAYER_RESISTANCE_PLAGUE", "int", "Plague resistance", 0, 100_000),
-    # ---- records / progress ---------------------------------------------
-    ("PLAYTIME", "float", "Total play time in milliseconds", 0, 1e12),
-    ("TRUEDEATHCOUNT", "int", "Number of deaths", 0, 1_000_000),
-    ("DEMONSKILLED", "int", "Demons killed", 0, 1_000_000),
-    ("CLEARSTATE", "int", "Clear / completion state", 0, 1_000),
-    ("CLEARCOUNT", "int", "Clear count (playthroughs finished)", 0, 1_000),
-    ("KILLBLACK", "int", "Black phantom kills", 0, 1_000_000),
-    # ---- progress flags ---------------------------------------------------
-    ("WORLDSTATUS_MIRRORMODE", "int", "Mirror-mode world flag", 0, 1),
-    ("MISC_HASUNLOCKEDNEXUSSTATUE", "int", "Nexus statue unlocked", 0, 1),
-    ("EQUIPMENT_STORAGEBOX_COUNT", "int", "Items stored in the storage box", 0, 100_000),
-    # ---- advanced / not fully verified -----------------------------------
-    ("PLAYER_SHOPLEVEL", "int", "Shop level (name verified, meaning unclear)", 0, 10_000),
-    ("PLAYER_CLEARITEM", "int", "Clear item flag", 0, 255),
-    ("PLAYER_CLEARBONUS", "float", "Clear bonus", -1e9, 1e9),
-    ("PLAYEROFFSET", "int", "Player record offset", -1, 1_000_000),
-    # ---- options profile -------------------------------------------------
-    ("BRIGHTNESS", "int", "Brightness", 0, 100),
-    ("DISPLAYBRIGHTNESS", "float", "Display brightness", 0, 2),
-    ("VOLUMEMUSIC", "float", "Music volume", 0, 1),
-    ("VOLUMEEFFECTS", "float", "Effects volume", 0, 1),
-    ("VOLUMEVOICE", "float", "Voice volume", 0, 1),
-    ("SUBTITLES", "int", "Subtitles enabled", 0, 1),
-    ("SHOWHELMET", "int", "Show helmet", 0, 1),
-    ("GAMEFILTERNAME", "hex", "Colour filter (4 bytes)", 0, 0xFFFFFFFF),
-    ("CAMERASPEED", "int", "Camera speed", 0, 10),
-    ("CAMERAMODE", "int", "Camera mode", 0, 1),
-    ("CAMERASHAKE", "float", "Camera shake strength", 0, 2),
-    ("AUTOLOCK", "int", "Camera auto-lock", 0, 1),
-    ("SOUNDTYPE", "int", "Sound output type", 0, 8),
-    ("COLORBLIND", "int", "Colour-blind filter", 0, 8),
-    ("PASSWORD", "text", "Network password", 0, 8),
-]
-
 FIELDS: dict[int, dict] = {}
-for _name, _kind, _desc, _lo, _hi in _DEFS:
+for _name, _kind, _label, _lo, _hi, _help in _DEFS:
     FIELDS[name_key(_name)] = {
-        "name": _name, "kind": _kind, "desc": _desc,
+        "name": _name, "kind": _kind, "label": _label, "help": _help,
+        "desc": f"{_label} — {_help}" if _help else _label,
         "lo": _lo, "hi": _hi,
     }
 
@@ -150,15 +151,11 @@ def field_name(key: int) -> str | None:
 
 
 def describe(key: int) -> str:
-    """`NAME (description)` when known, otherwise just the hex key."""
+    """The recovered name when known, otherwise just the hex key."""
     meta = FIELDS.get(key)
     if not meta:
         return f"{key:08X}"
     return f'{meta["name"]}'
-
-
-LAYOUT["Advanced"] = ["PLAYER_SHOPLEVEL", "PLAYER_CLEARITEM",
-                      "PLAYER_CLEARBONUS", "PLAYEROFFSET"]
 
 
 def known_names() -> list[str]:

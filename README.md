@@ -278,7 +278,9 @@ entries. Both tools offer stdout modes for reproducible build integration.
 
 ## Verification and performance
 
-From `des-editor/`:
+From the repository root. Tests that need real saves read `DES_SAVE_DIR`
+(your `_SaveData/PPSA01341` copy) and are skipped, with the reason printed,
+when it is not set:
 
 ```bash
 # Standard-library tests only
@@ -286,6 +288,7 @@ python3 -m unittest discover -s tests -p test_save.py -v
 # Full suite; requires Playwright and its Chromium browser in the test environment
 python3 -m unittest discover -s tests -v
 python3 tests/benchmark_editor.py
+python3 tools/embed_fields.py --check   # page field table matches des_fields.py
 python3 des_editor.py selftest ../_SaveData/PPSA01341
 ```
 

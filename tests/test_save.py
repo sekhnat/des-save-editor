@@ -260,5 +260,22 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual('Soul Arrow', by_category['Spell', 1000])
 
 
+class FieldTableTests(unittest.TestCase):
+    def test_page_field_table_is_generated_from_des_fields(self):
+        spec = importlib.util.spec_from_file_location('embed_fields', ROOT / 'tools/embed_fields.py')
+        embed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(embed)
+        html = (ROOT / 'des_editor.html').read_text(encoding='utf-8')
+        self.assertEqual(html, embed.embed(html), 'run tools/embed_fields.py')
+
+    def test_every_name_hashes_to_its_key_and_layout_names_exist(self):
+        import des_fields
+        for key, meta in des_fields.FIELDS.items():
+            self.assertEqual(key, save.name_key(meta['name']))
+        for names in des_fields.LAYOUT.values():
+            for name in names:
+                self.assertIn(name, des_fields.BY_NAME)
+
+
 if __name__ == '__main__':
     unittest.main()

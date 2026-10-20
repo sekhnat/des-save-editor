@@ -153,16 +153,7 @@ def label(group: dict, catalog: list[dict] | None = None) -> dict:
     return {'kind': kind, 'description': description, 'values': values,
             'names': names, 'filled': len(filled)}
 
-def report(sf) -> list[dict]:
-    """Every discovered array, labelled, for display and editing."""
-    catalog = des_items.load_catalog()
-    rows = []
-    for index, group in enumerate(discover(sf)):
-        info = label(group, catalog)
-        rows.append({'index': index, 'offset': group['first'], 'count': group['count'],
-                     'stride': group['stride'], 'state': group['state'],
-                     'keys': [member.key for member in group['members']],
-                     'type': group['members'][0].type, **info})
+
 def suffix_of(key: int, state: int) -> str:
     """Recover the trailing character of a member key."""
     return chr(((key * P_INV) & M) ^ state)
