@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "Desktop shell for the offline Demon's Souls (PS5) save editor",
   "main": "main.js",
+  "desktopName": "des-save-editor.desktop",
   "license": "MIT",
   "private": true,
   "author": "sekhnat",
@@ -21,7 +22,8 @@
     "appId": "io.github.sekhnat.des-save-editor",
     "files": ["main.js", "package.json"],
     "extraResources": [
-      {"from": "../des_editor.html", "to": "des_editor.html"}
+      {"from": "../des_editor.html", "to": "des_editor.html"},
+      {"from": "build/icon.png", "to": "icon.png"}
     ],
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {"output": "dist"},
@@ -34,7 +36,8 @@
     "portable": {"artifactName": "${productName}-${version}-${os}-${arch}-portable.${ext}"},
     "linux": {
       "target": [{"target": "AppImage", "arch": ["x64"]}],
-      "category": "Utility"
+      "category": "Utility",
+      "syncDesktopName": true
     },
     "mac": {
       "target": [{"target": "dmg", "arch": ["x64", "arm64"]}],

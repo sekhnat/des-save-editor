@@ -8,6 +8,10 @@ const PAGE = app.isPackaged
   ? path.join(process.resourcesPath, 'des_editor.html')
   : path.join(__dirname, '..', 'des_editor.html');
 
+const RESOURCES = app.isPackaged ? process.resourcesPath : path.join(__dirname, 'build');
+// Window/taskbar icon. An AppImage that is not installed gets no desktop-entry icon.
+const ICON = path.join(RESOURCES, 'icon.png');
+
 const ALLOWED_PERMISSIONS = new Set(['fileSystem', 'clipboard-sanitized-write']);
 const ALLOWED_SCHEMES = ['file:', 'blob:', 'data:', 'devtools:'];
 
@@ -16,6 +20,7 @@ function createWindow() {
     width: 1400,
     height: 900,
     backgroundColor: '#0d0f12',
+    icon: ICON,
     webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
   });
 
