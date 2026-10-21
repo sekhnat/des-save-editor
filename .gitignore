@@ -12,3 +12,7 @@ tests/fixtures/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# Desktop app build output
+desktop/node_modules/
+desktop/dist/

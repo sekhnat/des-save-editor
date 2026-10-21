@@ -42,6 +42,24 @@ restores the original payload, even after several exports. Undo history survives
 exports. The page warns before closing with unexported edits or unapplied drafts.
 A browser download request cannot prove that the download actually completed.
 
+## Desktop app
+
+The same editor is also packaged as a desktop app (Electron hosting the
+unmodified `des_editor.html`, with the network blocked) for Windows, Linux and
+macOS. Download it from the repository's **Releases** page:
+
+| Platform | File | Notes |
+|---|---|---|
+| Windows | `…-windows-x64-portable.exe` or the `…-windows-x64.exe` installer | Unsigned: SmartScreen may ask you to choose *More info → Run anyway* |
+| Linux | `…-linux-x86_64.AppImage` | `chmod +x` it; needs `libfuse2` on newer distributions |
+| macOS | `…-mac-x64.dmg` / `…-mac-arm64.dmg` | Unsigned: right-click → **Open** the first time |
+
+The desktop app behaves exactly like the page: all the workflows below apply,
+and closing it with unexported edits asks for confirmation. To run it from a
+checkout: `cd desktop && npm ci && npm start`. Maintainers: pushing a `v*` tag
+makes `.github/workflows/desktop.yml` test, build and publish the release; other
+pushes upload the builds as workflow artifacts.
+
 ## Views and workflows
 
 | View | What it provides |
