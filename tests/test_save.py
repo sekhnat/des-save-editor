@@ -786,6 +786,7 @@ class InventoryTests(unittest.TestCase):
 
 
 
+@unittest.skipUnless(HAVE_PAIR, f'no paired saves in {PAIR_DIR} (set DES_PAIR_DIR to run this)')
 class PairedSwordTests(unittest.TestCase):
     """The observed acquisition of the Dragon Bone Smasher (Weapon 20700)."""
 
@@ -794,7 +795,6 @@ class PairedSwordTests(unittest.TestCase):
         cls.hashes = {path: hashlib.sha256(path.read_bytes()).hexdigest()
                       for path in (BEFORE_PAIR, AFTER_PAIR)}
 
-    @unittest.skipUnless(HAVE_PAIR, f'no paired saves in {PAIR_DIR} (set DES_PAIR_DIR to run this)')
     def test_the_observed_acquisition_matches_the_creation_rules(self):
         before = save.SaveFile(BEFORE_PAIR.read_bytes())
         after = save.SaveFile(AFTER_PAIR.read_bytes())
