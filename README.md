@@ -50,7 +50,7 @@ macOS. Download it from the repository's **Releases** page:
 
 | Platform | File | Notes |
 |---|---|---|
-| Windows | `…-windows-x64-portable.exe` or the `…-windows-x64.exe` installer | Unsigned: SmartScreen may ask you to choose *More info → Run anyway* |
+| Windows | `…-win-x64-portable.exe` or the `…-win-x64.exe` installer | Unsigned: SmartScreen may ask you to choose *More info → Run anyway* |
 | Linux | `…-linux-x86_64.AppImage` | `chmod +x` it; needs `libfuse2` on newer distributions |
 | macOS | `…-mac-x64.dmg` / `…-mac-arm64.dmg` | Unsigned: right-click → **Open** the first time |
 
