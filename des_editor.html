@@ -3140,6 +3140,10 @@ function createFamilyState(s, destination){
       if (slot[part].type !== (PART_TYPES[part] ?? T.I32)) throw new Error(`${prefix}${pad2(index)}_${part} has an unexpected record type`);
     }
   }
+  if (destination === "inventory"){
+    const refs = indices.map(i => found.get(i).INDEX.value);
+    if (refs.some((v,i) => i > 0 && refs[i-1] >= v)) throw new Error(`${prefix} entries are not in ascending INDEX order; the game keeps them sorted, so this layout is not supported`);
+  }
   if (indices.length){
     const first = Math.min(...positions), last = Math.max(...positions), at = top.get(count);
     if (destination === "inventory" && at > first) throw new Error(`${prefix}_COUNT must precede its entries`);
@@ -3148,12 +3152,13 @@ function createFamilyState(s, destination){
   return {prefix, parts, count, found, positions, countPosition: top.get(count)};
 }
 function createUsedReferences(s){
+  /* Inventory-occupied references only: storage display words may still carry a freed one. */
   const used = new Set();
   const add = v => { if (Number.isInteger(v) && v >= 0 && v <= 0xFFFF) used.add(v); };
   for (const [field] of s.walk()){
     if (field.isContainer) continue;
     const hit = CREATE_FAMILY_KEYS.get(field.key);
-    if (!hit) continue;
+    if (!hit || hit[0] !== "EQUIPMENT_INVENTORY") continue;
     const part = hit[2];
     if (part === "INDEX" || part === "VARIATIONID") add(partValue({[part]: field}, part));
     else if (part === "DISPLAYID"){ const d = partValue({DISPLAYID: field}, "DISPLAYID"); if (d !== null && d >= 0) add(d & 0xFFFF); }
@@ -3165,6 +3170,7 @@ function createUsedReferences(s){
   }
   return used;
 }
+function createLowestFree(used){ let ref = 0; while (used.has(ref)) ref++; return ref; }
 function createInsertionPoint(state){
   if (state.positions.length) return Math.max(...state.positions) + 1;
   return state.prefix === "EQUIPMENT_INVENTORY" ? state.countPosition + 1 : state.countPosition;
@@ -3231,23 +3237,38 @@ function withAddedItem(source, cat, id, quantity = 1, destination = "inventory")
     }
     candidate.reindex();
   } else {
-    const newRef = used.size ? Math.max(...used) + 1 : 0;
-    if (newRef > 0xFFFF) throw new Error("no free 16-bit instance reference remains");
-    const names = state.parts.map(part => `${state.prefix}${pad2(createdIndex)}_${part}`);
-    for (const n of names) if (candidate.findAll(nameKey(n)).length) throw new Error(`the key for ${n} already appears in this save; refusing to create a colliding record`);
     const typeOf = part => PART_TYPES[part] ?? T.I32;
     const i32 = v => { const raw = new Uint8Array(4); new DataView(raw.buffer).setUint32(0, v >>> 0, true); return raw; };
-    const packed = destination === "inventory"
-      ? {INDEX: newRef, TYPE: bits, EQUIPID: id, QUANTITY: quantity, VARIATIONID: newRef,
-         DISPLAYID: (row.sort << 16) | newRef, DURABILITY_CURRENT: initialDurability,
-         DURABILITY_ACCUMULATEDHITS: 0}
-      : {EQUIPTYPEID: bits | id, DISPLAYID: -1, LOWQUANTITY: quantity, HIGHQUANTITY: 0,
-         DURABILITY: initialDurability, DURABILITY_ACCUMULATEDHITS: 0};
-    const newRecords = names.map((n, i) => {
+    const build = (names, packed) => names.map((n, i) => {
       const part = state.parts[i], type = typeOf(part);
       return new Field(nameKey(n), type, type === T.U8 ? Uint8Array.of(packed[part]) : i32(packed[part]));
     });
-    const at = createInsertionPoint(state);
+    let newRecords, at;
+    if (destination === "inventory"){
+      /* The game keeps entries sorted by reference and hands out the lowest free one:
+         the new entry slots in by reference and later entries move up one index. */
+      const newRef = createLowestFree(used);
+      if (newRef > 0xFFFF) throw new Error("no free 16-bit instance reference remains");
+      for (const part of state.parts){
+        const n = `${state.prefix}${pad2(createdIndex)}_${part}`;
+        if (candidate.findAll(nameKey(n)).length) throw new Error(`the key for ${n} already appears in this save; refusing to create a colliding record`);
+      }
+      const slotIndex = [...state.found.keys()].filter(i => state.found.get(i).INDEX.value < newRef).length;
+      const top = new Map(); candidate.records.forEach((f,i) => top.set(f,i));
+      at = slotIndex < createdIndex ? Math.min(...Object.values(state.found.get(slotIndex)).map(f => top.get(f))) : createInsertionPoint(state);
+      for (let index = createdIndex - 1; index >= slotIndex; index--)
+        for (const [part, field] of Object.entries(state.found.get(index))) field.key = nameKey(`${state.prefix}${pad2(index+1)}_${part}`);
+      newRecords = build(state.parts.map(part => `${state.prefix}${pad2(slotIndex)}_${part}`),
+        {INDEX: newRef, TYPE: bits, EQUIPID: id, QUANTITY: quantity, VARIATIONID: newRef,
+         DISPLAYID: (row.sort << 16) | newRef, DURABILITY_CURRENT: initialDurability,
+         DURABILITY_ACCUMULATEDHITS: 0});
+    } else {
+      const names = state.parts.map(part => `${state.prefix}${pad2(createdIndex)}_${part}`);
+      for (const n of names) if (candidate.findAll(nameKey(n)).length) throw new Error(`the key for ${n} already appears in this save; refusing to create a colliding record`);
+      newRecords = build(names, {EQUIPTYPEID: bits | id, DISPLAYID: -1, LOWQUANTITY: quantity, HIGHQUANTITY: 0,
+         DURABILITY: initialDurability, DURABILITY_ACCUMULATEDHITS: 0});
+      at = createInsertionPoint(state);
+    }
     candidate.records.splice(at, 0, ...newRecords);
     state.count.value += 1;
     candidate.reindex();

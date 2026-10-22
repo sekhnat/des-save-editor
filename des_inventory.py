@@ -25,10 +25,11 @@ other values.
 Item creation (experimental, not yet verified in game) is offered for catalog
 rows with PARAM creation data: ``with_added_item`` returns a validated candidate
 SaveFile with one more entry in the inventory or the storage box. It follows the
-record layout measured from real saves — ``INDEX == VARIATIONID ==`` the next
-unused 16-bit instance reference and ``DISPLAYID = (PARAM sortId << 16) |
-ref`` for inventory entries, the ``-1`` display sentinel for directly created
-storage entries — and records newly acquired rings in the trophy history.
+record layout measured from real saves — ``INDEX == VARIATIONID ==`` the lowest
+free 16-bit instance reference and ``DISPLAYID = (PARAM sortId << 16) | ref``
+for inventory entries (kept sorted by reference, so later entries move up one
+index; equipment slots and quick items hold references and are unaffected),
+the ``-1`` display sentinel for directly created storage entries — and records newly acquired rings in the trophy history.
 Removing entries, replacing item IDs and repairing malformed layouts remain
 unsupported.
 """
@@ -274,6 +275,11 @@ def _family_state(sf, destination: str) -> dict:
             if field.type != PART_TYPES.get(part, T_I32):
                 raise ValueError(f'{prefix}{index:02d}_{part} has an unexpected record type '
                                  f'0x{field.type:02x}')
+    if destination == 'inventory':
+        refs = [found[i]['INDEX'].value for i in indices]
+        if any(a >= b for a, b in zip(refs, refs[1:])):
+            raise ValueError(f'{prefix} entries are not in ascending INDEX order; '
+                             'the game keeps them sorted, so this layout is not supported')
     if indices:
         first, last = min(positions), max(positions)
         if destination == 'inventory' and count_position > first:
@@ -285,10 +291,13 @@ def _family_state(sf, destination: str) -> dict:
 
 
 def _used_references(sf) -> set[int]:
-    """16-bit instance references already in use anywhere in the save.
+    """16-bit instance references occupied in the inventory.
 
-    Read leniently (incomplete families still contribute their present values),
-    because only the destination family must fully validate.
+    The game hands out the lowest reference no inventory entry, equipment slot
+    or quick item holds; storage display words may still carry a reference that
+    has since been freed (the paired saves show inventory ref 49 coexisting
+    with storage displays ending in 49), so they do not reserve one. Read
+    leniently: only the destination family must fully validate.
     """
     used: set[int] = set()
 
@@ -296,22 +305,20 @@ def _used_references(sf) -> set[int]:
         if isinstance(value, int) and 0 <= value <= 0xFFFF:
             used.add(value)
 
-    keysets = (_family_keyset('EQUIPMENT_INVENTORY', INVENTORY_PARTS),
-               _family_keyset('EQUIPMENT_STORAGEBOX', STORAGE_PARTS))
+    keyset = _family_keyset('EQUIPMENT_INVENTORY', INVENTORY_PARTS)
     for field, _depth in sf.walk():
         if field.is_container:
             continue
-        for keyset in keysets:
-            hit = keyset.get(field.key)
-            if hit is None:
-                continue
-            _index, part = hit
-            if part in ('INDEX', 'VARIATIONID'):
-                add(_value({part: field}, part))
-            elif part == 'DISPLAYID':
-                display = _value({part: field}, part)
-                if display is not None and display >= 0:
-                    add(display & 0xFFFF)
+        hit = keyset.get(field.key)
+        if hit is None:
+            continue
+        _index, part = hit
+        if part in ('INDEX', 'VARIATIONID'):
+            add(_value({part: field}, part))
+        elif part == 'DISPLAYID':
+            display = _value({part: field}, part)
+            if display is not None and display >= 0:
+                add(display & 0xFFFF)
     for index in range(MAX_SLOTS):
         field = sf.find(f'EQUIPMENT_SLOT{index:02d}_INVENTORYID')
         if field is not None and field.type == T_I32:
@@ -321,6 +328,13 @@ def _used_references(sf) -> set[int]:
         if field is not None and field.type == T_I32:
             add(field.value)
     return used
+
+
+def _lowest_free(used: set[int]) -> int:
+    ref = 0
+    while ref in used:
+        ref += 1
+    return ref
 
 
 def _insertion_point(state: dict) -> int:
@@ -464,12 +478,26 @@ def with_added_item(sf, category: str, item_id, quantity: int = 1,
             fields['LOWQUANTITY'].raw = bytes([current + quantity])
         new_records, new_ref = None, None
     else:
-        new_ref = (max(used) + 1) if used else 0
-        if new_ref > 0xFFFF:
-            raise ValueError('no free 16-bit instance reference remains')
-        names = [f'{prefix}{created_index:02d}_{part}' for part in parts]
-        _check_new_keys_absent(candidate, names)
         if destination == 'inventory':
+            # The game keeps entries sorted by reference and hands out the lowest
+            # free one, so the new entry slots in by reference and every later
+            # entry moves up one index (slots and quick items hold references).
+            new_ref = _lowest_free(used)
+            if new_ref > 0xFFFF:
+                raise ValueError('no free 16-bit instance reference remains')
+            _check_new_keys_absent(candidate, [f'{prefix}{len(state["found"]):02d}_{part}'
+                                               for part in parts])
+            created_index = sum(1 for slot in state['found'].values()
+                                if slot['INDEX'].value < new_ref)
+            names = [f'{prefix}{created_index:02d}_{part}' for part in parts]
+            top = {id(f): i for i, f in enumerate(candidate.records)}
+            if created_index < len(state['found']):
+                at = min(top[id(f)] for f in state['found'][created_index].values())
+            else:
+                at = _insertion_point(state)
+            for index in range(len(state['found']) - 1, created_index - 1, -1):
+                for part, field in state['found'][index].items():
+                    field.key = des_save.name_key(f'{prefix}{index + 1:02d}_{part}')
             values = {'INDEX': _i32(new_ref), 'TYPE': _i32(bits), 'EQUIPID': _i32(item_id),
                       'QUANTITY': _i32(quantity), 'VARIATIONID': _i32(new_ref),
                       'DISPLAYID': _i32((entry['sortId'] << 16) | new_ref),
@@ -478,13 +506,15 @@ def with_added_item(sf, category: str, item_id, quantity: int = 1,
             new_records = [_record(name, PART_TYPES.get(part, T_I32), values[part])
                            for part, name in zip(parts, names)]
         else:
+            names = [f'{prefix}{created_index:02d}_{part}' for part in parts]
+            _check_new_keys_absent(candidate, names)
             packed = {'EQUIPTYPEID': _i32(bits | item_id), 'DISPLAYID': _i32(-1),
                       'LOWQUANTITY': bytes([quantity]), 'HIGHQUANTITY': b'\0',
                       'DURABILITY': _i32(initial_durability),
                       'DURABILITY_ACCUMULATEDHITS': _i32(0)}
             new_records = [_record(name, PART_TYPES.get(part, T_I32), packed[part])
                            for part, name in zip(parts, names)]
-        at = _insertion_point(state)
+            at = _insertion_point(state)
         candidate.records[at:at] = new_records
         state['count'].value += 1
 

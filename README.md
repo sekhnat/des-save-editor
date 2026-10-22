@@ -156,10 +156,13 @@ Applying an invalid dump never discards existing edits or modifies undo history.
   and goods with a usable sort ID, initial durability and quantity data.
   Creation never mutates the loaded save; it returns a candidate that you
   export explicitly. It preserves the measured record layout: inventory entries
-  use `INDEX == VARIATIONID ==` the next unused 16-bit instance reference
-  (checked against the inventory references, equipment slots, quick items and
-  non-sentinel storage display words) and `DISPLAYID = (PARAM sortId << 16) |
-  ref` — the sort component comes from the same game PARAMs and is never
+  use `INDEX == VARIATIONID ==` the lowest free 16-bit instance reference
+  (checked against the inventory references, equipment slots and quick items;
+  storage display words still carry freed references and reserve nothing) and
+  `DISPLAYID = (PARAM sortId << 16) | ref`. Like the game, the entry is placed
+  in ascending-reference order, so later entries move up one index (slots and
+  quick items hold references and are unaffected); an inventory that is not
+  already sorted is refused. The sort component comes from the same game PARAMs and is never
   recalculated on existing items. Directly created storage entries carry the
   observed `-1` display sentinel and only the low quantity byte. Goods and
   ammunition add units to the destination's single matching stack (refusing

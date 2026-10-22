@@ -302,9 +302,9 @@ class CreationTests(unittest.TestCase):
         self.assertEqual((20700, 'Weapon', 1, 600, 0), (sword['id'], sword['category'],
                                                         sword['quantity'], sword['durability'],
                                                         sword['hits']))
-        self.assertEqual(6, sword['ref'])                       # above max used reference 5
-        self.assertEqual(6, sword['variation'])
-        self.assertEqual((3051 << 16) | 6, sword['display'])    # sort id 3051 packed like the real save
+        self.assertEqual(2, sword['ref'])                       # lowest free: 0, 1 and 5 are taken
+        self.assertEqual(2, sword['variation'])
+        self.assertEqual((3051 << 16) | 2, sword['display'])    # sort id 3051 packed like the real save
         self.assertTrue(sword['complete'])
         again = save.SaveFile(candidate.build())
         self.assertTrue(again.checksum_ok())
@@ -342,12 +342,47 @@ class CreationTests(unittest.TestCase):
         self.assertNotEqual(before, candidate.build())
 
     def test_references_skip_everything_that_already_uses_them(self):
-        sf = creation_save([{'cat': 'W', 'id': 150000, 'ref': 2, 'sort': 16101},
-                            {'cat': 'G', 'id': 1001, 'ref': 205, 'quantity': 1}],
-                           storage=[{'cat': 'W', 'id': 60000, 'quantity': 1, 'display': (17 << 16) | 300}],
-                           slot_ref=400, equipitem=500)
+        sf = creation_save([{'cat': 'W', 'id': 150000, 'ref': 0, 'sort': 16101},
+                            {'cat': 'G', 'id': 1001, 'ref': 2, 'quantity': 1},
+                            {'cat': 'G', 'id': 1002, 'ref': 4, 'quantity': 1}],
+                           storage=[{'cat': 'W', 'id': 60000, 'quantity': 1, 'display': (17 << 16) | 1}],
+                           slot_ref=3, equipitem=5)
         candidate = self.add(sf, 'Weapon', 20700)
-        self.assertEqual(501, inventory.inventory(candidate)[2]['ref'])
+        # 0, 2 and 4 are inventory entries, 3 is an equipment slot and 5 a quick item;
+        # the storage display word carrying 1 is a stale reference and reserves nothing.
+        self.assertEqual(1, inventory.inventory(candidate)[1]['ref'])
+
+    def test_new_entries_slot_in_by_reference_and_later_ones_move_up(self):
+        entries = [{'cat': 'W', 'id': 150000, 'ref': 0, 'sort': 16101},
+                   {'cat': 'G', 'id': 1001, 'ref': 2, 'quantity': 7, 'sort': 2},
+                   {'cat': 'G', 'id': 1002, 'ref': 3, 'quantity': 9, 'sort': 3}]
+        sf = creation_save(entries, slot_ref=3, equipitem=0)
+        candidate = self.add(sf, 'Weapon', 20700)
+        rows = inventory.inventory(candidate)
+        self.assertEqual([0, 1, 2, 3], [r['index'] for r in rows])
+        self.assertEqual([0, 1, 2, 3], [r['ref'] for r in rows])
+        self.assertEqual([150000, 20700, 1001, 1002], [r['id'] for r in rows])
+        self.assertEqual([1, 1, 7, 9], [r['quantity'] for r in rows])
+        self.assertTrue(all(r['complete'] for r in rows))
+        self.assertEqual(4, candidate.get('EQUIPMENT_INVENTORY_COUNT'))
+        # Slots hold references, not entry indices, so they stay as they were.
+        self.assertEqual([(0, 3)], [(s['slot'], s['inventory']) for s in inventory.equipment(candidate)])
+        self.assertEqual(1002, {r['ref']: r['id'] for r in rows}[3])
+        # The family still reads back cleanly and every old record kept its value.
+        delta = diff.compare(save.SaveFile(sf.build()), candidate)
+        self.assertEqual([], delta['removed'])
+        self.assertEqual(8, len(delta['added']))
+        again = save.SaveFile(candidate.build())
+        self.assertTrue(again.checksum_ok())
+        self.assertEqual(candidate.build(), again.build())
+
+    def test_unsorted_inventories_are_refused(self):
+        sf = creation_save([{'cat': 'W', 'id': 150000, 'ref': 5, 'sort': 16101},
+                            {'cat': 'G', 'id': 1001, 'ref': 2, 'quantity': 1}])
+        before = sf.build()
+        with self.assertRaisesRegex(ValueError, 'ascending'):
+            self.add(sf, 'Weapon', 20700)
+        self.assertEqual(before, sf.build())
 
     def test_existing_display_ids_and_references_are_left_alone(self):
         sf = self._fixture()
@@ -455,9 +490,9 @@ class CreationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.add(sf, 'Weapon', 20700)
         self.assertEqual(2048, inventory.MAX_ENTRIES)
-        sf = creation_save([{'cat': 'W', 'id': 150000, 'ref': 0xFFFF, 'sort': 16101}])
-        with self.assertRaises(ValueError):
-            self.add(sf, 'Weapon', 20700)
+        with mock.patch.object(inventory, '_lowest_free', return_value=0x10000):
+            with self.assertRaises(ValueError):
+                self.add(self._fixture(), 'Weapon', 20700)
     def test_created_storage_entry_matches_the_observed_layout(self):
         sf = self._fixture()
         before = sf.build()
@@ -535,7 +570,7 @@ class CreationTests(unittest.TestCase):
         count_pos = next(i for i, f in enumerate(candidate.records) if f.key == k('TROPHIES_RING_COUNT'))
         self.assertEqual(count_pos, member_pos + 1)        # recorded beside the count
         rows = inventory.inventory(candidate)
-        self.assertEqual((3, 123, (18 << 16) | 6), (len(rows), rows[2]['id'], rows[2]['display']))
+        self.assertEqual((3, 123, (18 << 16) | 2), (len(rows), rows[2]['id'], rows[2]['display']))
         delta = diff.compare(save.SaveFile(sf.build()), candidate)
         self.assertEqual({'EQUIPMENT_INVENTORY_COUNT', 'TROPHIES_RING_COUNT'},
                          {row['name'] for row in delta['changed']})
@@ -808,21 +843,46 @@ class PairedSwordTests(unittest.TestCase):
         self.assertEqual((49, 49, 0, 1, 600, 0, (3051 << 16) | 49),
                          (sword['index'], sword['ref'], fields['TYPE'].value, sword['quantity'],
                           sword['durability'], sword['hits'], sword['display']))
+        # The eight items gained between the two saves took the free references
+        # 38, 40, 42, 44, 47, 49, 50, 51 in ascending order (the sword is the sixth),
+        # while storage display words still carried 38, 40, 42, 47 and 49: the game
+        # fills the lowest free inventory reference and storage reserves nothing.
+        self.assertEqual([38, 40, 42, 44, 47, 49, 50, 51],
+                         sorted(r['ref'] for r in inventory.inventory(after)
+                                if r['ref'] in range(38, 52)
+                                and r['ref'] not in {x['ref'] for x in rows_before}))
+        for sf in (before, after):
+            refs = [r['ref'] for r in inventory.inventory(sf)]
+            self.assertEqual(sorted(set(refs)), refs)
+        self.assertIn(49, {r['display'] & 0xFFFF for r in inventory.storage(after)
+                           if r['display'] != -1})
         candidate = inventory.with_added_item(before, 'Weapon', 20700)
         raw = candidate.build()
         self.assertEqual(len(before.build()) + 72, len(raw))
         created = inventory.inventory(candidate)
         self.assertEqual(len(rows_before) + 1, len(created))
-        new = created[63]
-        self.assertEqual((73, 73, 20700, 1, 600, 0, (3051 << 16) | 73),
-                         (new['ref'], new['variation'], new['id'], new['quantity'],
+        new = next(r for r in created if r['id'] == 20700)
+        self.assertEqual((38, 38, 38, 1, 600, 0, (3051 << 16) | 38),
+                         (new['index'], new['ref'], new['variation'], new['quantity'],
                           new['durability'], new['hits'], new['display']))
+        by_ref = {r['ref']: r for r in rows_before}
+        for row in created:
+            if row['ref'] != 38:
+                old = by_ref[row['ref']]
+                self.assertEqual((old['id'], old['category'], old['quantity'], old['durability'],
+                                  old['display']),
+                                 (row['id'], row['category'], row['quantity'], row['durability'],
+                                  row['display']))
+        self.assertEqual(sorted(by_ref | {38: None}), [r['ref'] for r in created])
+        self.assertEqual([(s['slot'], s['inventory'], s['id']) for s in inventory.equipment(before)],
+                         [(s['slot'], s['inventory'], s['id']) for s in inventory.equipment(candidate)])
         delta = diff.compare(before, candidate)
-        self.assertEqual({f'EQUIPMENT_INVENTORY63_{part}' for part in inventory.INVENTORY_PARTS},
+        self.assertEqual(set(), {row['name'] for row in delta['removed']})
+        self.assertEqual({f'EQUIPMENT_INVENTORY{len(rows_before):02d}_{part}'
+                          for part in inventory.INVENTORY_PARTS},
                          {row['name'] for row in delta['added']})
-        self.assertEqual([('EQUIPMENT_INVENTORY_COUNT', '63', '64')],
-                         [(row['name'], row['before'], row['after']) for row in delta['changed']])
-        self.assertEqual([], delta['removed'])
+        self.assertIn(('EQUIPMENT_INVENTORY_COUNT', str(len(rows_before)), str(len(rows_before) + 1)),
+                      [(row['name'], row['before'], row['after']) for row in delta['changed']])
         self.assertFalse(any(delta['world'].values()))
         self.assertEqual((8, 8), (before.get('TROPHIES_RING_COUNT'),
                                   candidate.get('TROPHIES_RING_COUNT')))

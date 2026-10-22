@@ -323,6 +323,22 @@ class AddItemBrowserTests(SyntheticBrowserTests):
         self.page.evaluate('doRedo()')
         self.assertEqual(expected, bytes(self.page.evaluate('current().save.build()')))
 
+    def test_dialog_matches_python_when_references_have_gaps(self):
+        entries = [{'cat': 'W', 'id': 150000, 'ref': 0, 'sort': 16101, 'durability': 200},
+                   {'cat': 'G', 'id': 1001, 'ref': 2, 'quantity': 7, 'sort': 2},
+                   {'cat': 'G', 'id': 1002, 'ref': 3, 'quantity': 9, 'sort': 3}]
+        source = test_save.creation_save(entries, storage=[{'cat': 'G', 'id': 2000, 'quantity': 25,
+                                                             'display': (5 << 16) | 1}],
+                                         rings=[105], slot_ref=3, equipitem=0).build()
+        self.load_bytes(source)
+        self.page.check('#experimental')
+        self.add_via_dialog('Dragon Bone', 'W', 20700)
+        made = bytes(self.page.evaluate('current().save.build()'))
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
+        self.assertEqual(expected, made)
+        refs = self.page.evaluate('inventoryRows(current().save).map(r => [r.id, r.ref])')
+        self.assertEqual([[150000, 0], [20700, 1], [1001, 2], [1002, 3]], refs)
+
     def test_catalog_row_adds_to_storage_like_python(self):
         source = self.fixture().build()
         self.load_bytes(source)
