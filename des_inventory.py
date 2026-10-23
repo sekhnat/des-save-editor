@@ -226,10 +226,17 @@ def _record(name: str, ftype: int, raw: bytes) -> des_save.Field:
     return des_save.Field(des_save.name_key(name), ftype, raw)
 
 
+def _holds(record: des_save.Field, target: des_save.Field) -> bool:
+    if record is target:
+        return True
+    return record.is_container and any(_holds(child, target) for child in record.children)
+
+
 def _family_state(sf, destination: str) -> dict:
     """Validate the destination family and return everything creation needs.
 
-    Counts must be unique, top-level 32-bit integers that match complete,
+    Counts must be unique 32-bit integers (top level or inside a top-level
+    container) that match complete,
     unambiguously placed entries in the observed order (count before inventory
     entries, after storage entries). Anything else is refused, never repaired.
     """
@@ -237,14 +244,17 @@ def _family_state(sf, destination: str) -> dict:
                      'storage': ('EQUIPMENT_STORAGEBOX', STORAGE_PARTS)}[destination]
     count_name = f'{prefix}_COUNT'
     count_key = des_save.name_key(count_name)
-    counts = [f for f in sf.records if f.key == count_key]
+    counts = [f for f, _depth in sf.walk() if f.key == count_key and not f.is_container]
     if len(counts) != 1:
-        raise ValueError(f'expected exactly one {count_name} record at the top level, '
-                         f'found {len(counts)}')
+        raise ValueError(f'expected exactly one {count_name} record, found {len(counts)}')
     count = counts[0]
     if count.type != T_I32:
         raise ValueError(f'{count_name} must be a 32-bit integer record')
-    count_position = sf.records.index(count)
+    # The game sometimes writes the count as the last child of a top-level
+    # container that precedes the entries (container 0x4081F683 declaring 8
+    # children instead of 5), so order is judged by the top-level record that
+    # holds the count; the count itself is only ever updated in place.
+    count_position = next(i for i, top in enumerate(sf.records) if _holds(top, count))
 
     keyset = _family_keyset(prefix, parts)
     top = {id(f): i for i, f in enumerate(sf.records)}

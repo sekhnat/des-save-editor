@@ -3114,11 +3114,16 @@ function creationProblem(cat, id){
 function createFamilyState(s, destination){
   const [prefix, parts] = destination === "inventory" ? ["EQUIPMENT_INVENTORY",INV_PARTS] : ["EQUIPMENT_STORAGEBOX",BOX_PARTS];
   const countKey = nameKey(prefix+"_COUNT");
-  const counts = s.records.filter(f => f.key === countKey);
-  if (counts.length !== 1) throw new Error(`expected exactly one ${prefix}_COUNT record at the top level, found ${counts.length}`);
+  const counts = s.flat.map(([f]) => f).filter(f => f.key === countKey && !f.isContainer);
+  if (counts.length !== 1) throw new Error(`expected exactly one ${prefix}_COUNT record, found ${counts.length}`);
   const count = counts[0];
   if (count.type !== T.I32) throw new Error(`${prefix}_COUNT must be a 32-bit integer record`);
+  /* The game sometimes writes the count as the last child of a top-level container that precedes the entries
+     (container 0x4081F683 declaring 8 children instead of 5), so order is judged by the top-level record
+     that holds the count; the count itself is only ever updated in place. */
+  const holds = (record, target) => record === target || (record.isContainer && record.children.some(child => holds(child, target)));
   const top = new Map(); s.records.forEach((f,i) => top.set(f,i));
+  const countPosition = s.records.findIndex(record => holds(record, count));
   const found = new Map(), positions = [];
   for (const [field] of s.walk()){
     const hit = CREATE_FAMILY_KEYS.get(field.key);
@@ -3145,11 +3150,11 @@ function createFamilyState(s, destination){
     if (refs.some((v,i) => i > 0 && refs[i-1] >= v)) throw new Error(`${prefix} entries are not in ascending INDEX order; the game keeps them sorted, so this layout is not supported`);
   }
   if (indices.length){
-    const first = Math.min(...positions), last = Math.max(...positions), at = top.get(count);
-    if (destination === "inventory" && at > first) throw new Error(`${prefix}_COUNT must precede its entries`);
-    if (destination === "storage" && at < last) throw new Error(`${prefix}_COUNT must follow its entries`);
+    const first = Math.min(...positions), last = Math.max(...positions);
+    if (destination === "inventory" && countPosition > first) throw new Error(`${prefix}_COUNT must precede its entries`);
+    if (destination === "storage" && countPosition < last) throw new Error(`${prefix}_COUNT must follow its entries`);
   }
-  return {prefix, parts, count, found, positions, countPosition: top.get(count)};
+  return {prefix, parts, count, found, positions, countPosition};
 }
 function createUsedReferences(s){
   /* Inventory-occupied references only: storage display words may still carry a freed one. */

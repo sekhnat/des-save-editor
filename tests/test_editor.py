@@ -323,6 +323,16 @@ class AddItemBrowserTests(SyntheticBrowserTests):
         self.page.evaluate('doRedo()')
         self.assertEqual(expected, bytes(self.page.evaluate('current().save.build()')))
 
+    def test_dialog_matches_python_when_the_count_sits_in_a_container(self):
+        source = self.fixture(count_in_container=True).build()
+        self.load_bytes(source)
+        self.page.check('#experimental')
+        self.add_via_dialog('Dragon Bone', 'W', 20700)
+        made = bytes(self.page.evaluate('current().save.build()'))
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
+        self.assertEqual(expected, made)
+        self.assertEqual(3, self.page.evaluate('current().save.get("EQUIPMENT_INVENTORY_COUNT")'))
+
     def test_dialog_matches_python_when_references_have_gaps(self):
         entries = [{'cat': 'W', 'id': 150000, 'ref': 0, 'sort': 16101, 'durability': 200},
                    {'cat': 'G', 'id': 1001, 'ref': 2, 'quantity': 7, 'sort': 2},

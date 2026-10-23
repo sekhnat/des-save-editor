@@ -215,7 +215,7 @@ def inventory_save(entries, storage=()):
 
 
 def creation_save(entries=(), storage=(), rings=(), slot_ref=None, equipitem=None,
-                  nested_rings=False, history_count=None):
+                  nested_rings=False, history_count=None, count_in_container=False):
     """Records laid out exactly like the game: counts, observed field order and
     packed display ids, with optionally nested trophy history.
 
@@ -224,12 +224,18 @@ def creation_save(entries=(), storage=(), rings=(), slot_ref=None, equipitem=Non
     rings:   ring ids already recorded in TROPHIES_RING## (nested like the real
              saves: the first three inside container 0x0EC5998C when nested_rings)
     history_count: force the trophy count (e.g. 0 for a valid empty history)
+    count_in_container: the inventory count is the last child of a top-level
+             container ahead of the entries, as in saves the game wrote with
+             container 0x4081F683 declaring 8 children instead of 5
     """
     k = save.name_key
     i32 = lambda v: (v & 0xFFFFFFFF).to_bytes(4, 'little')
     bits = {'W': 0, 'A': 0x10000000, 'R': 0x20000000, 'G': 0x40000000}
-    records = [save.Field(k('EQUIPMENT_INVENTORY_COUNT'), save.T_I32, i32(len(entries))),
-               save.Field(k('PLAYER_NAME'), save.T_STR, b'Hero')]
+    inventory_count = save.Field(k('EQUIPMENT_INVENTORY_COUNT'), save.T_I32, i32(len(entries)))
+    if count_in_container:
+        inventory_count = save.Field(0x4081F683, save.T_CONTAINER, children=[
+            save.Field(k('WORLDSTATUS_MIRRORMODE'), save.T_I32, i32(1)), inventory_count])
+    records = [inventory_count, save.Field(k('PLAYER_NAME'), save.T_STR, b'Hero')]
     for n, e in enumerate(entries):
         ref = e.get('ref', n)
         p = f'EQUIPMENT_INVENTORY{n:02d}_'
@@ -427,6 +433,53 @@ class CreationTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self.add(sf, 'Weapon', 20700)
                 self.assertEqual(mutated, sf.build())
+
+    def _container_fixture(self, **kwargs):
+        return creation_save([self.BUCKLER, self.GRASS], storage=[{'cat': 'G', 'id': 2000, 'quantity': 25}],
+                             rings=[105], slot_ref=0, equipitem=5, count_in_container=True, **kwargs)
+
+    def test_count_inside_a_leading_container_is_updated_in_place(self):
+        sf = self._container_fixture()
+        before = sf.build()
+        candidate = self.add(sf, 'Weapon', 20700)
+        self.assertEqual(before, sf.build())
+        self.assertEqual(3, candidate.get('EQUIPMENT_INVENTORY_COUNT'))
+        self.assertEqual(3, len(inventory.inventory(candidate)))
+        container = candidate.records[0]
+        self.assertEqual(0x4081F683, container.key)
+        self.assertEqual(2, len(container.children))                # still holds its own count
+        self.assertEqual(3, container.children[1].value)
+        self.assertEqual(save.SaveFile(candidate.build()).build(), candidate.build())
+
+    def test_container_count_matches_the_flat_layout_apart_from_the_framing(self):
+        flat = inventory.inventory(self.add(self._fixture(), 'Weapon', 20700))
+        nested = inventory.inventory(self.add(self._container_fixture(), 'Weapon', 20700))
+        self.assertEqual(flat, nested)
+
+    def test_empty_inventory_after_a_container_receives_its_first_entry(self):
+        sf = creation_save(storage=[{'cat': 'G', 'id': 2000, 'quantity': 25}], count_in_container=True)
+        candidate = self.add(sf, 'Weapon', 20700)
+        self.assertEqual(1, candidate.get('EQUIPMENT_INVENTORY_COUNT'))
+        self.assertEqual([20700], [row['id'] for row in inventory.inventory(candidate)])
+        self.assertEqual(0x4081F683, candidate.records[0].key)      # entries follow the container
+
+    def test_a_count_in_two_places_is_still_refused(self):
+        sf = self._container_fixture()
+        sf.records.append(save.Field(save.name_key('EQUIPMENT_INVENTORY_COUNT'), save.T_I32,
+                                     (2).to_bytes(4, 'little')))
+        before = sf.build()
+        with self.assertRaises(ValueError):
+            self.add(sf, 'Weapon', 20700)
+        self.assertEqual(before, sf.build())
+
+    def test_a_container_after_the_entries_cannot_hold_the_inventory_count(self):
+        sf = self._container_fixture()
+        container = sf.records.pop(0)
+        sf.records.append(container)
+        before = sf.build()
+        with self.assertRaises(ValueError):
+            self.add(sf, 'Weapon', 20700)
+        self.assertEqual(before, sf.build())
 
     def test_storage_count_missing_blocks_storage_but_not_inventory(self):
         sf = self._fixture()
