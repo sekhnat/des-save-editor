@@ -16,7 +16,7 @@ names continue to `…2047_…`, the original game's 0x800-entry capacity). It p
 every match with the types and values seen in your saves. A match is a candidate
 until its type and values fit; nothing is accepted automatically.
 
-The accepted names live in `des_fields.py`, which also generates the page's table
+The accepted names live in `src/des_fields.py`, which also generates the page's table
 (`tools/embed_fields.py`).
 
 ## Fixed-slot arrays by hash inversion
@@ -58,7 +58,7 @@ encoded) and decoded only when the World state view first opens.
 
 ## Param definitions
 
-`des_gamedata.py` reads the PARAMDEFs (0xB0-byte field records with byte sizes
+`src/des_gamedata.py` reads the PARAMDEFs (0xB0-byte field records with byte sizes
 and bit fields) and decodes PARAM rows through them, but only when a definition
 accounts for exactly the PARAM row stride: 29 of 32 tables qualify, and NpcParam,
 AtkParam and Magic, whose rows the remaster extended, are refused. Catalog schema
@@ -74,7 +74,7 @@ create test saves.
 
 ## Differential harness
 
-`des_diff.py` compares two saves record by record, using `(key, occurrence)`
+`src/des_diff.py` compares two saves record by record, using `(key, occurrence)`
 identity so an insertion elsewhere never renumbers anything. It reports
 added/removed/changed records plus any new digit-suffixed array that appears among
 the added keys. Inside world-state containers it compares by
@@ -85,12 +85,12 @@ instead of as "blob changed".
 
 1. Back up the save. Load it in Kyty, change **one** thing in game (pick up an
    item, touch an archstone, open a door), and save.
-2. `python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA`
+2. `python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA`
 3. Read the changed records and world entities. Run
    `python3 tools/build_keydb.py GAME --save AFTER/USR-DATA` to try names for any
    key that is still unnamed, and look the entity GUID up with
-   `python3 des_editor.py world AFTER/USR-DATA --filter GUID`.
-4. Record the name in `des_fields.py` (or `WORLD_NAMES`), run
+   `python3 src/des_editor.py world AFTER/USR-DATA --filter GUID`.
+4. Record the name in `src/des_fields.py` (or `WORLD_NAMES`), run
    `tools/embed_fields.py`, and add a test.
 
 ## Rebuilding the embedded tables
@@ -103,7 +103,7 @@ python3 tools/build_itemdb.py /path/to/PPSA01342-app -o itemdb.json   # catalog,
 python3 tools/embed_itemdb.py
 python3 tools/build_entitydb.py /path/to/PPSA01342-app -o entitydb.bin
 python3 tools/embed_entitydb.py
-python3 tools/embed_fields.py                                         # after editing des_fields.py
+python3 tools/embed_fields.py                                         # after editing src/des_fields.py
 python3 tools/build_keydb.py /path/to/PPSA01342-app --save USR-DATA   # name candidates
 python3 tools/parse_loadouts.py /path/to/PPSA01342-app                # loadout checks
 ```

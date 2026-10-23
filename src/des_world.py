@@ -31,6 +31,7 @@ from __future__ import annotations
 import bisect
 from dataclasses import dataclass, field as dc_field
 import gzip
+import math
 from pathlib import Path
 import re
 import struct
@@ -138,11 +139,7 @@ def entries(groups: list[Group]):
             yield gi, ei, entry
 
 
-def _walk(records: list[Field]):
-    for record in records:
-        yield record
-        if record.type == T_CONTAINER:
-            yield from _walk(record.children)
+_walk = des_save.walk_records
 
 
 def record_name(key: int) -> str | None:
@@ -208,7 +205,7 @@ def _record_value(record: Field):
         return record.value
     if record.type == T_F32:
         value = record.value
-        return value if value == value and abs(value) != float('inf') else record.raw.hex()
+        return value if math.isfinite(value) else record.raw.hex()
     if record.type == T_STR:
         return record.text()
     if record.type in (T_RAW4, T_BLOB):
@@ -289,9 +286,9 @@ _DEFAULT: list = []
 
 
 def default_index() -> EntityIndex | None:
-    """The entity index next to this module, or None when it is absent or unreadable."""
+    """The repository-root entity index, or None when it is absent or unreadable."""
     if not _DEFAULT:
-        path = Path(__file__).with_name('entitydb.bin')
+        path = Path(__file__).resolve().parent.parent / 'entitydb.bin'
         try:
             _DEFAULT.append(EntityIndex.load(path))
         except (OSError, ValueError, EOFError, gzip.BadGzipFile, struct.error):

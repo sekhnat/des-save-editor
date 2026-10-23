@@ -169,7 +169,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_inventory_storage_and_equipment_match_python(self):
         import sys
-        sys.path.insert(0, str(EDITOR))
+        sys.path.insert(0, str(EDITOR / 'src'))
         import des_inventory, des_save
         cats = {'Weapon': 'W', 'Armor': 'A', 'Ring': 'R', 'Goods': 'G', None: None}
         for path in sorted(SAVES.glob('*PlayerProfile*/USR-DATA')):
@@ -259,7 +259,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_world_state_matches_python_and_labels(self):
         import sys
-        sys.path.insert(0, str(EDITOR))
+        sys.path.insert(0, str(EDITOR / 'src'))
         import des_save, des_world
         index = des_world.default_index()
         for path in sorted(SAVES.glob('*PlayerProfile*/USR-DATA')):
@@ -370,7 +370,7 @@ class BrowserTests(unittest.TestCase):
     def test_seeded_python_javascript_differential_roundtrips(self):
         import random
         import sys
-        sys.path.insert(0, str(EDITOR))
+        sys.path.insert(0, str(EDITOR / 'src'))
         import des_save
         rng = random.Random(20261019)
         fixtures = []
@@ -394,7 +394,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_unchanged_json_preserves_float_bit_patterns(self):
         import sys
-        sys.path.insert(0, str(EDITOR))
+        sys.path.insert(0, str(EDITOR / 'src'))
         import des_save
         sf = des_save.SaveFile()
         sf.records = [des_save.Field(index, des_save.T_F32, bytes.fromhex(bits))
@@ -409,7 +409,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_recovered_arrays_card_matches_python(self):
         import sys
-        sys.path.insert(0, str(EDITOR))
+        sys.path.insert(0, str(EDITOR / 'src'))
         import des_arrays, des_save
         for path in sorted(SAVES.glob('*/USR-DATA')):
             with self.subTest(path=path.parent.name):

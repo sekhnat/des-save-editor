@@ -9,14 +9,15 @@ enemies that stay dead. The real inventory is read by des_inventory.py.
 """
 from __future__ import annotations
 
+import functools
 import json
 from pathlib import Path
 
 import des_fields
-from des_save import T_U16
+from des_save import FNV_PRIME as P, MASK32 as M, T_U16
 
-M = 0xFFFFFFFF
-P = 0x01000193
+DATA_DIR = Path(__file__).resolve().parent.parent      # itemdb.json lives in the repo root
+
 # Measured FNV states of each 10-key chunk of DEADENEMIES_INDICES####.  These are the value the base name
 # hashes to *before* the slot character is appended, recovered by inverting
 # FNV-1a over the observed member keys:
@@ -45,21 +46,32 @@ ALL_SLOT_KEYS = [slot_key(index) for index in range(10 * SLOT_CHUNKS)]
 SLOT_KEY_SET = frozenset(ALL_SLOT_KEYS)
 
 
+@functools.lru_cache(maxsize=4)
+def _read_itemdb(path: str, mtime_ns: int, size: int) -> dict:
+    """Parsed catalog document; mtime and size in the key make a rewritten file reload."""
+    with open(path, encoding='utf-8') as stream:
+        return json.load(stream)
+
+
+def _itemdb(path: str | None) -> dict | None:
+    path = Path(path) if path is not None else DATA_DIR / 'itemdb.json'
+    try:
+        info = path.stat()
+    except OSError:
+        return None
+    return _read_itemdb(str(path), info.st_mtime_ns, info.st_size)
+
+
 def load_catalog(path: str | None = None) -> list[dict]:
-    path = Path(path) if path is not None else Path(__file__).with_name('itemdb.json')
-    if not path.exists():
-        return []
-    with path.open(encoding='utf-8') as stream:
-        return json.load(stream)['items']
+    """Catalog rows. The list is shared between calls: treat it as read-only."""
+    doc = _itemdb(path)
+    return [] if doc is None else doc['items']
 
 
 def load_classes(path: str | None = None) -> list[dict]:
     """Starting classes from catalog schema 3 (archetype -> name, base stats)."""
-    path = Path(path) if path is not None else Path(__file__).with_name('itemdb.json')
-    if not path.exists():
-        return []
-    with path.open(encoding='utf-8') as stream:
-        return json.load(stream).get('classes', [])
+    doc = _itemdb(path)
+    return [] if doc is None else doc.get('classes', [])
 
 
 CREATABLE_CATEGORIES = ('Weapon', 'Armor', 'Ring', 'Goods')

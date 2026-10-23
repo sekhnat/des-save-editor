@@ -10,7 +10,7 @@ This module is the single source of field metadata. The CLI reads it directly
 and ``tools/embed_fields.py`` writes the same table into ``des_editor.html``.
 """
 
-from des_save import name_key
+from des_save import fnv1a, name_key
 
 ATTRS = ["VITALITY", "INTELLIGENCE", "ENDURANCE", "STRENGTH",
          "DEXTERITY", "MAGIC", "FAITH", "LUCK"]
@@ -190,9 +190,21 @@ FAMILIES = [
     ("CCSLOT_GENDER_%02d", 99),
     ("CCSLOT_VOICETYPE_%02d", 99),
 ]
-FAMILY_KEYS: dict[int, str] = {
-    name_key(template % index): template % index
-    for template, last in FAMILIES for index in range(last + 1)}
+
+
+def _family_keys() -> dict[int, str]:
+    """key -> name for every template index; the text before ``%`` is hashed once."""
+    keys = {}
+    for template, last in FAMILIES:
+        head, _, tail = template.partition("%")
+        state = fnv1a(head.upper().encode())
+        spec = "%" + tail
+        for index in range(last + 1):
+            keys[fnv1a((spec % index).upper().encode(), state)] = template % index
+    return keys
+
+
+FAMILY_KEYS: dict[int, str] = _family_keys()
 
 FIELDS: dict[int, dict] = {}
 for _name, _kind, _label, _lo, _hi, _help in _DEFS:

@@ -29,7 +29,8 @@ record layout measured from real saves — ``INDEX == VARIATIONID ==`` the lowes
 free 16-bit instance reference and ``DISPLAYID = (PARAM sortId << 16) | ref``
 for inventory entries (kept sorted by reference, so later entries move up one
 index; equipment slots and quick items hold references and are unaffected),
-the ``-1`` display sentinel for directly created storage entries — and records newly acquired rings in the trophy history.
+the ``-1`` display sentinel for directly created storage entries — and records
+newly acquired rings in the trophy history.
 Removing entries, replacing item IDs and repairing malformed layouts remain
 unsupported.
 """
@@ -51,14 +52,26 @@ PART_TYPES = {'QUANTITY': T_RAW4, 'LOWQUANTITY': T_U8, 'HIGHQUANTITY': T_U8}
 MAX_QUANTITY = 999
 MAX_DURABILITY = 9999
 
+SLOT_INVENTORY_KEYS = [des_save.name_key(f'EQUIPMENT_SLOT{i:02d}_INVENTORYID') for i in range(MAX_SLOTS)]
+SLOT_EQUIPMENT_KEYS = [des_save.name_key(f'EQUIPMENT_SLOT{i:02d}_EQUIPMENTID') for i in range(MAX_SLOTS)]
+EQUIPITEM_KEYS = [des_save.name_key(f'EQUIPMENT_EQUIPITEM{i:02d}') for i in range(100)]
+RING_KEYS = [des_save.name_key(f'TROPHIES_RING{i:02d}') for i in range(100)]
+
 
 def category(value: int) -> str | None:
     """Item category from the top four bits of a TYPE / EQUIPTYPEID value."""
     return CATEGORY_BITS.get((value & 0xFFFFFFFF) >> 28)
 
 
+_CATALOG_CACHE: list = [None, {}]               # [source rows, (category, id) -> row]
+
+
 def _catalog() -> dict[tuple[str, int], dict]:
-    return {(entry['category'], entry['id']): entry for entry in des_items.load_catalog()}
+    """(category, id) -> row; rebuilt only when the loaded catalog list changes."""
+    rows = des_items.load_catalog()
+    if _CATALOG_CACHE[0] is not rows:
+        _CATALOG_CACHE[:] = [rows, {(entry['category'], entry['id']): entry for entry in rows}]
+    return _CATALOG_CACHE[1]
 
 
 def _name(catalog: dict, kind, item_id):
@@ -73,21 +86,23 @@ def _limit(catalog: dict, kind, item_id, field: str):
 
 def _entries(sf, prefix: str, parts: tuple[str, ...]) -> list[dict]:
     """Records of every present index; an entry is editable only when complete."""
-    rows = []
-    for index in range(MAX_ENTRIES):
-        fields, ambiguous = {}, False
-        for part in parts:
-            found = [f for f in sf.find_all(f'{prefix}{index:02d}_{part}') if not f.is_container]
-            if len(found) > 1:
-                ambiguous = True
-            if found:
-                fields[part] = found[0]
-        if not fields:
+    keyset = _family_keyset(prefix, parts)
+    found: dict[int, dict[str, des_save.Field]] = {}
+    ambiguous: set[int] = set()
+    for field in des_save.walk_records(sf.records):
+        hit = keyset.get(field.key)
+        if hit is None or field.is_container:
             continue
-        typed = all(fields[p].type == PART_TYPES.get(p, T_I32) for p in fields)
-        rows.append({'index': index, 'fields': fields,
-                     'complete': len(fields) == len(parts) and typed and not ambiguous})
-    return rows
+        index, part = hit
+        fields = found.setdefault(index, {})
+        if part in fields:
+            ambiguous.add(index)
+        else:
+            fields[part] = field
+    return [{'index': index, 'fields': fields,
+             'complete': (len(fields) == len(parts) and index not in ambiguous
+                          and all(f.type == PART_TYPES.get(p, T_I32) for p, f in fields.items()))}
+            for index, fields in sorted(found.items())]
 
 
 def _value(fields: dict, part: str):
@@ -144,10 +159,11 @@ def equipment(sf, catalog: dict | None = None) -> list[dict]:
     """Occupied equipment slots; names come via the referenced inventory entry."""
     catalog = _catalog() if catalog is None else catalog
     items = {row['ref']: row for row in inventory(sf, catalog)}
+    present = sf.key_index()
     rows = []
     for index in range(MAX_SLOTS):
-        inv = sf.find(f'EQUIPMENT_SLOT{index:02d}_INVENTORYID')
-        equip = sf.find(f'EQUIPMENT_SLOT{index:02d}_EQUIPMENTID')
+        inv = present.get(SLOT_INVENTORY_KEYS[index], (None,))[0]
+        equip = present.get(SLOT_EQUIPMENT_KEYS[index], (None,))[0]
         if inv is None and equip is None:
             continue
         item = items.get(inv.value) if inv is not None else None
@@ -254,13 +270,12 @@ def _family_state(sf, destination: str) -> dict:
     # container that precedes the entries (container 0x4081F683 declaring 8
     # children instead of 5), so order is judged by the top-level record that
     # holds the count; the count itself is only ever updated in place.
-    count_position = next(i for i, top in enumerate(sf.records) if _holds(top, count))
+    count_position = next(i for i, record in enumerate(sf.records) if _holds(record, count))
 
     keyset = _family_keyset(prefix, parts)
     top = {id(f): i for i, f in enumerate(sf.records)}
     found: dict[int, dict[str, des_save.Field]] = {}
     positions: list[int] = []
-    positions = []
     for field, _depth in sf.walk():
         if field.key in keyset and not field.is_container:
             index, part = keyset[field.key]
@@ -316,25 +331,21 @@ def _used_references(sf) -> set[int]:
             used.add(value)
 
     keyset = _family_keyset('EQUIPMENT_INVENTORY', INVENTORY_PARTS)
-    for field, _depth in sf.walk():
-        if field.is_container:
-            continue
-        hit = keyset.get(field.key)
+    present = sf.key_index()
+    for key, fields in present.items():
+        hit = keyset.get(key)
         if hit is None:
             continue
         _index, part = hit
-        if part in ('INDEX', 'VARIATIONID'):
-            add(_value({part: field}, part))
-        elif part == 'DISPLAYID':
-            display = _value({part: field}, part)
-            if display is not None and display >= 0:
-                add(display & 0xFFFF)
-    for index in range(MAX_SLOTS):
-        field = sf.find(f'EQUIPMENT_SLOT{index:02d}_INVENTORYID')
-        if field is not None and field.type == T_I32:
-            add(field.value)
-    for index in range(100):
-        field = sf.find(f'EQUIPMENT_EQUIPITEM{index:02d}')
+        for field in fields:
+            if part in ('INDEX', 'VARIATIONID'):
+                add(_value({part: field}, part))
+            elif part == 'DISPLAYID':
+                display = _value({part: field}, part)
+                if display is not None and display >= 0:
+                    add(display & 0xFFFF)
+    for key in SLOT_INVENTORY_KEYS + EQUIPITEM_KEYS:
+        field = present.get(key, (None,))[0]
         if field is not None and field.type == T_I32:
             add(field.value)
     return used
@@ -364,6 +375,7 @@ def _insertion_point(state: dict) -> int:
 def _ring_history(sf) -> tuple[list, int, des_save.Field, list[int]]:
     """(parent list, count position in it, count field, recorded ring ids)."""
     count_key = des_save.name_key('TROPHIES_RING_COUNT')
+
     def find(records):
         for index, field in enumerate(records):
             if field.key == count_key and not field.is_container:
@@ -382,10 +394,10 @@ def _ring_history(sf) -> tuple[list, int, des_save.Field, list[int]]:
     total = count.value if isinstance(count.value, int) else -1
     if not 0 <= total <= 99:
         raise ValueError(f'TROPHIES_RING_COUNT {count.value} is out of range')
-    member_keys = {k: des_save.name_key(f'TROPHIES_RING{k:02d}') for k in range(100)}
+    present = sf.key_index()
     recorded: list[int] = []
     for k in range(100):
-        hits = [f for f, _ in sf.walk() if f.key == member_keys[k] and not f.is_container]
+        hits = present.get(RING_KEYS[k], [])
         expected = 1 if k < total else 0
         if len(hits) != expected:
             raise ValueError(f'ring history holds {len(hits)} records for slot {k:02d}, '
@@ -398,9 +410,9 @@ def _ring_history(sf) -> tuple[list, int, des_save.Field, list[int]]:
 
 
 def _check_new_keys_absent(candidate, names: list[str]) -> None:
+    keys = {f.key for f in des_save.walk_records(candidate.records)}
     for name in names:
-        key = des_save.name_key(name)
-        if candidate.find_all(key):
+        if des_save.name_key(name) in keys:
             raise ValueError(f'the key for {name} already appears in this save; '
                              'refusing to create a colliding record')
 
@@ -457,10 +469,9 @@ def with_added_item(sf, category: str, item_id, quantity: int = 1,
                          'bound is 2048 (not a verified PS5 limit)')
 
     def destination_fields(slot):
-        fields = slot
         if destination == 'inventory':
-            return (_value(fields, 'TYPE'), _value(fields, 'EQUIPID'))
-        return (_value(fields, 'EQUIPTYPEID') & 0xF0000000, _value(fields, 'EQUIPTYPEID') & 0x0FFFFFFF)
+            return (_value(slot, 'TYPE'), _value(slot, 'EQUIPID'))
+        return (_value(slot, 'EQUIPTYPEID') & 0xF0000000, _value(slot, 'EQUIPTYPEID') & 0x0FFFFFFF)
 
     matches = [slot for slot in state['found'].values() if destination_fields(slot) == (bits, item_id)] \
         if stackable else []

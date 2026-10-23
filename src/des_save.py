@@ -41,6 +41,10 @@ import struct
 MAGIC_VERSION = 7
 MAX_FILE_SIZE = 16 * 1024 * 1024
 
+MASK32 = 0xFFFFFFFF
+FNV_PRIME = 0x01000193
+FNV_INV = pow(FNV_PRIME, -1, 1 << 32)      # undoes one FNV-1a multiply
+
 SIZES = {0x02: 1, 0x03: 2, 0x04: 4, 0x08: 4, 0x0A: 4, 0x0C: 1}
 
 T_U8 = 0x02
@@ -59,7 +63,7 @@ T_BLOB = 0x0E
 # --------------------------------------------------------------------------- #
 def fnv1a(data: bytes, h: int = 0x811C9DC5) -> int:
     for b in data:
-        h = ((h ^ b) * 0x01000193) & 0xFFFFFFFF
+        h = ((h ^ b) * FNV_PRIME) & MASK32
     return h
 
 
@@ -142,8 +146,6 @@ class Field:
             return struct.unpack("<f", self.raw)[0]
         if self.is_int:
             return int.from_bytes(self.raw, "little", signed=self.type == T_I32)
-        if self.type == T_RAW4:
-            return self.raw
         return self.raw
 
     @value.setter
@@ -247,6 +249,14 @@ def _serialize_into(records: list[Field], out: bytearray) -> None:
             out += f.raw
 
 
+def walk_records(records: list[Field]):
+    """Yield every record under `records`, depth first, containers before their children."""
+    for f in records:
+        yield f
+        if f.is_container:
+            yield from walk_records(f.children)
+
+
 # --------------------------------------------------------------------------- #
 #  Whole file
 # --------------------------------------------------------------------------- #
@@ -303,6 +313,18 @@ class SaveFile:
             if f.is_container:
                 yield from self.walk(f.children, depth + 1)
 
+    def key_index(self) -> dict[int, list[Field]]:
+        """Non-container records by key, in file order; built fresh on every call.
+
+        Use it to answer many `find` questions with one pass over the tree. It is
+        deliberately not cached: records are renamed and inserted in place.
+        """
+        index: dict[int, list[Field]] = {}
+        for f in walk_records(self.records):
+            if not f.is_container:
+                index.setdefault(f.key, []).append(f)
+        return index
+
     def find(self, key: int | str) -> Field | None:
         if isinstance(key, str):
             key = name_key(key)
@@ -354,9 +376,14 @@ class SaveFile:
 
 
 # --------------------------------------------------------------------------- #
-def load(path: str) -> SaveFile:
+def read_bytes(path: str) -> bytes:
+    """File contents, capped one byte past MAX_FILE_SIZE so oversized saves are rejected."""
     with open(path, "rb") as fh:
-        return SaveFile(fh.read(MAX_FILE_SIZE + 1))
+        return fh.read(MAX_FILE_SIZE + 1)
+
+
+def load(path: str) -> SaveFile:
+    return SaveFile(read_bytes(path))
 
 
 def save(sf: SaveFile, path: str) -> None:
@@ -383,7 +410,7 @@ def save(sf: SaveFile, path: str) -> None:
 if __name__ == "__main__":                            # pragma: no cover
     import sys
     for p in sys.argv[1:]:
-        raw = open(p, "rb").read()
+        raw = read_bytes(p)
         s = SaveFile(raw)
         rebuilt = s.build()
         print(f"{p}\n  {len(raw)} bytes, {sum(1 for _ in s.walk())} fields, "

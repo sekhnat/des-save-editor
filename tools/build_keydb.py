@@ -24,7 +24,7 @@ import re
 import sys
 
 HERE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE / 'src'))
 import des_fields  # noqa: E402
 import des_save  # noqa: E402
 import des_world  # noqa: E402

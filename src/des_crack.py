@@ -78,7 +78,7 @@ def main(argv: list[str]) -> int:
 
     found = {}
     if a.game:
-        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
         import build_keydb
         for name in build_keydb.harvest(Path(a.game)):
             h = des_save.fnv1a(name.encode("ascii"))

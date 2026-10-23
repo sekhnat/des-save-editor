@@ -23,7 +23,6 @@ import argparse
 import json
 import os
 import shutil
-import struct
 import sys
 import time
 
@@ -46,6 +45,18 @@ def _backup(path: str) -> str:
     shutil.copystat(path, backup)
     print(f"  backup written to {backup}")
     return backup
+
+
+def _write(sf: SaveFile, path: str, out: str | None, *, backup: bool = True,
+           message=None) -> int:
+    """Save to `out` (or over `path`, after a backup unless `backup` is False)."""
+    dest = out or path
+    if backup and os.path.abspath(dest) == os.path.abspath(path):
+        _backup(path)
+    des_save.save(sf, dest)
+    print(message(dest) if message else f"  wrote {dest}")
+    return 0
+
 
 def _fmt(field: des_save.Field) -> str:
     if field.is_container:
@@ -85,7 +96,7 @@ def cmd_info(path: str) -> int:
     print(f"  HP              : {hp} / {hpmax} (body form max {hpbase})")
     print(f"  MP              : {mp} / {mpmax} (body form max {mpbase})")
     print(f"  SP              : {sp} / {spmax} (max {spbase})")
-    print(f"  attributes      : " + ", ".join(f"{k[:3].upper()} {v}" for k, v in s["attributes"].items()))
+    print("  attributes      : " + ", ".join(f"{k[:3].upper()} {v}" for k, v in s["attributes"].items()))
     if s.get("playtime_s") is not None:
         print(f"  play time       : {s['playtime_s']:.0f} s "
               f"({s['playtime_s']/3600:.2f} h)   [raw {s['playtime_ms']:.0f}]")
@@ -147,7 +158,7 @@ def cmd_get(path: str, field: str) -> int:
     return 0
 
 
-def _coerce(meta: dict | None, field: des_save.Field, text: str):
+def _coerce(field: des_save.Field, text: str):
     if field.type == des_save.T_STR:
         return text
     if field.type == des_save.T_BLOB:
@@ -173,7 +184,7 @@ def cmd_set(path: str, assignments: list[str], out: str | None,
             print(f"field {name} not present in this file", file=sys.stderr)
             return 2
         meta = des_fields.BY_NAME.get(name.strip().upper()) or des_fields.lookup(field.key)
-        value = _coerce(meta, field, text)
+        value = _coerce(field, text)
         if meta and meta["kind"] == "int":
             value = int(value)
             if not (meta["lo"] <= value <= meta["hi"]):
@@ -186,12 +197,10 @@ def cmd_set(path: str, assignments: list[str], out: str | None,
         print(f"  {name:<28} -> {_fmt(field)}")
         changed += 1
 
-    dest = out or path
     if changed:
-        if os.path.abspath(dest) == os.path.abspath(path) and not no_backup:
-            _backup(path)
-        des_save.save(sf, dest)
-        print(f"  wrote {dest} ({os.path.getsize(dest)} bytes, checksum recalculated)")
+        _write(sf, path, out, backup=not no_backup,
+               message=lambda dest: f"  wrote {dest} ({os.path.getsize(dest)} bytes, "
+                                    "checksum recalculated)")
     return 0
 
 
@@ -270,12 +279,7 @@ def cmd_patch(path: str, patch_path: str, out: str | None) -> int:
                 field.value = value
             else:
                 field.value = value
-    dest = out or path
-    if os.path.abspath(dest) == os.path.abspath(path):
-        _backup(path)
-    des_save.save(sf, dest)
-    print(f'  wrote {dest}')
-    return 0
+    return _write(sf, path, out)
 
 
 def cmd_items(path: str, as_json: bool) -> int:
@@ -283,7 +287,7 @@ def cmd_items(path: str, as_json: bool) -> int:
     sf = des_save.load(path)
     catalog = des_inventory._catalog()
     if not catalog:
-        print("itemdb.json not found next to this script - run tools/build_itemdb.py",
+        print("itemdb.json not found in the repository root - run tools/build_itemdb.py",
               file=sys.stderr)
     doc = {'inventory': des_inventory.inventory(sf, catalog),
            'storage': des_inventory.storage(sf, catalog),
@@ -328,12 +332,7 @@ def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
                 raise ValueError(f'bad assignment {spec!r} (expected INDEX=VALUE)')
             setter(sf, int(index), int(value, 0))
             print(f"  {label} {int(index):02d} -> {int(value, 0)}")
-    dest = out or path
-    if os.path.abspath(dest) == os.path.abspath(path):
-        _backup(path)
-    des_save.save(sf, dest)
-    print(f"  wrote {dest}")
-    return 0
+    return _write(sf, path, out)
 
 
 def cmd_add(path: str, category: str, item_id: str, destination: str, quantity: str,
@@ -350,12 +349,7 @@ def cmd_add(path: str, category: str, item_id: str, destination: str, quantity: 
     entry = des_inventory._catalog().get((name, numeric_id))
     label = entry['name'] if entry else '?'
     print(f"  added {label} ({name} {numeric_id}) to the {destination}")
-    dest = out or path
-    if os.path.abspath(dest) == os.path.abspath(path):
-        _backup(path)
-    des_save.save(created, dest)
-    print(f"  wrote {dest}")
-    return 0
+    return _write(created, path, out)
 
 
 def cmd_arrays(path: str, as_json: bool) -> int:
@@ -469,12 +463,7 @@ def cmd_wset(path: str, guid: str, assignments: list[str], occurrence: int,
         value = float(text) if any(c in text for c in '.eE') and not text.lower().startswith('0x') else int(text, 0)
         blob.raw = des_world.set_value(blob.raw, entity, key, value, occurrence)
         print(f"  {entity.hex()} {name} -> {value}")
-    dest = out or path
-    if os.path.abspath(dest) == os.path.abspath(path):
-        _backup(path)
-    des_save.save(sf, dest)
-    print(f"  wrote {dest}")
-    return 0
+    return _write(sf, path, out)
 
 
 def cmd_diff(before: str, after: str, as_json: bool) -> int:
@@ -506,12 +495,7 @@ def cmd_aslot(path: str, state: str, sets: list[str], clears: list[str],
             raise ValueError('slot suffix must be exactly one character')
         des_arrays.clear_slot(sf, digest, char)
         print(f"  slot '{char}' cleared (-1)")
-    dest = out or path
-    if os.path.abspath(dest) == os.path.abspath(path):
-        _backup(path)
-    des_save.save(sf, dest)
-    print(f"  wrote {dest}")
-    return 0
+    return _write(sf, path, out)
 
 
 def cmd_selftest(paths: list[str]) -> int:
@@ -540,7 +524,7 @@ def cmd_selftest(paths: list[str]) -> int:
     ok = ok and not dupes
     print("files")
     for path in sorted(files):
-        raw = open(path, "rb").read()
+        raw = des_save.read_bytes(path)
         try:
             sf = SaveFile(raw)
         except Exception as exc:
@@ -566,7 +550,7 @@ def cmd_fields(_: str | None = None) -> int:
 
 
 def cmd_verify(path: str) -> int:
-    raw = open(path, "rb").read()
+    raw = des_save.read_bytes(path)
     sf = SaveFile(raw)
     rebuilt = sf.build()
     print(f"{path}")
@@ -578,14 +562,41 @@ def cmd_verify(path: str) -> int:
 
 
 # --------------------------------------------------------------------------- #
+# Commands that write something not yet verified in game need --experimental.
+EXPERIMENTAL = {
+    "inv": "inventory edits are not yet verified in game",
+    "wset": "world-state record meanings are unverified",
+    "add": "item creation is not yet verified in game",
+}
+
+COMMANDS = {
+    "info": lambda a: cmd_info(a.file),
+    "list": lambda a: cmd_list(a.file),
+    "tree": lambda a: cmd_tree(a.file),
+    "verify": lambda a: cmd_verify(a.file),
+    "get": lambda a: cmd_get(a.file, a.field),
+    "set": lambda a: cmd_set(a.file, a.assignments, a.out, a.no_backup),
+    "dump": lambda a: cmd_dump(a.file, a.out),
+    "patch": lambda a: cmd_patch(a.file, a.patch, a.out),
+    "items": lambda a: cmd_items(a.file, a.as_json),
+    "add": lambda a: cmd_add(a.file, a.category, a.id, a.destination, a.quantity, a.out),
+    "inv": lambda a: cmd_inv(a.file, a.qty, a.durability, a.box_qty, a.out),
+    "arrays": lambda a: cmd_arrays(a.file, a.as_json),
+    "aslot": lambda a: cmd_aslot(a.file, a.state, a.sets, a.clear, a.out),
+    "blobs": lambda a: cmd_blobs(a.file),
+    "world": lambda a: cmd_world(a.file, a.as_json, a.group, a.text),
+    "wset": lambda a: cmd_wset(a.file, a.guid, a.assignments, a.occurrence, a.out),
+    "diff": lambda a: cmd_diff(a.before, a.after, a.as_json),
+    "selftest": lambda a: cmd_selftest(a.paths),
+    "fields": lambda a: cmd_fields(),
+}
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Demon's Souls (PS5) save editor")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    for name, fn, extra in [
-        ("info", cmd_info, 0), ("list", cmd_list, 0),
-        ("tree", cmd_tree, 0), ("verify", cmd_verify, 0),
-    ]:
+    for name in ("info", "list", "tree", "verify"):
         p = sub.add_parser(name)
         p.add_argument("file")
 
@@ -669,33 +680,9 @@ def main(argv: list[str]) -> int:
     p.add_argument("--json", action="store_true", dest="as_json")
 
     a = ap.parse_args(argv)
-    if a.cmd == 'inv' and not a.experimental:
-        ap.error('inv requires --experimental: inventory edits are not yet verified in game')
-    if a.cmd == 'wset' and not a.experimental:
-        ap.error('wset requires --experimental: world-state record meanings are unverified')
-    if a.cmd == 'add' and not a.experimental:
-        ap.error('add requires --experimental: item creation is not yet verified in game')
-    if a.cmd == "info":   return cmd_info(a.file)
-    if a.cmd == "list":   return cmd_list(a.file)
-    if a.cmd == "tree":   return cmd_tree(a.file)
-    if a.cmd == "verify": return cmd_verify(a.file)
-    if a.cmd == "get":    return cmd_get(a.file, a.field)
-    if a.cmd == "set":    return cmd_set(a.file, a.assignments, a.out, a.no_backup)
-    if a.cmd == "dump":   return cmd_dump(a.file, a.out)
-    if a.cmd == "patch":  return cmd_patch(a.file, a.patch, a.out)
-    if a.cmd == "items":    return cmd_items(a.file, a.as_json)
-    if a.cmd == "add":      return cmd_add(a.file, a.category, a.id, a.destination,
-                                           a.quantity, a.out)
-    if a.cmd == "inv":      return cmd_inv(a.file, a.qty, a.durability, a.box_qty, a.out)
-    if a.cmd == "arrays":   return cmd_arrays(a.file, a.as_json)
-    if a.cmd == "aslot":    return cmd_aslot(a.file, a.state, a.sets, a.clear, a.out)
-    if a.cmd == "blobs":    return cmd_blobs(a.file)
-    if a.cmd == "world":    return cmd_world(a.file, a.as_json, a.group, a.text)
-    if a.cmd == "wset":     return cmd_wset(a.file, a.guid, a.assignments, a.occurrence, a.out)
-    if a.cmd == "diff":     return cmd_diff(a.before, a.after, a.as_json)
-    if a.cmd == "selftest": return cmd_selftest(a.paths)
-    if a.cmd == "fields":   return cmd_fields()
-    return 1
+    if a.cmd in EXPERIMENTAL and not a.experimental:
+        ap.error(f'{a.cmd} requires --experimental: {EXPERIMENTAL[a.cmd]}')
+    return COMMANDS[a.cmd](a)
 
 
 if __name__ == "__main__":

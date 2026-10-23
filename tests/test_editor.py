@@ -13,7 +13,7 @@ import unittest
 from playwright.sync_api import sync_playwright
 
 EDITOR = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(EDITOR))
+sys.path.insert(0, str(EDITOR / 'src'))
 import des_save
 import des_arrays
 import des_inventory

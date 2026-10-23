@@ -33,7 +33,7 @@ import struct
 import sys
 
 HERE = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE / 'src'))
 import des_world  # noqa: E402
 
 PREFIX = 6

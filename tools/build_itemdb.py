@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from des_gamedata import load_params, parse_bnd3, parse_ctxt, parse_param  # noqa: E402
 
 # Creation metadata (add-item): display sort id, initial durability and the

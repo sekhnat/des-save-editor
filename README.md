@@ -148,44 +148,44 @@ Applying an invalid dump never discards existing edits or modifies undo history.
 Python's standard library is sufficient.
 
 ```bash
-python3 des_editor.py selftest /path/to/_SaveData/PPSA01341   # check every file in a save folder
-python3 des_editor.py info FILE                               # header, checksum, record counts
-python3 des_editor.py items FILE [--json]                     # inventory, storage, equipment
-python3 des_editor.py get FILE PLAYER_SOULS
-python3 des_editor.py set FILE PLAYER_SOULS=250000 --out /tmp/USR-DATA
-python3 des_editor.py add FILE weapon 20700 --experimental    # Dragon Bone Smasher
-python3 des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
-python3 des_editor.py add FILE ring 123 --experimental        # records trophy history
-python3 des_editor.py world FILE --filter TEXT                # world-state entities
-python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA     # record-level delta
+python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341   # check every file in a save folder
+python3 src/des_editor.py info FILE                               # header, checksum, record counts
+python3 src/des_editor.py items FILE [--json]                     # inventory, storage, equipment
+python3 src/des_editor.py get FILE PLAYER_SOULS
+python3 src/des_editor.py set FILE PLAYER_SOULS=250000 --out /tmp/USR-DATA
+python3 src/des_editor.py add FILE weapon 20700 --experimental    # Dragon Bone Smasher
+python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
+python3 src/des_editor.py add FILE ring 123 --experimental        # records trophy history
+python3 src/des_editor.py world FILE --filter TEXT                # world-state entities
+python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA     # record-level delta
 ```
 
 <details>
 <summary>All commands</summary>
 
 ```bash
-python3 des_editor.py selftest /path/to/_SaveData/PPSA01341
-python3 des_editor.py info FILE
-python3 des_editor.py list FILE
-python3 des_editor.py tree FILE
-python3 des_editor.py fields
-python3 des_editor.py get FILE PLAYER_SOULS
-python3 des_editor.py set FILE PLAYER_SOULS=250000 --out /tmp/USR-DATA
-python3 des_editor.py set FILE 0x637eb85e=1
-python3 des_editor.py patch FILE edits.patch.json --out /tmp/USR-DATA
-python3 des_editor.py dump FILE dump.json
-python3 des_editor.py verify FILE
-python3 des_editor.py items FILE [--json]
-python3 des_editor.py inv FILE --experimental --qty 9=40 --durability 0=200 --box-qty 4=30 --out /tmp/USR-DATA
-python3 des_editor.py add FILE weapon 20700 --experimental                       # Dragon Bone Smasher
-python3 des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
-python3 des_editor.py add FILE ring 123 --experimental                           # records trophy history
-python3 des_editor.py arrays FILE
-python3 des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
-python3 des_editor.py blobs FILE
-python3 des_editor.py world FILE [--json] [--group N] [--filter TEXT]
-python3 des_editor.py wset FILE b13668dff82e7044840eea38f10b0286 BOSS_LOOT_VISIBLE=1 --experimental --out /tmp/USR-DATA
-python3 des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
+python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341
+python3 src/des_editor.py info FILE
+python3 src/des_editor.py list FILE
+python3 src/des_editor.py tree FILE
+python3 src/des_editor.py fields
+python3 src/des_editor.py get FILE PLAYER_SOULS
+python3 src/des_editor.py set FILE PLAYER_SOULS=250000 --out /tmp/USR-DATA
+python3 src/des_editor.py set FILE 0x637eb85e=1
+python3 src/des_editor.py patch FILE edits.patch.json --out /tmp/USR-DATA
+python3 src/des_editor.py dump FILE dump.json
+python3 src/des_editor.py verify FILE
+python3 src/des_editor.py items FILE [--json]
+python3 src/des_editor.py inv FILE --experimental --qty 9=40 --durability 0=200 --box-qty 4=30 --out /tmp/USR-DATA
+python3 src/des_editor.py add FILE weapon 20700 --experimental                       # Dragon Bone Smasher
+python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
+python3 src/des_editor.py add FILE ring 123 --experimental                           # records trophy history
+python3 src/des_editor.py arrays FILE
+python3 src/des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
+python3 src/des_editor.py blobs FILE
+python3 src/des_editor.py world FILE [--json] [--group N] [--filter TEXT]
+python3 src/des_editor.py wset FILE b13668dff82e7044840eea38f10b0286 BOSS_LOOT_VISIBLE=1 --experimental --out /tmp/USR-DATA
+python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
 
 - `items` lists the inventory, storage box, equipment slots and the number of dead-enemy indices.

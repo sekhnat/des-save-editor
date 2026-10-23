@@ -9,7 +9,7 @@ import sys
 from playwright.sync_api import sync_playwright
 
 root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(root))
+sys.path.insert(0, str(root / 'src'))
 fixture = Path(os.environ.get('DES_SAVE_DIR', root.parent / '_SaveData/PPSA01341')) / 'SAVEDATA0PlayerProfile0/USR-DATA'
 
 with sync_playwright() as p:

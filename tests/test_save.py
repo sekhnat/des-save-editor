@@ -20,7 +20,7 @@ AFTER_PAIR = next(iter(sorted(PAIR_DIR.glob('After*/SAVEDATA0PlayerProfile*/USR-
 HAVE_PAIR = BEFORE_PAIR.exists() and AFTER_PAIR is not None
 GAME = Path(os.environ.get('DES_GAME_DIR', ROOT.parent / 'PPSA01342-app'))
 HAVE_GAME = (GAME / 'misc/cachedsavedata').is_dir()
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / 'src'))
 import des_save as save
 import des_items as items
 import des_arrays as arrays
@@ -1095,6 +1095,21 @@ class StructureTests(unittest.TestCase):
         again = self.parsed(sf)
         self.assertEqual([105, 9962, 1002, -1],
                          [f.value for f in arrays.discover(again)[0]['members']])
+        self.assertEqual(sf.build(), again.build())
+
+    def test_set_slot_extends_an_array_split_across_containers(self):
+        base = self.array_save([105, 9962, 113, 116, 117])
+        head, tail = base.records[:2], base.records[2:]
+        base.records = [save.Field(0x1234, save.T_CONTAINER, children=head),
+                        *tail, save.Field(0xCAFE, save.T_I32, b'\0' * 4)]
+        sf = self.parsed(base)
+        group = arrays.discover(sf)[0]
+        self.assertEqual(2, len({id(arrays._parent_of(sf, m)) for m in group['members']}))
+        arrays.set_slot(sf, self.STATE, '5', 1002)
+        again = self.parsed(sf)
+        self.assertEqual([105, 9962, 113, 116, 117, 1002],
+                         [f.value for f in arrays.discover(again)[0]['members']])
+        self.assertEqual(0xCAFE, again.records[-1].key)       # the new slot sits before it
         self.assertEqual(sf.build(), again.build())
 
     def test_set_slot_rejects_unknown_state_and_non_integer(self):

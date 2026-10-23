@@ -22,15 +22,12 @@ from __future__ import annotations
 import collections
 import re
 
-from des_save import (Field, T_BLOB, T_BOOL, T_F32, T_I32, T_U16, T_U8,
-                      name_key)
+from des_save import (Field, FNV_INV as P_INV, FNV_PRIME as P, MASK32 as M,
+                      T_BLOB, T_BOOL, T_F32, T_I32, T_U16, T_U8, name_key)
 import des_fields
 import des_items
 import des_world
 
-M = 0xFFFFFFFF
-P = 0x01000193
-P_INV = pow(P, -1, 1 << 32)
 DIGITS = '0123456789'
 EMPTY = -1                     # observed "empty slot" sentinel in i32 arrays
 
@@ -243,7 +240,9 @@ def set_slot(sf, state: int, char: str, value: int) -> Field:
         return existing
     if group['members'][0].type != T_I32:
         raise ValueError('only 32-bit slot arrays can be extended')
-    parent = _parent_of(sf, group['members'][0])
+    # Members can straddle a container boundary, so insert after the last one in
+    # its own record list rather than in the list that holds the first.
+    parent = _parent_of(sf, group['members'][-1])
     if parent is None:
         raise ValueError('array parent container was not found')
     added = Field(key, T_I32, value.to_bytes(4, 'little', signed=True))

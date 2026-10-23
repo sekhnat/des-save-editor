@@ -19,10 +19,8 @@ import collections
 import des_fields
 import des_save
 import des_world
+from des_save import FNV_INV as P_INV, MASK32 as M, walk_records
 
-M = 0xFFFFFFFF
-P = 0x01000193
-P_INV = pow(P, -1, 1 << 32)
 DIGITS = '0123456789'
 
 
@@ -89,7 +87,7 @@ def world_index(sf) -> tuple[dict, dict]:
             if entry.records is None:
                 raw[guid] = entry.payload
                 continue
-            for record in des_world._walk(entry.records):
+            for record in walk_records(entry.records):
                 if record.type == des_save.T_CONTAINER:
                     continue
                 occurrence = seen.get((guid, record.key), 0)
