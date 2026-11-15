@@ -18,13 +18,30 @@ import os
 import unittest
 import zipfile
 
+import json
+import sys
+
 from playwright.sync_api import sync_playwright
 
 EDITOR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(EDITOR / 'src'))
+import des_save  # noqa: E402
+
 SAVES = Path(os.environ.get('DES_SAVE_DIR', EDITOR.parent / '_SaveData' / 'PPSA01341'))
 PLAYER = SAVES / 'SAVEDATA0PlayerProfile1' / 'USR-DATA'
 LARGE = SAVES / 'SAVEDATA0PlayerProfile0' / 'USR-DATA'
 HAVE_SAVES = PLAYER.exists() and LARGE.exists()
+ATTRS = ('VITALITY', 'INTELLIGENCE', 'ENDURANCE', 'STRENGTH', 'DEXTERITY', 'MAGIC', 'FAITH', 'LUCK')
+
+
+def sample_value(name, path=PLAYER):
+    """A field of a sample save, read by the Python parser (the samples differ per machine)."""
+    return des_save.load(str(path)).get(name)
+
+
+def sample_soul_level(path=PLAYER):
+    sf = des_save.load(str(path))
+    return sum(sf.get('PLAYER_CURRENT' + a) for a in ATTRS) - 80
 
 
 @unittest.skipUnless(HAVE_SAVES, f'no sample saves in {SAVES} (set DES_SAVE_DIR to run these)')
@@ -138,7 +155,7 @@ class BrowserTests(unittest.TestCase):
         }''')
         self.assertEqual(777777, self.page.evaluate("current().save.get('PLAYER_SOULS')"))
         self.page.evaluate('doUndo()')
-        self.assertEqual(176, self.page.evaluate("current().save.get('PLAYER_SOULS')"))
+        self.assertEqual(sample_value('PLAYER_SOULS'), self.page.evaluate("current().save.get('PLAYER_SOULS')"))
         self.page.evaluate('doRedo()')
         self.assertEqual(777777, self.page.evaluate("current().save.get('PLAYER_SOULS')"))
 
@@ -161,7 +178,7 @@ class BrowserTests(unittest.TestCase):
     def test_invalid_form_input_does_not_wrap_or_save(self):
         self.load()
         self.page.locator('[data-field=PLAYER_SOULS]').fill('9999999999')
-        self.assertEqual(176, self.page.evaluate("current().save.get('PLAYER_SOULS')"))
+        self.assertEqual(sample_value('PLAYER_SOULS'), self.page.evaluate("current().save.get('PLAYER_SOULS')"))
         self.assertTrue(self.page.locator('#save').is_disabled())
         self.page.locator('[data-field=PLAYER_SOULS]').fill('424242')
         self.assertFalse(self.page.locator('#save').is_disabled())
@@ -235,8 +252,14 @@ class BrowserTests(unittest.TestCase):
     def test_json_drafts_survive_tabs_and_detect_staleness(self):
         self.load()
         self.page.click('[data-tab=json]')
-        draft = self.page.input_value('#json').replace('"value": 176', '"value": 12345', 1)
-        self.page.fill('#json', draft)
+        doc = json.loads(self.page.input_value('#json'))
+        souls = [f for f in doc['fields'] if f.get('name') == 'PLAYER_SOULS']
+        self.assertEqual(1, len(souls))
+        souls[0]['value'] = 12345
+        draft = json.dumps(doc, indent=1)
+        # Page.fill types too slowly for a large save's dump; set it and send the input event.
+        self.page.evaluate('d => { const t = document.querySelector("#json"); t.value = d; '
+                           't.dispatchEvent(new Event("input")); }', draft)
         self.page.click('[data-tab=editor]')
         self.page.fill('[data-field=PLAYER_SOULS]', '8888')
         self.page.click('[data-tab=json]')
@@ -298,14 +321,18 @@ class BrowserTests(unittest.TestCase):
         self.page.evaluate('doUndo()')
         self.assertEqual(before, self.page.evaluate(value))
 
-    def test_inventory_edits_are_opt_in_and_undoable(self):
+    def test_inventory_edits_are_undoable_and_storage_is_opt_in(self):
         self.load()
         self.page.wait_for_selector('#invcard')
         self.assertIn('Inventory, storage and equipment', self.page.text_content('#invcard'))
+        if self.page.evaluate('storageRows(current().save).length'):
+            box = self.page.locator('[aria-label="Quantity of storage entry 0"]')
+            self.assertTrue(box.is_disabled())
+            self.page.check('#experimental')
+            box = self.page.locator('[aria-label="Quantity of storage entry 0"]')
+            self.assertFalse(box.is_disabled())
         quantity = self.page.locator('[aria-label="Quantity of inventory entry 0"]')
-        self.assertTrue(quantity.is_disabled())
-        self.page.check('#experimental')
-        quantity = self.page.locator('[aria-label="Quantity of inventory entry 0"]')
+        self.assertFalse(quantity.is_disabled())
         before = self.page.evaluate('inventoryRows(current().save)[0].quantity')
         quantity.fill(str(before + 1))
         quantity.dispatch_event('change')
@@ -363,7 +390,7 @@ class BrowserTests(unittest.TestCase):
 
     def test_estimated_soul_level_has_no_off_by_one(self):
         self.load()
-        self.assertEqual(1, self.page.evaluate('current().save.summary().soulLevel'))
+        self.assertEqual(sample_soul_level(), self.page.evaluate('current().save.summary().soulLevel'))
         self.page.evaluate("for(const a of ATTRS) current().save.set('PLAYER_CURRENT'+a,99)")
         self.assertEqual(712, self.page.evaluate('current().save.summary().soulLevel'))
 
