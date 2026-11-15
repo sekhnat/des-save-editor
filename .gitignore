@@ -16,3 +16,6 @@ Thumbs.db
 # Desktop app build output
 desktop/node_modules/
 desktop/dist/
+
+# In-game check runs (tools/ingame_check.py)
+ingame-runs/

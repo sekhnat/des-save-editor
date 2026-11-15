@@ -23,7 +23,7 @@ python3 tools/embed_entitydb.py --check   # page carries the current entity inde
 python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341
 ```
 
-The full suite is 182 tests and runs in about 30 s without the optional fixture
+The full suite is 194 tests and runs in about 30 s without the optional fixture
 environment (most of them format, structure, tools and browser flows). Regression
 coverage includes all three original files, malformed records, strict numeric and
 hex bounds, atomic imports and writes, undo/redo, async-save races, JSON drafts,
@@ -45,6 +45,39 @@ the card).
 
 Timings vary by machine; structural performance assertions are tested instead of
 fragile wall-clock thresholds.
+
+## In-game checks
+
+`tools/ingame_check.py` checks edits in the real game: Demon's Souls on the
+Kyty emulator. It is opt-in and needs `KYTY_DIR` (the KytyPS5 checkout, with
+`run-linux.sh`, `tools/local/demons-souls-smoke.py` and `_SaveData`), plus Xvfb,
+xdotool, ImageMagick's `import`, tesseract and `pactl`. The game always runs
+inside the script's own Xvfb server (`:97`); there is no visible-window mode.
+
+```bash
+export KYTY_DIR=/path/to/KytyPS5
+python3 tools/ingame_check.py cases                      # what can be checked
+python3 tools/ingame_check.py run qty dur --dry-run      # edits on a scratch copy only
+python3 tools/ingame_check.py run qty dur add-weapon     # boot, look, save, judge, restore
+python3 tools/ingame_check.py boot qty                   # leave the game running to explore
+python3 tools/ingame_check.py keys Return wait:2 'e*2' shot:status
+python3 tools/ingame_check.py finish                     # save and exit, judge, restore
+python3 tools/ingame_check.py restore                    # after a crash
+```
+
+Before booting, `_SaveData` is renamed aside with a SHA-256 manifest and copied
+back as the working copy. Afterwards the working copy moves into the run folder
+and the original is renamed back and checked against the manifest. Nothing is
+deleted. Each run folder under `ingame-runs/` (ignored by git) holds the
+original, edited and game-written files, both diffs, the screenshots and
+`verdict.json`. A case passes as `kept` when its check fails on the original,
+passes on the edited file and still passes on the game's save; the screenshots
+show whether the game displays it. The cases are written for one character, so
+each checks its precondition first. Results so far are in
+[Research notes](research.md#in-game-checks).
+
+While a run is in progress the game rewrites the working copy, so point
+`DES_SAVE_DIR` for the test suite at another copy of the saves.
 
 ## Desktop app
 
