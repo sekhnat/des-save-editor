@@ -12,6 +12,11 @@ and ``tools/embed_fields.py`` writes the same table into ``des_editor.html``.
 
 from des_save import fnv1a, name_key
 
+# Tendency slot -> name (see des_tendency.py; slot = remake map number - 1).
+_TENDENCY_SLOTS = [(0, "Nexus"), (1, "Boletarian Palace"), (2, "Shrine of Storms"),
+                   (3, "Tower of Latria"), (4, "Valley of Defilement"), (5, "Stonefang Tunnel"),
+                   (6, "Unused slot 6")]
+
 ATTRS = ["VITALITY", "INTELLIGENCE", "ENDURANCE", "STRENGTH",
          "DEXTERITY", "MAGIC", "FAITH", "LUCK"]
 
@@ -76,12 +81,19 @@ _DEFS = [
      "Number of DEADENEMIES_INDICES#### records (enemies that stay dead)."),
     ("TROPHIES_RING_COUNT", "int", "Rings recorded for the trophy", 0, 100,
      "Number of TROPHIES_RING## records."),
-    # ---- spells and tendency ---------------------------------------------
+    # ---- spells and tendency (tendency is edited in the Tendency tab) ----
     ("SPELLS_SLOTSUNLOCKED", "int", "Spell slots unlocked", 0, 7, ""),
     ("MIRACLES_SLOTSUNLOCKED", "int", "Miracle slots unlocked", 0, 7, ""),
-    ("TENDENCY_PLAYER_BLACKWHITE", "float", "Character tendency (black/white)", -1000, 1000,
-     "Observed world tendency values range from -180 to 180."),
-    ("TENDENCY_PLAYER_LEFTRIGHT", "float", "Character tendency (left/right)", -1000, 1000, ""),
+    ("TENDENCY_PLAYER_BLACKWHITE", "float", "Character tendency (black/white)", -200, 200,
+     "-200 Pure Black to 200 Pure White; the Tendency menu shows it. Edit it in the Tendency tab."),
+    ("TENDENCY_PLAYER_LEFTRIGHT", "float", "Character tendency (left/right)", -200, 200,
+     "Hidden axis: buying certain spells moves it left (negative), God's Wrath right. It gates Nexus dialogue flags."),
+    *[(f"TENDENCY_WORLD{_slot:02d}_LEFTRIGHT", "float", f"{_name} tendency", -200, 200,
+       "World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save.")
+      for _slot, _name in _TENDENCY_SLOTS],
+    *[(f"TENDENCY_WORLD{_slot:02d}_BLACKWHITE", "float", f"{_name} tendency (copy)", -200, 200,
+       "Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both.")
+      for _slot, _name in _TENDENCY_SLOTS],
     # ---- advanced / not fully verified -----------------------------------
     ("PLAYER_SHOPLEVEL", "int", "Shop level (unverified)", 0, 10_000,
      "Hash name recovered, but the meaning of the value is not confirmed."),
@@ -136,10 +148,7 @@ LAYOUT = {
         "PLAYER_RECOVERMP", "PLAYER_RECOVERSP",
     ],
     "Progress flags": ["WORLDSTATUS_MIRRORMODE", "MISC_HASUNLOCKEDNEXUSSTATUE"],
-    "Spells and tendency": [
-        "SPELLS_SLOTSUNLOCKED", "MIRACLES_SLOTSUNLOCKED",
-        "TENDENCY_PLAYER_BLACKWHITE", "TENDENCY_PLAYER_LEFTRIGHT",
-    ],
+    "Spells": ["SPELLS_SLOTSUNLOCKED", "MIRACLES_SLOTSUNLOCKED"],
     "Counts (read-only)": [
         "EQUIPMENT_INVENTORY_COUNT", "EQUIPMENT_STORAGEBOX_COUNT",
         "DEADENEMIES_COUNT", "TROPHIES_RING_COUNT",

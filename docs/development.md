@@ -17,12 +17,13 @@ python3 -m unittest discover -s tests -p test_save.py -v
 python3 -m unittest discover -s tests -v
 
 python3 tests/benchmark_editor.py
-python3 tools/embed_fields.py --check     # page field table matches src/des_fields.py
+python3 tools/embed_fields.py --check     # page field and tendency tables match src/
+python3 tools/build_tendencydb.py GAME --check   # tendency catalog matches the game files
 python3 tools/embed_entitydb.py --check   # page carries the current entity index
 python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341
 ```
 
-The full suite is 167 tests and runs in about 30 s without the optional fixture
+The full suite is 182 tests and runs in about 30 s without the optional fixture
 environment (most of them format, structure, tools and browser flows). Regression
 coverage includes all three original files, malformed records, strict numeric and
 hex bounds, atomic imports and writes, undo/redo, async-save races, JSON drafts,

@@ -2,7 +2,7 @@
 
 The container can be parsed and rebuilt, and most of a played profile can be
 named and read: character, options, inventory, storage box, equipment, spells,
-tendency and per-entity world state. A name recovered from a hash is still not
+tendency (with the game's event conditions) and per-entity world state. A name recovered from a hash is still not
 proof of gameplay meaning, and a checksum-valid file is not necessarily a
 game-safe edit.
 
@@ -147,8 +147,54 @@ counts are `SPELLS_SLOTSUNLOCKED` / `MIRACLES_SLOTSUNLOCKED`.
 
 ## Tendency and character-creator presets
 
-- **Tendency:** `TENDENCY_PLAYER_BLACKWHITE/LEFTRIGHT` and seven
-  `TENDENCY_WORLD##_BLACKWHITE/LEFTRIGHT` floats (observed −180 to 180).
+The game calls tendency *QWC*. The character and each world have a white/black
+axis and a left/right axis, each clamped to −200 (black / left) … 200 (white /
+right).
+
+| Record | Meaning |
+|---|---|
+| `TENDENCY_PLAYER_BLACKWHITE` | Character tendency; the in-game Tendency menu shows it |
+| `TENDENCY_PLAYER_LEFTRIGHT` | Hidden character axis. Buying certain spells moves it left (−30 or −40 each, `ShopLineupParam.qwcId` → `QwcChange` 80000/80010); God's Wrath moves it right (+40). Only the Nexus dialogue flags read it |
+| `TENDENCY_WORLD##_LEFTRIGHT` | **The world tendency the game uses and displays** |
+| `TENDENCY_WORLD##_BLACKWHITE` | A copy: the game overwrites it with `_LEFTRIGHT` when it saves |
+
+World slots are the remake's map number − 1: 1 Boletarian Palace (m02),
+2 Shrine of Storms (m03), 3 Tower of Latria (m04), 4 Valley of Defilement (m05),
+5 Stonefang Tunnel (m06). Slot 0 (the Nexus) and slot 6 carry no world events.
+The editor reads `_LEFTRIGHT` and writes the same value to both fields. Both
+the mapping and the field roles were measured in Kyty (see
+[Research notes](research.md#tendency-qwc)).
+
+- **Bands.** They follow the thresholds the game's judges use: Pure Black ≤ −180,
+  Black ≤ −100, Neutral −49…49, White ≥ 100, Pure White ≥ 180, with "leaning"
+  bands in between.
+- **Events.** A script asks `IsSuccessQWC(id)`. Row `id` of `QwcJudge.param`
+  gives an inclusive range for character WB/LR and area WB/LR, and the area is
+  the world being played. `src/des_tendency.py` lists all 32 live call sites:
+  - 4 character events, checked in the Nexus
+  - 28 world events: soul monsters, ore spirits, black phantoms (Miralda,
+    Satsuki, Vileidel, Selen, Garl Vinland, Scirvir), NPCs (Miralda, Selen,
+    Scirvir), the execution-ground door, the 1-1 dragon, the Makoto and other
+    treasure
+
+  `tools/build_tendencydb.py GAME --check` verifies every range and call site
+  against the game files. One commented-out call (the 3-1 key, judge 40140) is
+  excluded.
+- **Triggering an event** sets the tendency to the nearest value inside its
+  range, 1 past a threshold (e.g. −181 for "−180 or lower"). The editor reports
+  the other events this turns on or off, and refuses combinations that no value
+  can satisfy. Events that remove an enemy "until killed" depend on event flags
+  as well, and a one-shot event that has already happened stays done. Event
+  flags are not decoded.
+- **When it takes effect.** The game applies world tendency when an area loads
+  (`BP_ApplyPendingQwc` after an archstone warp; the Nexus on entry).
+- **Verification status.** Verified in Kyty:
+  - the game shows edited character and world values in the Tendency menu
+  - it keeps an edited value through its own save
+  - it rewrites `_BLACKWHITE` from `_LEFTRIGHT`
+
+  The effect of each individual event comes from the scripts and was not
+  observed in game.
 - **Character-creator presets:** `CCSLOT_{GENDER,ANIMTYPE,VOICETYPE,FACEDATA}_##`
   in five slots; face data is an opaque blob.
 

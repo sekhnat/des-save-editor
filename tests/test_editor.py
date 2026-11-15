@@ -287,6 +287,7 @@ class SyntheticBrowserTests(unittest.TestCase):
             'discoverArrays(current().save).flatMap(g => g.members.map(f => f.value))'))
 
 
+
 class AddItemBrowserTests(SyntheticBrowserTests):
     """The add-item dialog drives the same rules and bytes as des_inventory."""
 
@@ -460,6 +461,86 @@ class AddItemBrowserTests(SyntheticBrowserTests):
           try { openItemDialog(); return false; }
           catch (error) { return String(error.message).includes("Options"); }
         }'''))
+
+
+class TendencyBrowserTests(unittest.TestCase):
+    """The Tendency tab, with the fixtures of SyntheticBrowserTests (not a subclass,
+    so the parent's tests do not run twice)."""
+    setUpClass = SyntheticBrowserTests.__dict__['setUpClass']
+    tearDownClass = SyntheticBrowserTests.__dict__['tearDownClass']
+    setUp = SyntheticBrowserTests.setUp
+    tearDown = SyntheticBrowserTests.tearDown
+    load_bytes = SyntheticBrowserTests.load_bytes
+
+    # ---- tendency ---------------------------------------------------------
+    def open_tendency(self, **kw):
+        self.load_bytes(test_save.tendency_save(**kw).build())
+        self.page.click('button[data-tab="tendency"]')
+
+    def test_tendency_tab_lists_worlds_and_events(self):
+        import des_tendency
+        self.open_tendency(pc_wb=200, worlds={1: -200, 4: 200})
+        names = self.page.locator('#tab-tendency .tdname:visible').all_inner_texts()
+        self.assertEqual(['Character tendency'] + [w['name'] for w in des_tendency.WORLDS], names)
+        self.assertEqual(len(des_tendency.EVENTS), self.page.locator('#tab-tendency .tdevent').count())
+        active = {int(j) for j in self.page.eval_on_selector_all(
+            '#tab-tendency .tdevent.on', 'rows => rows.map(r => r.dataset.judge)')}
+        expected = set(des_tendency.active_events(des_tendency.read(test_save.tendency_save(
+            pc_wb=200, worlds={1: -200, 4: 200}))))
+        self.assertEqual(expected, active)
+        self.assertEqual('Pure Black', self.page.inner_text('#td-boletaria >> xpath=ancestor::div[@class="tdctl"][1] >> .tdband'))
+
+    def test_tendency_slider_commits_one_undo_step(self):
+        self.open_tendency(worlds={1: 120}, copies={1: 180})
+        self.page.fill('#td-boletaria-num', '-150')
+        self.page.locator('#td-boletaria-num').dispatch_event('change')
+        self.assertEqual([-150, -150], self.page.evaluate(
+            '["TENDENCY_WORLD01_LEFTRIGHT","TENDENCY_WORLD01_BLACKWHITE"].map(n => current().save.get(n))'))
+        self.assertTrue(self.page.locator('.tdevent[data-judge="20200"].on').count())
+        self.page.click('#undo')
+        self.assertEqual([120, 180], self.page.evaluate(
+            '["TENDENCY_WORLD01_LEFTRIGHT","TENDENCY_WORLD01_BLACKWHITE"].map(n => current().save.get(n))'))
+
+    def test_tendency_trigger_and_conflict(self):
+        self.open_tendency(worlds={1: 120})
+        self.page.click('.tdevent[data-judge="20300"] button')
+        self.assertEqual(-181, self.page.evaluate('current().save.get("TENDENCY_WORLD01_LEFTRIGHT")'))
+        self.assertIn('Also turns on', self.page.inner_text('#message'))
+        self.assertTrue(self.page.locator('.tdevent[data-judge="20300"] button').is_disabled())
+        self.page.check('.tdevent[data-judge="20300"] input')
+        self.page.check('.tdevent[data-judge="20500"] input')
+        self.page.click('#tdtriggerselected')
+        self.assertIn('no value satisfies', self.page.inner_text('#message'))
+        self.assertEqual(-181, self.page.evaluate('current().save.get("TENDENCY_WORLD01_LEFTRIGHT")'))
+        self.page.click('button[data-allworlds="200"]')
+        self.assertEqual([200] * 5, self.page.evaluate(
+            '[1,2,3,4,5].map(i => current().save.get(`TENDENCY_WORLD0${i}_LEFTRIGHT`))'))
+
+    def test_tendency_logic_matches_python(self):
+        import random
+        import des_tendency
+        rng = random.Random(7)
+        choices = [-200, -181, -180, -179.5, -150, -100, -99, -49, 0, 49, 50, 100, 150, 179, 180, 200]
+        judges = [e['judge'] for e in des_tendency.EVENTS]
+        cases = []
+        for _ in range(60):
+            st = {'pc_wb': rng.choice(choices), 'pc_lr': rng.choice(choices),
+                  'worlds': {str(s): {'value': rng.choice(choices), 'copy': 0} for s in range(7)}}
+            picks = rng.sample(judges, rng.randint(1, 3))
+            py_state = {**st, 'worlds': {int(k): v for k, v in st['worlds'].items()}}
+            plan = des_tendency.trigger_targets(py_state, picks)
+            cases.append({'st': st, 'picks': picks, 'active': des_tendency.active_events(py_state),
+                          'targets': plan['targets'], 'on': plan['turns_on'], 'off': plan['turns_off'],
+                          'conflict': bool(plan['conflicts']),
+                          'bands': [des_tendency.band(v) for v in choices]})
+        mismatches = self.page.evaluate("""([cases, choices]) => cases.filter(c => {
+            const plan = tdTriggerTargets(c.st, c.picks);
+            const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+            return !same(tdActive(c.st), c.active) || !same(plan.targets, c.targets) || !same(plan.turnsOn, c.on)
+              || !same(plan.turnsOff, c.off) || (plan.conflicts.length > 0) !== c.conflict
+              || !same(choices.map(tdBand), c.bands);
+        }).length""", [cases, choices])
+        self.assertEqual(0, mismatches)
 
 if __name__ == '__main__':
     unittest.main()

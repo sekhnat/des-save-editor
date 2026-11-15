@@ -1400,6 +1400,149 @@ class CatalogParamCreationTests(unittest.TestCase):
                          if e['category'] == 'Goods' and not e['hasParam'])
         self.assertNotIn('sortId', text_only)
 
+def tendency_save(pc_wb=0.0, pc_lr=0.0, worlds=None, copies=None) -> save.SaveFile:
+    """Character pair plus seven world pairs, as the game writes them."""
+    worlds = worlds or {}
+    copies = copies or {}
+    f32 = lambda v: struct.pack('<f', v)
+    records = [save.Field(save.name_key('PLAYER_NAME'), save.T_STR, b'T'),
+               save.Field(save.name_key('TENDENCY_PLAYER_BLACKWHITE'), save.T_F32, f32(pc_wb)),
+               save.Field(save.name_key('TENDENCY_PLAYER_LEFTRIGHT'), save.T_F32, f32(pc_lr))]
+    for slot in range(7):
+        value = worlds.get(slot, 0.0)
+        records.append(save.Field(save.name_key(f'TENDENCY_WORLD{slot:02d}_BLACKWHITE'), save.T_F32,
+                                  f32(copies.get(slot, value))))
+        records.append(save.Field(save.name_key(f'TENDENCY_WORLD{slot:02d}_LEFTRIGHT'), save.T_F32, f32(value)))
+    sf = save.SaveFile()
+    sf.records = records
+    return save.SaveFile(sf.build())
+
+
+class TendencyTests(unittest.TestCase):
+    def setUp(self):
+        import des_tendency
+        self.T = des_tendency
+
+    def test_bands_follow_the_judge_thresholds(self):
+        T = self.T
+        cases = {-200: 'Pure Black', -180: 'Pure Black', -179.5: 'Black', -100: 'Black', -99: 'Leaning black',
+                 -50: 'Leaning black', -49: 'Neutral', 0: 'Neutral', 49: 'Neutral', 50: 'Leaning white',
+                 99: 'Leaning white', 100: 'White', 179: 'White', 180: 'Pure White', 200: 'Pure White'}
+        for value, name in cases.items():
+            self.assertEqual(name, T.band(value), value)
+
+    def test_world_value_is_the_leftright_field(self):
+        T = self.T
+        st = T.read(tendency_save(worlds={1: 120.0}, copies={1: 180.0}))
+        self.assertEqual({'value': 120.0, 'copy': 180.0}, st['worlds'][1])
+        self.assertEqual('boletaria', T.WORLD_BY_SLOT[1]['key'])
+        self.assertEqual({1, 2, 3, 4, 5}, set(T.WORLD_BY_SLOT))
+
+    def test_judges_use_inclusive_bounds(self):
+        T = self.T
+        self.assertTrue(T.judge_holds(20300, 0, 0, -180))
+        self.assertFalse(T.judge_holds(20300, 0, 0, -179.9))
+        self.assertTrue(T.judge_holds(20400, 0, 0, 150))
+        self.assertTrue(T.judge_holds(10600, -180, 0, None))      # character only: no world needed
+        self.assertFalse(T.judge_holds(20300, 0, 0, None))       # world condition outside a world
+        self.assertTrue(T.judge_holds(10100, 0, -100, None))
+        self.assertFalse(T.judge_holds(10300, 0, 99, None))
+
+    def test_active_events_read_the_save(self):
+        T = self.T
+        st = T.read(tendency_save(pc_wb=200, pc_lr=-200, worlds={1: -200, 4: 200}))
+        active = set(T.active_events(st))
+        self.assertTrue({20300, 20200, 20100, 10500, 10100, 50130, 50140, 50150} <= active)
+        self.assertFalse({20500, 20600, 20400, 10600, 50120} & active)
+
+    def test_trigger_picks_the_nearest_value_inside(self):
+        T = self.T
+        st = T.read(tendency_save(worlds={1: 120}))
+        plan = T.trigger_targets(st, [20300])
+        self.assertEqual({'boletaria': -181}, plan['targets'])
+        self.assertEqual([20100, 20200], plan['turns_on'])
+        self.assertEqual([], plan['conflicts'])
+        self.assertEqual({'boletaria': 181}, T.trigger_targets(st, [20500])['targets'])   # 1 past the threshold
+        self.assertEqual({}, T.trigger_targets(T.read(tendency_save(worlds={1: 190})), [20500])['targets'])
+        plan = T.trigger_targets(T.read(tendency_save(worlds={1: 190})), [20400])
+        self.assertEqual({}, plan['targets'])
+        self.assertEqual({'character': -181}, T.trigger_targets(st, [10600])['targets'])
+        self.assertEqual({'character_lr': 101}, T.trigger_targets(st, [10300])['targets'])
+
+    def test_trigger_reports_turned_off_events_and_conflicts(self):
+        T = self.T
+        st = T.read(tendency_save(worlds={1: 200}))
+        plan = T.trigger_targets(st, [20100])
+        self.assertEqual({'boletaria': -101}, plan['targets'])
+        self.assertEqual([20400, 20500, 20600], plan['turns_off'])
+        plan = T.trigger_targets(st, [20300, 20500])
+        self.assertEqual({}, plan['targets'])
+        self.assertIn('Boletarian Palace', plan['conflicts'][0])
+        both = T.trigger_targets(T.read(tendency_save()), [20300, 30140])   # different worlds combine
+        self.assertEqual({'boletaria': -181, 'storms': 181}, both['targets'])
+
+    def test_apply_writes_both_world_fields(self):
+        T = self.T
+        sf = tendency_save(worlds={1: 120}, copies={1: 180})
+        changed = T.apply(sf, {'boletaria': -200, 'character': 300})
+        self.assertEqual(-200, sf.get('TENDENCY_WORLD01_LEFTRIGHT'))
+        self.assertEqual(-200, sf.get('TENDENCY_WORLD01_BLACKWHITE'))
+        self.assertEqual(200, sf.get('TENDENCY_PLAYER_BLACKWHITE'))     # clamped
+        self.assertEqual(3, len(changed))
+        reloaded = save.SaveFile(sf.build())
+        self.assertTrue(reloaded.checksum_ok())
+        with self.assertRaises(ValueError):
+            T.apply(save.SaveFile(save.SaveFile().build()), {'boletaria': 0})
+
+    def test_catalog_is_consistent(self):
+        T = self.T
+        for event in T.EVENTS:
+            for judge in [event['judge'], *event.get('also', [])]:
+                self.assertIn(judge, T.JUDGES)
+                world = T.JUDGE_WORLD.get(judge // 10000)
+                self.assertEqual(world or 'character', event['world'], judge)
+            self.assertTrue(T.requirement(event), event['judge'])
+        self.assertEqual(len(T.EVENTS), len(T.EVENT_BY_JUDGE))
+
+    def test_cli_trigger_round_trip(self):
+        import des_editor
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'USR-DATA'
+            path.write_bytes(tendency_save(worlds={1: 120}).build())
+            out = Path(tmp) / 'OUT'
+            with mock.patch('sys.stdout'):
+                self.assertEqual(0, des_editor.main(['tendency', str(path), '--trigger', '20300', '--out', str(out)]))
+                self.assertEqual(2, des_editor.main(['tendency', str(path), '--trigger', '20300',
+                                                     '--trigger', '20500', '--out', str(out)]))
+                self.assertEqual(0, des_editor.main(['tendency', str(out), '--set', 'valley=150',
+                                                     '--set', 'character=-200', '--no-backup']))
+                self.assertEqual(2, des_editor.main(['tendency', str(out), '--set', 'valley=201']))
+                self.assertEqual(0, des_editor.main(['tendency', '--events']))
+            sf = save.load(str(out))
+            self.assertEqual(-181, sf.get('TENDENCY_WORLD01_LEFTRIGHT'))
+            self.assertEqual(-181, sf.get('TENDENCY_WORLD01_BLACKWHITE'))
+            self.assertEqual(150, sf.get('TENDENCY_WORLD04_LEFTRIGHT'))
+            self.assertEqual(-200, sf.get('TENDENCY_PLAYER_BLACKWHITE'))
+            self.assertEqual(path.read_bytes(), tendency_save(worlds={1: 120}).build())   # input untouched
+
+    @unittest.skipUnless(HAVE_GAME, 'no game files (set DES_GAME_DIR to run this)')
+    def test_catalog_matches_the_game_files(self):
+        spec = importlib.util.spec_from_file_location('build_tendencydb', ROOT / 'tools/build_tendencydb.py')
+        tool = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tool)
+        self.assertEqual([], tool.check(GAME))
+
+    @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')
+    def test_sample_saves_read(self):
+        T = self.T
+        for path in SAVES.glob('*PlayerProfile*/USR-DATA'):
+            st = T.read(save.load(str(path)))
+            self.assertIsNotNone(st['pc_wb'], path)
+            for world in T.WORLDS:
+                value = st['worlds'][world['slot']]['value']
+                self.assertTrue(-200 <= value <= 200, (path, world['key'], value))
+
+
 class FieldTableTests(unittest.TestCase):
     def test_family_names_match_the_measured_keys(self):
         import des_fields

@@ -12,6 +12,7 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py items  <USR-DATA>          # inventory, storage, equipment
     python3 des_editor.py add    <USR-DATA> weapon 20700 --experimental   # add item (experimental)
     python3 des_editor.py world  <USR-DATA>          # world-state entities
+    python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
 Writing always leaves a timestamped `.bak` copy next to the file and
 recomputes the FNV-1a checksum in the header, so the result is a valid save.
@@ -32,6 +33,7 @@ import des_fields
 import des_inventory
 import des_items
 import des_save
+import des_tendency
 from des_save import SaveFile, name_key
 
 
@@ -561,6 +563,103 @@ def cmd_verify(path: str) -> int:
     return 0 if rebuilt == raw else 1
 
 
+def _tendency_report(state: dict) -> dict:
+    T = des_tendency
+    active = set(T.active_events(state))
+    def events(world):
+        return [{"judge": e["judge"], "title": e["title"], "areas": e["areas"],
+                 "requires": [f"{T.target_label(t)} {T.describe_range(lo, hi)}"
+                              for t, lo, hi in T.requirement(e)],
+                 "active": e["judge"] in active}
+                for e in T.EVENTS if e["world"] == world]
+    worlds = []
+    for world in T.WORLDS:
+        entry = state["worlds"].get(world["slot"])
+        worlds.append({"key": world["key"], "name": world["name"], "slot": world["slot"],
+                       "value": entry and entry["value"], "copy": entry and entry["copy"],
+                       "band": entry and T.band(entry["value"]), "events": events(world["key"])})
+    return {"character": {"value": state["pc_wb"], "band": None if state["pc_wb"] is None
+                          else T.band(state["pc_wb"]), "left_right": state["pc_lr"],
+                          "events": events("character")},
+            "worlds": worlds}
+
+
+def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: bool,
+                 as_json: bool, out: str | None, no_backup: bool) -> int:
+    T = des_tendency
+    if list_events:
+        rows = [{"judge": e["judge"], "world": e["world"], "title": e["title"], "effect": e["effect"],
+                 "areas": e["areas"], "requires": [f"{T.target_label(t)} {T.describe_range(lo, hi)}"
+                                                    for t, lo, hi in T.requirement(e)],
+                 "sources": e["sources"]} for e in T.EVENTS]
+        if as_json:
+            print(json.dumps(rows, indent=1, ensure_ascii=False))
+        else:
+            for r in rows:
+                print(f"  {r['judge']:>5}  {r['world']:<10} {r['title']}  [{', '.join(r['areas'])}]")
+                print(f"         needs {'; '.join(r['requires'])}. {r['effect']}")
+        return 0
+    sf = des_save.load(path)
+    state = T.read(sf)
+    targets: dict = {}
+    try:
+        for item in sets:
+            name, sep, text = item.partition("=")
+            if not sep:
+                raise ValueError(f"bad assignment {item!r} (expected TARGET=VALUE)")
+            value = float(text)
+            if not -T.LIMIT <= value <= T.LIMIT:
+                raise ValueError(f"{name}: tendency is -{T.LIMIT} to {T.LIMIT}")
+            targets[T.parse_target(name)] = value
+        if triggers:
+            judges = []
+            for text in triggers:
+                judge = int(text)
+                if judge not in T.EVENT_BY_JUDGE:
+                    raise ValueError(f"unknown event {judge} (see --events)")
+                judges.append(judge)
+            plan = T.trigger_targets(T.with_targets(state, targets), judges)
+            if plan["conflicts"]:
+                for line in plan["conflicts"]:
+                    print(f"conflict: {line}", file=sys.stderr)
+                return 2
+            targets.update(plan["targets"])
+            for label, key in (("also turns on", "turns_on"), ("turns off", "turns_off")):
+                for judge in plan[key]:
+                    print(f"  {label}: {judge} {T.EVENT_BY_JUDGE[judge]['title']}")
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    if targets:
+        changed = T.apply(sf, targets)
+        for target, value in targets.items():
+            print(f"  {T.target_label(target):<26} -> {value:g} ({T.band(value)})")
+        if changed:
+            return _write(sf, path, out, backup=not no_backup)
+        print("  no change")
+        return 0
+    report = _tendency_report(state)
+    if as_json:
+        print(json.dumps(report, indent=1, ensure_ascii=False))
+        return 0
+    def show(events):
+        for e in events:
+            print(f"      {'on ' if e['active'] else '-  '} {e['judge']:>5} {e['title']} "
+                  f"[{', '.join(e['areas'])}] needs {'; '.join(e['requires'])}")
+    c = report["character"]
+    if c["value"] is not None:
+        print(f"  Character            {c['value']:>7g}  {c['band']}   (left/right axis {c['left_right']:g})")
+        show(c["events"])
+    for w in report["worlds"]:
+        if w["value"] is None:
+            print(f"  {w['name']:<20} not in this save")
+            continue
+        note = "" if w["copy"] == w["value"] else f"   (copy field holds {w['copy']:g}; the game rewrites it)"
+        print(f"  {w['name']:<20} {w['value']:>7g}  {w['band']}{note}")
+        show(w["events"])
+    return 0
+
+
 # --------------------------------------------------------------------------- #
 # Commands that write something not yet verified in game need --experimental.
 EXPERIMENTAL = {
@@ -589,6 +688,8 @@ COMMANDS = {
     "diff": lambda a: cmd_diff(a.before, a.after, a.as_json),
     "selftest": lambda a: cmd_selftest(a.paths),
     "fields": lambda a: cmd_fields(),
+    "tendency": lambda a: cmd_tendency(a.file, a.sets, a.triggers, a.list_events, a.as_json,
+                                       a.out, a.no_backup),
 }
 
 
@@ -679,7 +780,20 @@ def main(argv: list[str]) -> int:
     p.add_argument("after")
     p.add_argument("--json", action="store_true", dest="as_json")
 
+    p = sub.add_parser("tendency", help="show or edit world and character tendency; trigger tendency events")
+    p.add_argument("file", nargs="?", help="USR-DATA (not needed with --events)")
+    p.add_argument("--set", action="append", default=[], dest="sets", metavar="TARGET=VALUE",
+                   help="character, character_lr or a world (boletaria, stonefang, latria, storms, valley); -200..200")
+    p.add_argument("--trigger", action="append", default=[], dest="triggers", metavar="EVENT",
+                   help="event number from --events: set the tendency its condition needs")
+    p.add_argument("--events", action="store_true", dest="list_events", help="list every tendency event")
+    p.add_argument("--json", action="store_true", dest="as_json")
+    p.add_argument("--out", help="write to this path instead of in place")
+    p.add_argument("--no-backup", action="store_true")
+
     a = ap.parse_args(argv)
+    if a.cmd == "tendency" and not a.file and not a.list_events:
+        ap.error("tendency needs a file (or --events)")
     if a.cmd in EXPERIMENTAL and not a.experimental:
         ap.error(f'{a.cmd} requires --experimental: {EXPERIMENTAL[a.cmd]}')
     return COMMANDS[a.cmd](a)

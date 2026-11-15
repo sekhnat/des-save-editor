@@ -56,6 +56,46 @@ level label voted from `misc/dspointsofinterest.txt`. The result, `entitydb.bin`
 (2.6 MiB), is embedded in the page as a non-executing data block (about 3.4 MB
 encoded) and decoded only when the World state view first opens.
 
+## Tendency (QWC)
+
+**Names.** The executable's printf templates `Tendency_World%02d_BlackWhite` /
+`_LeftRight` name the save records. Its UI strings (`WorldStatus_BoletariaTendency`,
+`cp11_tendency_world_current_0..5`) give six worlds. The Lua scripts call the
+system *QWC* (`IsSuccessQWC`, `AddQWC`, `RecvGlobalQwc`).
+
+**Conditions.** `gameparam.parambnd` carries `QwcJudge.param` (ranges) and
+`QwcChange.param` (deltas). `des_gamedata.load_params` decodes both through
+their PARAMDEFs. Judge IDs are grouped by map (ID / 10000: 1 Nexus, 2 Boletaria,
+3 Shrine, 4 Latria, 5 Valley, 6 Stonefang). The scripts in
+`cp11demonssouls/dvdroot/script/*.lua` are plain text (CP932, with machine
+translated English comments) and say what each judge gates. Map-to-area labels
+(m03_01 = 4-1, …) come from `misc/dspointsofinterest.txt`.
+`tools/build_tendencydb.py GAME` prints the judge table and every uncommented
+call site, and `--check` holds `src/des_tendency.py` to them.
+
+**Kyty measurements (2026-11-15, Xvfb, a copy of the saves, restored and
+verified afterwards).**
+
+1. *Field roles.* A character was loaded with all seven `_BLACKWHITE` values
+   set to one pattern and `_LEFTRIGHT` to another, then saved. The game rewrote
+   every `_BLACKWHITE` with its `_LEFTRIGHT` value and left `_LEFTRIGHT`
+   unchanged. The Tendency menu matched `_LEFTRIGHT`. The character's
+   `TENDENCY_PLAYER_BLACKWHITE` = 200 showed as a Pure White character and was
+   kept.
+2. *Slot mapping.* Three boots, each writing ±200 to both fields of slot *i*
+   by bit *k* of *i* + 1. The Tendency menu shows each world as a glowing
+   white or a dark icon, and the three bits decode as Boletaria 1, Shrine 2,
+   Latria 3, Valley 4, Stonefang 5, which is the remake's map number − 1.
+3. *Persistence.* Boletaria at −200 and at +200, loaded in 1-1 and saved by
+   the game: both values came back unchanged. No event-flag bits differed
+   between the two runs, which fits the scripts re-evaluating these flags
+   (`SingleReset`) on every load.
+
+The game's Lua `print` output does not reach Kyty's log. Points of interest
+from `dspointsofinterest.txt` are not in the save's coordinate space (a
+character placed at one spawned out of bounds). So no individual event was
+observed in game.
+
 ## Param definitions
 
 `src/des_gamedata.py` reads the PARAMDEFs (0xB0-byte field records with byte sizes
@@ -105,6 +145,7 @@ python3 tools/build_entitydb.py /path/to/PPSA01342-app -o entitydb.bin
 python3 tools/embed_entitydb.py
 python3 tools/embed_fields.py                                         # after editing src/des_fields.py
 python3 tools/build_keydb.py /path/to/PPSA01342-app --save USR-DATA   # name candidates
+python3 tools/build_tendencydb.py /path/to/PPSA01342-app --check      # tendency catalog vs game
 python3 tools/parse_loadouts.py /path/to/PPSA01342-app                # loadout checks
 ```
 

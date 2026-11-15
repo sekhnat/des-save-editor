@@ -24,7 +24,8 @@ macOS, and a standard-library Python CLI covers scripting.
 
 ## Highlights
 
-- **Character**: name, class, souls, all eight attributes, vitals, resistances, spells, tendency and counters.
+- **Character**: name, class, souls, all eight attributes, vitals, resistances, spells and counters.
+- **Tendency**: set each world and the character from Pure Black to Pure White, see which of the 32 tendency events (black phantoms, NPCs, doors, treasure) are on, and trigger one by putting the tendency into the range the game's own table requires.
 - **Items**: browse the inventory, storage box and equipment slots, edit quantities and durability, and add items from a 2,291-entry catalog.
 - **World state**: inspect per-entity records (archstones, boss loot, chains, statues) labelled with their level and defining game file.
 - **Safe by default**: nothing is written by loading a file, the original bytes are always kept, every edit has undo/redo, and exports are validated before they are offered.
@@ -88,11 +89,12 @@ actually completed.
 
 | View | What it provides |
 |---|---|
-| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells and tendency, records, options and coverage warnings; inventory, storage box and equipment slots with experimental **Add item…**; recovered arrays |
+| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells, records, options and coverage warnings; inventory, storage box and equipment slots with experimental **Add item…**; recovered arrays |
+| **Tendency** | Character and the five worlds on a −200 to 200 slider with band, presets and all-world buttons; every tendency event with its required range, live on/off status, **Trigger** (single or several at once) and the events a change turns on or off |
 | **All fields** | Named and unknown records with strict scalar, text and hex editing, filtering, 100 records per page |
 | **Tree** | Container hierarchy and absolute file offsets, 200 records per page |
 | **World state** | Every world-state entity with its level and defining game file, named records, filtering, 200 per page; opt-in same-size edits |
-| **Field reference** | The 78 named fields with editor metadata, hashes, descriptions and values in the active file. A further 12,600 indexed family names and 19 world-state names label records in the other views |
+| **Field reference** | The 92 named fields with editor metadata, hashes, descriptions and values in the active file. A further 12,600 indexed family names and 19 world-state names label records in the other views |
 | **Item catalog** | All 2,291 category-scoped entries, including wide weapon/armor IDs, spells and skills |
 | **Changes** | Before/after comparison with the immutable original; export conflict-checked scalar patches |
 | **JSON / patches** | Full dump, file import/export, plain field maps and path-based patches |
@@ -157,6 +159,8 @@ python3 src/des_editor.py add FILE weapon 20700 --experimental    # Dragon Bone 
 python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
 python3 src/des_editor.py add FILE ring 123 --experimental        # records trophy history
 python3 src/des_editor.py world FILE --filter TEXT                # world-state entities
+python3 src/des_editor.py tendency FILE                           # world/character tendency and events
+python3 src/des_editor.py tendency FILE --trigger 20300           # tendency for one event
 python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA     # record-level delta
 ```
 
@@ -185,12 +189,17 @@ python3 src/des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/U
 python3 src/des_editor.py blobs FILE
 python3 src/des_editor.py world FILE [--json] [--group N] [--filter TEXT]
 python3 src/des_editor.py wset FILE b13668dff82e7044840eea38f10b0286 BOSS_LOOT_VISIBLE=1 --experimental --out /tmp/USR-DATA
+python3 src/des_editor.py tendency FILE [--json]
+python3 src/des_editor.py tendency --events
+python3 src/des_editor.py tendency FILE --set boletaria=-200 --set character=180 --out /tmp/USR-DATA
+python3 src/des_editor.py tendency FILE --trigger 20300 --trigger 30140 --out /tmp/USR-DATA
 python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
 
 - `items` lists the inventory, storage box, equipment slots and the number of dead-enemy indices.
 - `arrays` lists the recovered fixed-slot arrays with family names, slot letters, real field names and values; `aslot` writes one slot by array state and suffix character (the letter the listing shows).
 - `blobs` sizes every blob and summarises world-state containers; `world` lists their entities with level, file and named records; `wset` makes an experimental same-size edit of one record addressed by entity GUID and key.
+- `tendency` shows the character and each world with its band and the events it enables; `--set` takes `character`, `character_lr` or a world (`boletaria`, `stonefang`, `latria`, `storms`, `valley`), `--trigger` an event number from `--events`, and a combination no value can satisfy is refused with the conflict.
 - `diff` prints the record-level and world-state delta, so two saves of the same character can be compared directly:
 
   ```text
@@ -213,7 +222,7 @@ text.
 
 | Document | Contents |
 |---|---|
-| [Coverage and limits](docs/coverage.md) | What is decoded and how far each part can be trusted: character, classes, options, inventory, adding items, arrays, world state, bounds |
+| [Coverage and limits](docs/coverage.md) | What is decoded and how far each part can be trusted: character, classes, options, inventory, adding items, arrays, tendency, world state, bounds |
 | [Save format](docs/format.md) | Container layout, record types, world-state framing |
 | [Research notes](docs/research.md) | How names and structures were recovered, how to identify a field, rebuilding the embedded tables |
 | [Development](docs/development.md) | Running the tests, benchmarks and the desktop app, and cutting a release |

@@ -119,6 +119,42 @@
   table.ref tr:hover td{background:#1a212a}
   .kbd{font-family:var(--mono);font-size:11px;background:#1d242d;border:1px solid #2c3a48;
        border-radius:4px;padding:1px 5px;color:#9fb0c2}
+  /* tendency */
+  .tdcard{display:grid;grid-template-columns:minmax(250px,330px) 1fr;gap:16px 22px;align-items:start}
+  .tdctl{display:flex;flex-direction:column;gap:8px}
+  .tdhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+  .tdname{font-weight:650;font-size:15px}
+  .tdband{font-size:11.5px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+  .tdband[data-band="Pure Black"]{background:#050505;color:#c9c9c9;border-color:#444}
+  .tdband[data-band="Black"]{background:#1d1d1d;color:#d0d0d0}
+  .tdband[data-band="Leaning black"]{background:#33363b;color:#e2e2e2}
+  .tdband[data-band="Neutral"]{background:#5b6068;color:#f2f2f2}
+  .tdband[data-band="Leaning white"]{background:#9aa0a8;color:#111}
+  .tdband[data-band="White"]{background:#d6d9dd;color:#111}
+  .tdband[data-band="Pure White"]{background:#fff6dd;color:#3a2a00;border-color:var(--accent2);box-shadow:0 0 10px #e8c87766}
+  .tdtrack{position:relative;padding:6px 0 16px}
+  .tdtrack input[type=range]{width:100%;margin:0;appearance:none;-webkit-appearance:none;height:10px;border-radius:6px;
+     background:linear-gradient(90deg,#000 0%,#2b2b2b 10%,#6a6e74 50%,#d8dadd 90%,#fff 100%);border:1px solid var(--line);cursor:pointer}
+  .tdtrack input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;
+     background:var(--accent2);border:2px solid #1a1508;box-shadow:0 0 0 2px #c8a04a55}
+  .tdtrack input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent2);border:2px solid #1a1508}
+  .tdtick{position:absolute;top:18px;width:1px;height:6px;background:#56606d}
+  .tdscale{display:flex;justify-content:space-between;font-size:10.5px;color:var(--dim);margin-top:-12px}
+  .tdpresets{display:flex;gap:5px;flex-wrap:wrap}
+  .tdpresets button{padding:3px 8px;font-size:11.5px}
+  .tdnum{max-width:110px}
+  .tdevents{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .tdevent{display:grid;grid-template-columns:20px 72px 1fr auto;gap:8px;align-items:center;padding:7px 10px;border-bottom:1px solid #1c232b}
+  .tdevent:last-child{border-bottom:none}
+  .tdevent .st{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;padding:2px 6px;border-radius:999px;text-align:center;
+     border:1px solid var(--line);color:var(--dim)}
+  .tdevent.on .st{color:#8fe0a8;border-color:#2e6b42;background:#12251a}
+  .tdevent .tt{font-size:13px}
+  .tdevent .meta{font-size:11.5px;color:var(--dim)}
+  .tdevent .need{font-family:var(--mono);font-size:11px;color:var(--accent2)}
+  .tdevent button{padding:3px 10px;font-size:12px}
+  .tdsel{position:sticky;top:96px;z-index:5}
+  .tdmuted{color:var(--dim);font-size:12px}
   .hidden{display:none!important}
   code{font-family:var(--mono);color:var(--accent2)}
   .small{font-size:11.5px;color:var(--dim)}
@@ -140,6 +176,8 @@
     .invrow button{padding:4px}.trow{grid-template-columns:65px minmax(110px,1fr) 36px minmax(80px,1fr);gap:5px}
     .modal{padding-top:3vh}.modalbox{max-height:90vh}
     .scroll{overflow:auto}#alltable{min-width:700px}table.ref{min-width:760px}
+    .tdcard{grid-template-columns:1fr}.tdevent{grid-template-columns:20px 62px 1fr}.tdevent button{grid-column:2 / -1;justify-self:start}
+    .tdsel{top:60px}
   }
 </style>
 </head>
@@ -186,6 +224,7 @@
 
     <div class="tabs" role="tablist" aria-label="Editor views">
       <button data-tab="editor" class="active">Editor</button>
+      <button data-tab="tendency">Tendency</button>
       <button data-tab="all">All fields</button>
       <button data-tab="tree">Tree</button>
       <button data-tab="world">World state</button>
@@ -196,6 +235,7 @@
     </div>
 
     <div id="tab-editor"></div>
+    <div id="tab-tendency" class="hidden"></div>
     <div id="tab-all" class="hidden card">
       <div class="flexh" style="margin-bottom:10px">
         <div><h2>Raw field table</h2><div class="note">Every field in the file. Unknown keys still accept edits.</div></div>
@@ -573,8 +613,22 @@ const DEFS = [
   ["TROPHIES_RING_COUNT","int","Rings recorded for the trophy",0,100,"Number of TROPHIES_RING## records."],
   ["SPELLS_SLOTSUNLOCKED","int","Spell slots unlocked",0,7,""],
   ["MIRACLES_SLOTSUNLOCKED","int","Miracle slots unlocked",0,7,""],
-  ["TENDENCY_PLAYER_BLACKWHITE","float","Character tendency (black/white)",-1000,1000,"Observed world tendency values range from -180 to 180."],
-  ["TENDENCY_PLAYER_LEFTRIGHT","float","Character tendency (left/right)",-1000,1000,""],
+  ["TENDENCY_PLAYER_BLACKWHITE","float","Character tendency (black/white)",-200,200,"-200 Pure Black to 200 Pure White; the Tendency menu shows it. Edit it in the Tendency tab."],
+  ["TENDENCY_PLAYER_LEFTRIGHT","float","Character tendency (left/right)",-200,200,"Hidden axis: buying certain spells moves it left (negative), God's Wrath right. It gates Nexus dialogue flags."],
+  ["TENDENCY_WORLD00_LEFTRIGHT","float","Nexus tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD01_LEFTRIGHT","float","Boletarian Palace tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD02_LEFTRIGHT","float","Shrine of Storms tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD03_LEFTRIGHT","float","Tower of Latria tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD04_LEFTRIGHT","float","Valley of Defilement tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD05_LEFTRIGHT","float","Stonefang Tunnel tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD06_LEFTRIGHT","float","Unused slot 6 tendency",-200,200,"World tendency the game uses (-200 Pure Black to 200 Pure White); the game copies it to _BLACKWHITE on save."],
+  ["TENDENCY_WORLD00_BLACKWHITE","float","Nexus tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
+  ["TENDENCY_WORLD01_BLACKWHITE","float","Boletarian Palace tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
+  ["TENDENCY_WORLD02_BLACKWHITE","float","Shrine of Storms tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
+  ["TENDENCY_WORLD03_BLACKWHITE","float","Tower of Latria tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
+  ["TENDENCY_WORLD04_BLACKWHITE","float","Valley of Defilement tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
+  ["TENDENCY_WORLD05_BLACKWHITE","float","Stonefang Tunnel tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
+  ["TENDENCY_WORLD06_BLACKWHITE","float","Unused slot 6 tendency (copy)",-200,200,"Rewritten by the game from _LEFTRIGHT on save; the Tendency tab writes both."],
   ["PLAYER_SHOPLEVEL","int","Shop level (unverified)",0,10000,"Hash name recovered, but the meaning of the value is not confirmed."],
   ["PLAYER_CLEARITEM","int","Clear item flag",0,255,""],
   ["PLAYER_CLEARBONUS","float","Clear bonus",-1000000000.0,1000000000.0,""],
@@ -609,7 +663,7 @@ const LAYOUT = [
   ["Attributes (base)",["PLAYER_BASEVITALITY","PLAYER_BASEINTELLIGENCE","PLAYER_BASEENDURANCE","PLAYER_BASESTRENGTH","PLAYER_BASEDEXTERITY","PLAYER_BASEMAGIC","PLAYER_BASEFAITH","PLAYER_BASELUCK"]],
   ["Vitals",["PLAYER_CURRENTHP","PLAYER_CURRENTMAXHP","PLAYER_BASEMAXHP","PLAYER_CURRENTMP","PLAYER_CURRENTMAXMP","PLAYER_BASEMAXMP","PLAYER_CURRENTSP","PLAYER_CURRENTMAXSP","PLAYER_BASEMAXSP","PLAYER_RECOVERMP","PLAYER_RECOVERSP"]],
   ["Progress flags",["WORLDSTATUS_MIRRORMODE","MISC_HASUNLOCKEDNEXUSSTATUE"]],
-  ["Spells and tendency",["SPELLS_SLOTSUNLOCKED","MIRACLES_SLOTSUNLOCKED","TENDENCY_PLAYER_BLACKWHITE","TENDENCY_PLAYER_LEFTRIGHT"]],
+  ["Spells",["SPELLS_SLOTSUNLOCKED","MIRACLES_SLOTSUNLOCKED"]],
   ["Counts (read-only)",["EQUIPMENT_INVENTORY_COUNT","EQUIPMENT_STORAGEBOX_COUNT","DEADENEMIES_COUNT","TROPHIES_RING_COUNT"]],
   ["Resistance",["PLAYER_RESISTANCE_POISON","PLAYER_RESISTANCE_PLAGUE"]],
   ["Records",["PLAYTIME","TRUEDEATHCOUNT","DEMONSKILLED","CLEARSTATE","CLEARCOUNT","KILLBLACK"]],
@@ -646,6 +700,7 @@ const FAMILIES = [
   ["CCSLOT_VOICETYPE_%02d",99]
 ];
 const WORLD_NAMES = ["BOSS_LOOT_VISIBLE","BROKEN","FADEDOUT","SCORCHEDBLENDVALUE","TRANSFORM","TRANSFORMS","TRANSFORMCOUNT","DISABLEDBONEMASK","DISABLEDCONSTRAINTMASK","FROZENBONEMASK","SCALEDBONEMASK","M03_01_SEC01_LIGHTNING_SAVE","M06_00_LAVA_VFX_SAVE","M06_00_WATERWHEEL_VFX_SAVE","MAIDENBLACK_STAFF_FIRE_OFF","O2110_0000_CHAINS_BOL_SAVE","O2110_0001_CHAINS_BOL_SAVE","O2320_FX_ENABLED","SCN000006_STATUESWORDRELEASE_SAVE"];
+const TENDENCY = {"limit":200,"worlds":[{"slot":1,"key":"boletaria","name":"Boletarian Palace","map":"m02","archstone":1},{"slot":5,"key":"stonefang","name":"Stonefang Tunnel","map":"m06","archstone":2},{"slot":3,"key":"latria","name":"Tower of Latria","map":"m04","archstone":3},{"slot":2,"key":"storms","name":"Shrine of Storms","map":"m03","archstone":4},{"slot":4,"key":"valley","name":"Valley of Defilement","map":"m05","archstone":5}],"extraSlots":{"0":"Nexus (no world events)","6":"Unused slot"},"bands":[[-180,true,"Pure Black"],[-100,true,"Black"],[-49,false,"Leaning black"],[49,true,"Neutral"],[100,false,"Leaning white"],[180,false,"White"],[200,true,"Pure White"]],"presets":[["Pure Black",-200],["Black",-120],["Neutral",0],["White",120],["Pure White",200]],"thresholds":[-180,-150,-100,-49,49,100,150,180],"judges":{"10100":[-200,200,-200,-100,-200,200,-200,200],"10200":[-200,200,-200,-100,-200,200,-200,200],"10300":[-200,200,100,200,-200,200,-200,200],"10400":[-200,200,100,200,-200,200,-200,200],"10500":[180,200,-200,200,-200,200,-200,200],"10600":[-200,-180,-200,200,-200,200,-200,200],"20100":[-200,200,-200,200,-200,-100,-200,200],"20200":[-200,200,-200,200,-200,-150,-200,200],"20300":[-200,200,-200,200,-200,-180,-200,200],"20400":[-200,200,-200,200,150,200,-200,200],"20500":[-200,200,-200,200,180,200,-200,200],"20600":[-200,200,-200,200,180,200,-200,200],"30100":[-200,200,-200,200,-200,-100,-200,200],"30110":[-200,200,-200,200,-200,-150,-200,200],"30120":[-200,200,-200,200,-200,-180,-200,200],"30130":[-200,200,-200,200,180,200,-200,200],"30140":[-200,200,-200,200,180,200,-200,200],"40100":[-200,200,-200,200,-200,-100,-200,200],"40110":[-200,200,-200,200,-200,-150,-200,200],"40120":[-200,200,-200,200,-200,-180,-200,200],"40130":[-200,200,-200,200,180,200,-200,200],"40150":[-200,200,-200,200,180,200,-200,200],"40190":[-200,200,-200,200,-200,-180,-200,200],"50100":[-200,200,-200,200,-200,-100,-200,200],"50110":[-200,200,-200,200,-200,-150,-200,200],"50120":[-200,200,-200,200,-200,-180,-200,200],"50130":[-200,200,-200,200,180,200,-200,200],"50140":[-200,200,-200,200,180,200,-200,200],"50150":[-200,200,-200,200,150,200,-200,200],"60100":[-200,200,-200,200,-200,-100,-200,200],"60110":[-200,200,-200,200,-200,-150,-200,200],"60120":[-200,200,-200,200,-200,-180,-200,200],"60130":[-200,200,-200,200,180,200,-200,200],"60140":[-200,200,-200,200,180,200,-200,200]},"events":[{"judge":10600,"world":"character","title":"Mephistopheles comes to the Nexus","effect":"Once Yurt is dead, Mephistopheles moves to the Nexus stone pillar.","areas":["Nexus"],"sources":["m01_00_00_00.lua:1296"]},{"judge":10500,"world":"character","title":"Nexus dialogue flag 8044","effect":"Event flag 8044 is set for NPC conversations (Pure White character).","areas":["Nexus"],"sources":["m01_00_00_00.lua:1745"]},{"judge":10100,"world":"character","title":"Nexus dialogue flags 8040 and 8041","effect":"Event flags 8040 and 8041 are set for NPC conversations (left/right axis -100 or lower).","areas":["Nexus"],"sources":["m01_00_00_00.lua:1717","m01_00_00_00.lua:1724"],"also":[10200]},{"judge":10300,"world":"character","title":"Nexus dialogue flags 8042 and 8043","effect":"Event flags 8042 and 8043 are set for NPC conversations (left/right axis 100 or higher).","areas":["Nexus"],"sources":["m01_00_00_00.lua:1731","m01_00_00_00.lua:1738"],"also":[10400]},{"judge":20600,"world":"boletaria","title":"Execution-ground door opens (white)","effect":"The door to the execution ground starts open.","areas":["1-1"],"sources":["m02_00_00_00.lua:212"]},{"judge":20500,"world":"boletaria","title":"Executioner Miralda appears","effect":"Miralda is present at the execution ground (until she dies).","areas":["1-1"],"sources":["m02_00_00_00.lua:995"]},{"judge":20400,"world":"boletaria","title":"The dragon stops patrolling 1-1","effect":"The flying dragon's 1-1 behaviour is disabled.","areas":["1-1"],"sources":["m02_00_00_00.lua:311"]},{"judge":20300,"world":"boletaria","title":"Miralda black phantom; execution-ground door opens","effect":"The execution-ground door starts open and Miralda appears as a hostile black phantom (until killed).","areas":["1-1"],"sources":["m02_00_00_00.lua:213","m02_00_00_00.lua:1043"]},{"judge":20200,"world":"boletaria","title":"Ore spirit in 1-3","effect":"The ore spirit appears (until killed).","areas":["1-3"],"sources":["m02_02_00_00.lua:1104"]},{"judge":20100,"world":"boletaria","title":"Soul monsters","effect":"The scripts' tendency \"soul monsters\" appear (until killed).","areas":["1-1","1-2","1-3"],"sources":["m02_00_00_00.lua:4621","m02_01_00_00.lua:781","m02_02_00_00.lua:1124"]},{"judge":60130,"world":"stonefang","title":"Scirvir, the Wanderer appears","effect":"Scirvir (\"Half-hand\" in the scripts) is present.","areas":["2-2"],"sources":["m06_01_00_00.lua:521"]},{"judge":60140,"world":"stonefang","title":"\"Gram\" object hidden in 2-3","effect":"Object 1433 (\"gram\" in the scripts) is not shown; its meaning is unverified.","areas":["2-3"],"sources":["m06_02_00_00.lua:237"]},{"judge":60120,"world":"stonefang","title":"Scirvir black phantom","effect":"Scirvir appears as a black phantom (until killed).","areas":["2-2"],"sources":["m06_01_00_00.lua:555"]},{"judge":60110,"world":"stonefang","title":"Ore spirit in 2-1","effect":"The ore spirit appears (until killed).","areas":["2-1"],"sources":["m06_00_00_00.lua:681"]},{"judge":60100,"world":"stonefang","title":"Soul monsters","effect":"The scripts' tendency \"soul monsters\" appear.","areas":["2-1","2-2"],"sources":["m06_00_00_00.lua:705","m06_01_00_00.lua:506"]},{"judge":40130,"world":"latria","title":"Vileidel's cell is cleared","effect":"The rubble blocking Vileidel is removed.","areas":["3-1"],"sources":["m04_00_00_00.lua:1035"]},{"judge":40150,"world":"latria","title":"Iron plate stays in 3-2","effect":"The iron plate (object 1210) is kept until you pass it; otherwise it is removed.","areas":["3-2"],"sources":["m04_01_00_00.lua:576"]},{"judge":40120,"world":"latria","title":"Vileidel black phantom","effect":"Vileidel (the NPC) is gone and his black phantom appears (until killed).","areas":["3-1"],"sources":["m04_00_00_00.lua:1071","m04_00_00_00.lua:1161"]},{"judge":40190,"world":"latria","title":"Sodden ring treasure","effect":"Treasure 9919 replaces treasure 9920 (a remake addition; the code comment says \"Sodden ring\").","areas":["3-2"],"sources":["m04_01_00_00.lua:788"]},{"judge":40110,"world":"latria","title":"Ore spirit in 3-2","effect":"The ore spirit appears (until killed).","areas":["3-2"],"sources":["m04_01_00_00.lua:617"]},{"judge":40100,"world":"latria","title":"Soul monsters","effect":"The scripts' tendency \"soul monsters\" appear.","areas":["3-1","3-2"],"sources":["m04_00_00_00.lua:1189","m04_01_00_00.lua:602"]},{"judge":30140,"world":"storms","title":"Makoto on the ground","effect":"The Makoto lies on the ground instead of in its usual place.","areas":["4-2"],"sources":["m03_02_00_00.lua:1270"]},{"judge":30130,"world":"storms","title":"Master Satsuki leaves (white)","effect":"The friendly Satsuki searching for his sword is absent; a Satsuki already turned hostile is restored hostile.","areas":["4-1"],"sources":["m03_01_00_00.lua:588","m03_01_00_00.lua:641"]},{"judge":30120,"world":"storms","title":"Satsuki black phantom","effect":"The friendly Satsuki is absent and Satsuki appears as a black phantom (until killed).","areas":["4-1"],"sources":["m03_01_00_00.lua:587","m03_01_00_00.lua:692"]},{"judge":30110,"world":"storms","title":"Ore spirit in 4-2","effect":"The ore spirit appears (until killed).","areas":["4-2"],"sources":["m03_02_00_00.lua:523"]},{"judge":30100,"world":"storms","title":"Soul monsters and black phantoms","effect":"The scripts' tendency \"soul monsters\" appear in 4-1 and three black phantoms in 4-2.","areas":["4-1","4-2"],"sources":["m03_01_00_00.lua:718","m03_02_00_00.lua:1145"]},{"judge":50130,"world":"valley","title":"Selen Vinland appears","effect":"Selen Vinland is present.","areas":["5-2"],"sources":["m05_01_00_00.lua:381"]},{"judge":50140,"world":"valley","title":"Garl Vinland black phantom","effect":"Garl Vinland appears as a black phantom before Maiden Astraea (until killed).","areas":["5-3"],"sources":["m05_02_00_00_eventboss.lua:106"]},{"judge":50150,"world":"valley","title":"Ladder in 5-1","effect":"The tendency ladder is available.","areas":["5-1"],"sources":["m05_00_00_00.lua:410"]},{"judge":50120,"world":"valley","title":"Selen black phantom","effect":"Selen appears as a black phantom (until killed).","areas":["5-2"],"sources":["m05_01_00_00.lua:405"]},{"judge":50110,"world":"valley","title":"Ore spirit in 5-2","effect":"The ore spirit appears (until killed).","areas":["5-2"],"sources":["m05_01_00_00.lua:358"]},{"judge":50100,"world":"valley","title":"Soul monsters","effect":"The scripts' tendency \"soul monsters\" appear.","areas":["5-1","5-2"],"sources":["m05_00_00_00.lua:744","m05_01_00_00.lua:489"]}],"judgeWorld":{"2":"boletaria","3":"storms","4":"latria","5":"valley","6":"stonefang"}};
 /* FIELDS:END */
 
 const FIELD_BY_KEY = new Map();
@@ -3455,7 +3510,7 @@ function renderActivePanel(){
   const e = current(); if(!e) return;
   const stamp = state.rendered.get(state.tab);
   if(stamp && stamp.entry === e && stamp.token === token(e)) return;
-  const renderers = {editor:renderForm,all:renderAll,tree:renderTree,world:renderWorld,ref:renderRef,json:renderJson,changes:renderChanges,catalog:renderCatalog};
+  const renderers = {editor:renderForm,tendency:renderTendency,all:renderAll,tree:renderTree,world:renderWorld,ref:renderRef,json:renderJson,changes:renderChanges,catalog:renderCatalog};
   if(renderers[state.tab]) renderers[state.tab]();
   state.rendered.set(state.tab,{entry:e,token:token(e)});
 }
@@ -3851,6 +3906,263 @@ function fillInvList(host){
     return el;
   });
   section("Equipment slots (meanings not verified)", equipmentRows(s), row => itemRow(`#${row.slot}`, row));
+}
+/* ---- tendency (QWC) --------------------------------------------------------
+   Mirrors src/des_tendency.py; the tables come from the generated TENDENCY
+   block. World slots: _LEFTRIGHT is the value the game uses and displays, and
+   the game copies it to _BLACKWHITE on save, so edits write both. */
+const TD_LIMIT = TENDENCY.limit;
+const TD_WORLD = new Map(TENDENCY.worlds.map(w => [w.key, w]));
+const TD_EVENT = new Map(TENDENCY.events.map(e => [e.judge, e]));
+const TD_AXES = ["pc_wb", "pc_lr", "area_wb", "area_lr"];
+const TD_PC_WB = "TENDENCY_PLAYER_BLACKWHITE", TD_PC_LR = "TENDENCY_PLAYER_LEFTRIGHT";
+const tdWorldFields = slot => [`TENDENCY_WORLD${pad2(slot)}_LEFTRIGHT`, `TENDENCY_WORLD${pad2(slot)}_BLACKWHITE`];
+const tdFmt = v => String(Math.round(v * 1000) / 1000);
+const tdClamp = v => Math.max(-TD_LIMIT, Math.min(TD_LIMIT, v));
+function tdBand(value){
+  for (const [upper, inclusive, name] of TENDENCY.bands) if (value < upper || (inclusive && value === upper)) return name;
+  return TENDENCY.bands[TENDENCY.bands.length - 1][2];
+}
+function tdRead(s){
+  const worlds = {};
+  for (let slot = 0; slot < 7; slot++){
+    const [used, copy] = tdWorldFields(slot), value = s.get(used);
+    worlds[slot] = value === null ? null : {value, copy: s.get(copy)};
+  }
+  return {pc_wb: s.get(TD_PC_WB), pc_lr: s.get(TD_PC_LR), worlds};
+}
+function tdRanges(judge){
+  const row = TENDENCY.judges[judge];
+  return Object.fromEntries(TD_AXES.map((axis, i) => [axis, [row[i * 2], row[i * 2 + 1]]]));
+}
+const tdFull = ([lo, hi]) => lo === -TD_LIMIT && hi === TD_LIMIT;
+function tdJudgeHolds(judge, pcWb, pcLr, area){
+  const values = {pc_wb: pcWb, pc_lr: pcLr, area_wb: area, area_lr: area};
+  for (const [axis, range] of Object.entries(tdRanges(judge))){
+    const value = values[axis];
+    if (value === null || value === undefined){ if (!tdFull(range)) return false; continue; }
+    if (!(range[0] <= value && value <= range[1])) return false;
+  }
+  return true;
+}
+function tdEventActive(event, st){
+  const world = TD_WORLD.get(event.world);
+  let area = null;
+  if (world){ const w = st.worlds[world.slot]; if (!w) return false; area = w.value; }
+  const pcWb = st.pc_wb ?? 0, pcLr = st.pc_lr ?? 0;
+  return [event.judge, ...(event.also || [])].every(j => tdJudgeHolds(j, pcWb, pcLr, area));
+}
+const tdActive = st => TENDENCY.events.filter(e => tdEventActive(e, st)).map(e => e.judge);
+function tdRequirement(event){
+  const out = [], seen = new Set();
+  const add = (target, [lo, hi]) => { const k = `${target}:${lo}:${hi}`; if (!seen.has(k)){ seen.add(k); out.push([target, lo, hi]); } };
+  for (const judge of [event.judge, ...(event.also || [])]){
+    const r = tdRanges(judge);
+    if (!tdFull(r.pc_wb)) add("character", r.pc_wb);
+    if (!tdFull(r.pc_lr)) add("character_lr", r.pc_lr);
+    if (!tdFull(r.area_wb)) add(event.world, r.area_wb);
+  }
+  return out;
+}
+const tdDescribeRange = (lo, hi) => lo === -TD_LIMIT ? `${tdFmt(hi)} or lower` : hi === TD_LIMIT ? `${tdFmt(lo)} or higher` : `${tdFmt(lo)} to ${tdFmt(hi)}`;
+const tdTargetLabel = t => t === "character" ? "Character tendency" : t === "character_lr" ? "Character left/right axis" : TD_WORLD.get(t).name;
+function tdCurrent(st, target){
+  if (target === "character") return st.pc_wb ?? 0;
+  if (target === "character_lr") return st.pc_lr ?? 0;
+  const w = st.worlds[TD_WORLD.get(target).slot]; return w ? w.value : 0;
+}
+function tdNearest(value, lo, hi){
+  if (lo <= value && value <= hi) return value;
+  if (value < lo) return lo === -TD_LIMIT ? lo : Math.min(hi, lo + 1);
+  return hi === TD_LIMIT ? hi : Math.max(lo, hi - 1);
+}
+function tdWithTargets(st, targets){
+  const worlds = {};
+  for (const [slot, w] of Object.entries(st.worlds)) worlds[slot] = w ? {...w} : null;
+  const out = {pc_wb: st.pc_wb, pc_lr: st.pc_lr, worlds};
+  for (const [target, value] of Object.entries(targets)){
+    if (target === "character") out.pc_wb = value;
+    else if (target === "character_lr") out.pc_lr = value;
+    else { const w = worlds[TD_WORLD.get(target).slot]; if (w){ w.value = value; w.copy = value; } }
+  }
+  return out;
+}
+function tdTriggerTargets(st, judges){
+  const bounds = new Map();
+  for (const judge of judges){
+    const event = TD_EVENT.get(judge);
+    for (const [target, lo, hi] of tdRequirement(event)){
+      if (!bounds.has(target)) bounds.set(target, {lo: -TD_LIMIT, hi: TD_LIMIT, sources: []});
+      const b = bounds.get(target); b.lo = Math.max(b.lo, lo); b.hi = Math.min(b.hi, hi); b.sources.push([event.title, lo, hi]);
+    }
+  }
+  const conflicts = [];
+  for (const [target, b] of bounds) if (b.lo > b.hi)
+    conflicts.push(`${tdTargetLabel(target)}: no value satisfies ${b.sources.map(([t, a, c]) => `${t} (${tdDescribeRange(a, c)})`).join("; ")}`);
+  if (conflicts.length) return {targets: {}, conflicts, turnsOn: [], turnsOff: []};
+  const targets = {};
+  for (const [target, b] of bounds){
+    const now = tdCurrent(st, target), value = tdNearest(now, b.lo, b.hi);
+    if (value !== now) targets[target] = value;
+  }
+  const before = new Set(tdActive(st)), after = new Set(tdActive(tdWithTargets(st, targets))), chosen = new Set(judges);
+  return {targets, conflicts,
+          turnsOn: [...after].filter(j => !before.has(j) && !chosen.has(j)).sort((a, b) => a - b),
+          turnsOff: [...before].filter(j => !after.has(j)).sort((a, b) => a - b)};
+}
+function tdApply(s, targets){
+  for (const [target, raw] of Object.entries(targets)){
+    const value = tdClamp(Number(raw));
+    if (!Number.isFinite(value)) throw new Error(`${tdTargetLabel(target)}: not a number`);
+    const names = target === "character" ? [TD_PC_WB] : target === "character_lr" ? [TD_PC_LR] : tdWorldFields(TD_WORLD.get(target).slot);
+    for (const name of names){ if (!s.find(name)) throw new Error(`${name} is not in this save`); s.set(name, value); }
+  }
+}
+
+/* page */
+const tdSelected = new Set();
+function tdCommit(targets, message){
+  if (!Object.keys(targets).length){ notify(message || "Already satisfied: nothing to change."); return; }
+  if (editCandidate(s => tdApply(s, targets)) && message) notify(message);
+}
+function tdTrigger(judges){
+  const e = current(); if (!e) return;
+  const plan = tdTriggerTargets(tdRead(e.save), judges);
+  if (plan.conflicts.length){ fail(new Error(plan.conflicts.join("\n"))); return; }
+  const lines = Object.entries(plan.targets).map(([t, v]) => `${tdTargetLabel(t)} → ${tdFmt(v)} (${tdBand(v)})`);
+  if (plan.turnsOn.length) lines.push("Also turns on: " + plan.turnsOn.map(j => TD_EVENT.get(j).title).join(", "));
+  if (plan.turnsOff.length) lines.push("Turns off: " + plan.turnsOff.map(j => TD_EVENT.get(j).title).join(", "));
+  const names = judges.map(j => TD_EVENT.get(j).title).join(", ");
+  if (!Object.keys(plan.targets).length){ notify(`${names}: already active.`); return; }
+  tdSelected.clear();
+  tdCommit(plan.targets, `Triggered ${names}.\n${lines.join("\n")}\nThe game applies world tendency when the area loads. Undo with Ctrl+Z.`);
+}
+function tdEventRow(event, st){
+  const row = document.createElement("div"); row.className = "tdevent"; row.dataset.judge = event.judge;
+  const pick = document.createElement("input"); pick.type = "checkbox"; pick.checked = tdSelected.has(event.judge);
+  pick.setAttribute("aria-label", `Select ${event.title}`);
+  pick.onchange = () => { pick.checked ? tdSelected.add(event.judge) : tdSelected.delete(event.judge); tdRenderSelection(); };
+  const status = document.createElement("span"); status.className = "st";
+  const text = document.createElement("div");
+  const need = tdRequirement(event).map(([t, lo, hi]) => `${t === event.world ? "" : tdTargetLabel(t) + " "}${tdDescribeRange(lo, hi)}`).join("; ");
+  text.innerHTML = `<div class="tt">${escapeHtml(event.title)} <span class="meta">${escapeHtml(event.areas.join(", "))}</span></div>`
+    + `<div class="meta"><span class="need">needs ${escapeHtml(need)}</span> · ${escapeHtml(event.effect)}</div>`;
+  text.title = `QwcJudge ${event.judge}: ${event.sources.join(", ")}`;
+  const go = document.createElement("button"); go.textContent = "Trigger"; go.dataset.trigger = event.judge;
+  go.onclick = () => tdTrigger([event.judge]);
+  row.append(pick, status, text, go);
+  tdMark(row, tdEventActive(event, st));
+  return row;
+}
+function tdMark(row, on){
+  row.classList.toggle("on", on);
+  row.querySelector(".st").textContent = on ? "Active" : "Inactive";
+  const go = row.querySelector("button"); go.disabled = on; go.title = on ? "Already active" : "Set the tendency this needs";
+}
+function tdPreview(host, st){
+  for (const row of host.querySelectorAll(".tdevent")) tdMark(row, tdEventActive(TD_EVENT.get(Number(row.dataset.judge)), st));
+}
+function tdControl(target, label, value, host){
+  const box = document.createElement("div"); box.className = "tdctl";
+  const id = "td-" + target;
+  box.innerHTML = `<div class="tdhead"><label class="tdname" for="${id}">${escapeHtml(label)}</label><span class="tdband"></span></div>`;
+  const track = document.createElement("div"); track.className = "tdtrack";
+  const range = document.createElement("input"); range.type = "range"; range.min = -TD_LIMIT; range.max = TD_LIMIT; range.step = 1; range.id = id;
+  range.value = value;
+  track.append(range);
+  for (const t of TENDENCY.thresholds){ const tick = document.createElement("span"); tick.className = "tdtick"; tick.style.left = `${(t + TD_LIMIT) / (2 * TD_LIMIT) * 100}%`; track.append(tick); }
+  const scale = document.createElement("div"); scale.className = "tdscale"; scale.innerHTML = "<span>Pure Black −200</span><span>0</span><span>200 Pure White</span>";
+  const row = document.createElement("div"); row.className = "bar";
+  const num = document.createElement("input"); num.type = "number"; num.className = "tdnum"; num.min = -TD_LIMIT; num.max = TD_LIMIT; num.step = "any";
+  num.value = tdFmt(value); num.id = id + "-num"; num.setAttribute("aria-label", `${label} value`);
+  const presets = document.createElement("div"); presets.className = "tdpresets";
+  for (const [name, v] of TENDENCY.presets){
+    const b = document.createElement("button"); b.textContent = name; b.dataset.preset = v;
+    b.onclick = () => tdCommit({[target]: v}, `${label} → ${v} (${tdBand(v)}).`); presets.append(b);
+  }
+  row.append(num, presets);
+  const chip = box.querySelector(".tdband");
+  const show = v => { chip.textContent = tdBand(v); chip.dataset.band = tdBand(v); };
+  show(value);
+  const preview = v => { show(v); const e = current(); if (e && host) tdPreview(host, tdWithTargets(tdRead(e.save), {[target]: v})); };
+  range.oninput = () => { num.value = range.value; preview(Number(range.value)); };
+  range.onchange = () => tdCommit({[target]: Number(range.value)});
+  num.oninput = () => { const v = Number(num.value); if (num.value.trim() && Number.isFinite(v) && Math.abs(v) <= TD_LIMIT){ range.value = v; preview(v); num.classList.remove("invalid"); } else num.classList.add("invalid"); };
+  num.onchange = () => { const v = Number(num.value); if (num.value.trim() && Number.isFinite(v) && Math.abs(v) <= TD_LIMIT) tdCommit({[target]: v}); else fail(new Error(`${label}: enter a number from −${TD_LIMIT} to ${TD_LIMIT}`)); };
+  box.append(track, scale, row);
+  return box;
+}
+function tdRenderSelection(){
+  const bar = $("#tdselection"); if (!bar) return;
+  const n = tdSelected.size;
+  bar.querySelector("span").textContent = n ? `${n} event${n > 1 ? "s" : ""} selected` : "Tick events to trigger several at once";
+  for (const b of bar.querySelectorAll("button")) b.disabled = !n;
+}
+function renderTendency(){
+  const host = $("#tab-tendency"), e = current(); if (!e) return;
+  const focused = document.activeElement && document.activeElement.id;
+  host.replaceChildren();
+  const st = tdRead(e.save);
+  const intro = document.createElement("section"); intro.className = "card";
+  intro.innerHTML = '<h2>Tendency</h2><p class="note">World and character tendency run from −200 (Pure Black) to 200 (Pure White). '
+    + 'Each event below is gated by a range in the game\'s own QwcJudge table; <b>Trigger</b> sets the tendency to the nearest value inside it. '
+    + 'The game applies world tendency when an area loads (load the save, then travel by archstone). Events marked “until killed” happen once.</p>';
+  const hasWorlds = TENDENCY.worlds.some(w => st.worlds[w.slot]);
+  if (st.pc_wb === null && !hasWorlds){
+    intro.insertAdjacentHTML("beforeend", '<p class="tdmuted">This file has no tendency fields (an options profile?).</p>');
+    host.append(intro); return;
+  }
+  const bulk = document.createElement("div"); bulk.className = "bar";
+  bulk.append(Object.assign(document.createElement("span"), {className: "small", textContent: "All worlds:"}));
+  for (const [name, v] of TENDENCY.presets){
+    const b = document.createElement("button"); b.textContent = name; b.dataset.allworlds = v;
+    b.onclick = () => tdCommit(Object.fromEntries(TENDENCY.worlds.filter(w => st.worlds[w.slot]).map(w => [w.key, v])), `Every world → ${v} (${tdBand(v)}).`);
+    bulk.append(b);
+  }
+  intro.append(bulk);
+  const sel = document.createElement("div"); sel.className = "bar tdsel"; sel.id = "tdselection";
+  sel.innerHTML = '<span class="small"></span>';
+  const many = document.createElement("button"); many.className = "primary"; many.textContent = "Trigger selected"; many.id = "tdtriggerselected";
+  many.onclick = () => tdTrigger([...tdSelected]);
+  const clear = document.createElement("button"); clear.textContent = "Clear selection"; clear.onclick = () => { tdSelected.clear(); renderTendency(); };
+  sel.append(many, clear); intro.append(sel);
+  host.append(intro);
+
+  const card = (title, control, events, extra) => {
+    const section = document.createElement("section"); section.className = "card";
+    const h = document.createElement("h2"); h.textContent = title;
+    const body = document.createElement("div"); body.className = "tdcard";
+    const left = document.createElement("div"); left.className = "tdctl";
+    const list = document.createElement("div"); list.className = "tdevents";
+    events.forEach(ev => list.append(tdEventRow(ev, st)));
+    left.append(control(list)); if (extra) left.append(extra);
+    body.append(left, list); section.append(h, body); host.append(section);
+  };
+  if (st.pc_wb !== null){
+    const lr = document.createElement("details");
+    lr.innerHTML = `<summary class="small">Hidden left/right axis: ${escapeHtml(tdFmt(st.pc_lr ?? 0))}</summary><p class="tdmuted">Buying certain spells moves it left (negative), God's Wrath right. It only gates the Nexus dialogue flags below.</p>`;
+    if (st.pc_lr !== null) lr.append(tdControl("character_lr", "Left/right axis", st.pc_lr, null));
+    card("Character", list => tdControl("character", "Character tendency", st.pc_wb, list),
+         TENDENCY.events.filter(ev => ev.world === "character"), lr);
+  }
+  for (const world of TENDENCY.worlds){
+    const w = st.worlds[world.slot];
+    if (!w){
+      const section = document.createElement("section"); section.className = "card";
+      section.innerHTML = `<h2>${escapeHtml(world.name)}</h2><p class="tdmuted">Not in this save.</p>`; host.append(section); continue;
+    }
+    const note = w.copy === w.value ? null : Object.assign(document.createElement("p"), {className: "tdmuted",
+      textContent: `The copy field holds ${tdFmt(w.copy)}; the game overwrites it with ${tdFmt(w.value)} on its next save.`});
+    card(`${world.name} · archstone ${world.archstone}`, list => tdControl(world.key, world.name, w.value, list),
+         TENDENCY.events.filter(ev => ev.world === world.key), note);
+  }
+  const other = document.createElement("p"); other.className = "small";
+  other.textContent = "Slots " + Object.entries(TENDENCY.extraSlots).map(([slot, name]) => {
+    const w = st.worlds[slot]; return `${slot} (${name}): ${w ? tdFmt(w.value) : "absent"}`;
+  }).join(", ") + ". Edit them in All fields if needed.";
+  host.append(other);
+  tdRenderSelection();
+  if (focused){ const again = document.getElementById(focused); if (again) again.focus(); }
 }
 function renderInventoryOnly(){ const host = $("#invlist"); if(host) fillInvList(host); }
 const CATALOG = ITEMDB.map(([id,name,cat]) => ({id,name,cat,search:`${id} ${name} ${CATNAME[cat] || "Unknown"}`.toLowerCase()})).sort((a,b) => a.name.localeCompare(b.name) || a.id-b.id);
