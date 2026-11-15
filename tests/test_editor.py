@@ -217,6 +217,49 @@ class SyntheticBrowserTests(unittest.TestCase):
           return inventoryRows(current().save)[1].quantity === 32;
         }'''))
 
+    def test_respec_matches_python_and_needs_balanced_points(self):
+        import des_character
+        raw = test_save.character_save().build()
+        expected = des_save.SaveFile(raw)
+        des_character.redistribute(expected, {'VIT': 60, 'STR': 40})
+        self.load_bytes(raw)
+        vit = self.page.locator('[data-respec=VITALITY]')
+        vit.fill('60')
+        vit.dispatch_event('input')
+        self.assertIn('too many', self.page.text_content('#respecstatus'))
+        self.assertTrue(self.page.locator('#respecapply').is_disabled())
+        strength = self.page.locator('[data-respec=STRENGTH]')
+        strength.fill('40')
+        strength.dispatch_event('input')
+        self.assertFalse(self.page.locator('#respecapply').is_disabled())
+        self.page.click('#respecapply')
+        self.assertEqual(list(expected.build()), self.page.evaluate('Array.from(current().save.build())'))
+        self.assertEqual(['VITALITY must be 8–99', 'points'], self.page.evaluate('''() => {
+          const out = [];
+          for (const values of [[7,50,50,50,50,50,50,93], [60,50,50,50,50,50,50,50]])
+            try { redistribute(current().save, values); out.push("accepted"); } catch (e) { out.push(e.message); }
+          return [out[0].replace(/^vitality/, "VITALITY").split(" (")[0], out[1].includes("points") ? "points" : out[1]];
+        }'''))
+
+    def test_weapon_variant_matches_python(self):
+        raw = test_save.inventory_save([(0, 21605, 1, 900), (0x40000000, 1001, 3, 0)], [(20100, 1)]).build()
+        expected = des_save.SaveFile(raw)
+        des_inventory.set_weapon_variant(expected, 0, 21600)
+        des_inventory.set_weapon_variant(expected, 0, 20111, 'storage')
+        self.load_bytes(raw)
+        self.assertEqual([n['name'] for n in des_inventory.upgrade_family('Weapon', 21605)],
+                         self.page.evaluate('upgradeFamily(21605).map(id => ITEM_BY_CAT.get("W:"+id))'))
+        result = self.page.evaluate('''() => {
+          const s = current().save, before = s.build();
+          for (const [index, id, where] of [[0, 20100, "inventory"], [1, 21600, "inventory"], [0, 1.5, "inventory"]]) {
+            try { setWeaponVariant(s, index, id, where); return "accepted a bad edit"; } catch (_) {}
+          }
+          if (!bytesEq(before, s.build())) return "a refused edit changed bytes";
+          editCandidate(t => { setWeaponVariant(t, 0, 21600, "inventory"); setWeaponVariant(t, 0, 20111, "storage"); });
+          return Array.from(current().save.build());
+        }''')
+        self.assertEqual(list(expected.build()), result)
+
     def test_entries_past_index_99_count_and_export(self):
         k = des_save.name_key
         i32 = lambda v: (v & 0xFFFFFFFF).to_bytes(4, 'little')
@@ -309,6 +352,19 @@ class AddItemBrowserTests(SyntheticBrowserTests):
         self.page.click(f'#itemlist tr[data-cat="{cat}"][data-id="{item_id}"]')
         self.page.click('#additemapply')
 
+    def test_storage_additions_need_the_experimental_toggle(self):
+        source = self.fixture().build()
+        self.load_bytes(source)
+        self.add_via_dialog('Mail Coif', 'A', 100400, destination='storage')
+        self.assertIn('experimental', self.page.text_content('#message'))
+        self.assertEqual(source, bytes(self.page.evaluate('current().save.build()')))
+        self.page.evaluate('closeItemDialog()')
+        self.page.check('#experimental')
+        self.add_via_dialog('Mail Coif', 'A', 100400, destination='storage')
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Armor', 100400,
+                                                 destination='storage').build()
+        self.assertEqual(expected, bytes(self.page.evaluate('current().save.build()')))
+
     def test_dialog_creates_the_same_bytes_as_python(self):
         source = self.fixture().build()
         self.load_bytes(source)
@@ -368,10 +424,9 @@ class AddItemBrowserTests(SyntheticBrowserTests):
     def test_dialog_guards_cancellation_and_keyboard_use(self):
         source = self.fixture().build()
         self.load_bytes(source)
-        self.assertTrue(self.page.evaluate('!!$("#additem") && $("#additem").disabled'),
-                        'the add button is disabled without the experimental toggle')
+        self.assertTrue(self.page.evaluate('!!$("#additem") && !$("#additem").disabled'),
+                        'inventory additions need no experimental toggle')
         self.assertEqual(source, bytes(self.page.evaluate('current().save.build()')))
-        self.page.check('#experimental')
         self.page.evaluate('openItemDialog()')
         self.assertEqual('itemsearch', self.page.evaluate('document.activeElement.id'))
         self.page.keyboard.press('Tab')

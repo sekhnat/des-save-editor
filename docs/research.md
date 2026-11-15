@@ -96,6 +96,50 @@ from `dspointsofinterest.txt` are not in the save's coordinate space (a
 character placed at one spawned out of bounds). So no individual event was
 observed in game.
 
+## In-game checks
+
+`tools/ingame_check.py` applies edits with the CLI to a copy of the saves, boots
+Demon's Souls on the Kyty emulator inside its own Xvfb server, drives the menus
+with xdotool, takes screenshots, saves and exits, and judges each edit against
+the file the game wrote. The original `_SaveData` is renamed aside with a
+SHA-256 manifest and put back afterwards (see
+[Development](development.md#in-game-checks)).
+
+**Results (2026-11-15, character `DPG`, Royalty, SL 320, at the Gates of
+Boletaria).** *Shown* means the edit was visible in a menu or the world; *kept*
+means the game's own save still held it.
+
+| Edit | Shown | Kept |
+|---|---|---|
+| Inventory quantity (Crescent Moon Grass 45 → 37) | quick-item count 37 | yes |
+| Inventory durability (Kris Blade+5 120 → 61) | weapon list 61/120 | yes |
+| Add a weapon (Broadsword) | weapon list 150/150 | yes |
+| Add armor (Leather Cap) | armour list 400/400 | yes |
+| Add a ring (Ring of Great Strength) and its trophy entry | ring list | yes |
+| Add a new goods stack (Half Moon Grass ×3) | item list, in sort order | yes |
+| Add to a goods stack (Throwing Knife 13 + 5) | item list 18 | yes |
+| Upgrade an equipped weapon (Large Sword of Moonlight+5 → +2) | right hand 1 | yes |
+| Attributes VIT 50 → 60, STR 50 → 40 | Status screen, SL 320 | yes |
+| World state `BROKEN` 1 → 0 on seven 1-1 start objects | intact barricade | yes |
+| Storage quantity, storage addition, storage upgrade | not opened | yes |
+| `CLEARCOUNT` 1 → 2, `CLEARSTATE` 1 → 2 | *Games completed* stayed 1 | yes |
+
+Further observations:
+
+- **Equipment slots.** Slot 0 is left hand 1, slot 1 right hand 1, slot 2 left
+  hand 2, slot 3 right hand 2.
+- **Upgrades keep `DISPLAYID`.** Across the Kyty saves, 4 upgraded weapons carry
+  a `DISPLAYID` sort component that matches an ancestor in their upgrade chain,
+  never a different weapon, so the game changes only the item id when it
+  upgrades.
+- **Derived stats.** After the attribute edit, max HP stayed 1,123 in the menu
+  and in the game's save; item burden changed (255 → 285). The game does not
+  recompute stored maxima on load.
+- **Autosave.** The game rewrites the profile while menus are open, so the
+  harness judges the first write after its save-and-exit keys.
+- **Title menu.** The smoke script's OCR can read the title menu mid-fade and
+  miss *Continue*; a retry a few seconds later finds it.
+
 ## Param definitions
 
 `src/des_gamedata.py` reads the PARAMDEFs (0xB0-byte field records with byte sizes

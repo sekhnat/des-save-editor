@@ -742,7 +742,7 @@ class CreationTests(unittest.TestCase):
             self.add(high, 'Goods', 1001, destination='storage')
 
 
-    def test_cli_add_requires_experimental_and_writes_a_valid_save(self):
+    def test_cli_add_needs_experimental_only_for_storage(self):
         import des_editor
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'USR-DATA'
@@ -750,9 +750,8 @@ class CreationTests(unittest.TestCase):
                                            storage=[{'cat': 'G', 'id': 2000, 'quantity': 25}],
                                            rings=[105], slot_ref=0).build())
             with self.assertRaises(SystemExit):
-                des_editor.main(['add', str(path), 'weapon', '20700'])
-            self.assertEqual(0, des_editor.main(['add', str(path), 'weapon', '20700',
-                                                 '--experimental']))
+                des_editor.main(['add', str(path), 'goods', '1001', '--to', 'storage'])
+            self.assertEqual(0, des_editor.main(['add', str(path), 'weapon', '20700']))
             rows = inventory.inventory(save.SaveFile(path.read_bytes()))
             self.assertEqual((20700, 'Weapon', 1, 600), (rows[1]['id'], rows[1]['category'],
                                                          rows[1]['quantity'], rows[1]['durability']))
@@ -849,15 +848,71 @@ class InventoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             inventory.set_durability(sf, 1, 10)
 
-    def test_cli_inv_needs_experimental_and_writes_a_valid_save(self):
+    def test_cli_inv_needs_experimental_only_for_storage(self):
         import des_editor
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'USR-DATA'
-            path.write_bytes(inventory_save(self.ITEMS).build())
+            path.write_bytes(inventory_save(self.ITEMS, [(0x40000000 | 2000, 25)]).build())
             with self.assertRaises(SystemExit):
-                des_editor.main(['inv', str(path), '--qty', '3=50'])
-            self.assertEqual(0, des_editor.main(['inv', str(path), '--qty', '3=50', '--experimental']))
+                des_editor.main(['inv', str(path), '--box-qty', '0=30'])
+            self.assertEqual(0, des_editor.main(['inv', str(path), '--qty', '3=50']))
             self.assertEqual(50, inventory.inventory(save.SaveFile(path.read_bytes()))[3]['quantity'])
+
+    def test_upgrade_family_follows_origin_across_paths(self):
+        names = [row['name'] for row in inventory.upgrade_family('Weapon', 20111)]
+        self.assertEqual('Broadsword', names[0])
+        self.assertIn('Broadsword+10', names)
+        self.assertIn('Sharp Broadsword+1', names)
+        self.assertEqual(names, [row['name'] for row in inventory.upgrade_family('Weapon', 20100)])
+        self.assertEqual([], inventory.upgrade_family('Armor', 100100))
+
+    def test_weapon_variant_changes_only_the_id_and_the_equipped_slot(self):
+        # Broadsword (20100) in entry 0, equipped through slot 0, and in storage
+        sf = inventory_save([(0, 20100, 1, 150)] + self.ITEMS[1:], [(20100, 1)])
+        display = sf.find('EQUIPMENT_INVENTORY00_DISPLAYID')
+        display.value = (1151 << 16) | 0
+        sf = save.SaveFile(sf.build())
+        before = sf.build()
+        inventory.set_weapon_variant(sf, 0, 20111)
+        inventory.set_weapon_variant(sf, 0, 20110, 'storage')     # Broadsword+10
+        after = sf.build()
+        self.assertEqual(len(before), len(after))
+        again = save.SaveFile(after)
+        self.assertEqual('Sharp Broadsword+1', inventory.inventory(again)[0]['name'])
+        self.assertEqual(1151 << 16, again.get('EQUIPMENT_INVENTORY00_DISPLAYID'))   # left alone
+        self.assertEqual(20111, again.get('EQUIPMENT_SLOT00_EQUIPMENTID'))
+        self.assertEqual('Broadsword+10', inventory.storage(again)[0]['name'])
+
+    def test_weapon_variant_clamps_durability_and_refuses_other_families(self):
+        sf = inventory_save([(0, 21605, 1, 900)] + self.ITEMS[1:])    # Large Sword of Moonlight+5
+        inventory.set_weapon_variant(sf, 0, 21600)
+        limit = inventory._catalog()[('Weapon', 21600)]['durabilityMax']
+        self.assertEqual(min(900, limit), inventory.inventory(sf)[0]['durability'])
+        before = sf.build()
+        for call in (lambda: inventory.set_weapon_variant(sf, 0, 20100),      # another weapon
+                     lambda: inventory.set_weapon_variant(sf, 1, 100200),     # armor entry
+                     lambda: inventory.set_weapon_variant(sf, 0, 1.5),
+                     lambda: inventory.set_weapon_variant(sf, 9, 21601)):
+            with self.assertRaises(ValueError):
+                call()
+        self.assertEqual(before, sf.build())
+
+    def test_cli_upgrade_lists_and_needs_experimental_only_for_storage(self):
+        import contextlib
+        import io
+        import des_editor
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'USR-DATA'
+            path.write_bytes(inventory_save([(0, 20100, 1, 150)], [(20100, 1)]).build())
+            listing = io.StringIO()
+            with contextlib.redirect_stdout(listing):
+                self.assertEqual(0, des_editor.main(['upgrade', str(path), '0']))
+            self.assertIn('Broadsword+10', listing.getvalue())
+            with self.assertRaises(SystemExit):
+                des_editor.main(['upgrade', str(path), '0', '20110', '--storage'])
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, des_editor.main(['upgrade', str(path), '0', '20110']))
+            self.assertEqual(20110, inventory.inventory(save.SaveFile(path.read_bytes()))[0]['id'])
 
     @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')
     def test_every_sample_item_resolves_and_counts_match(self):
@@ -947,6 +1002,56 @@ class PairedSwordTests(unittest.TestCase):
         for path, digest in self.hashes.items():
             self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest(),
                              f'original changed: {path}')
+
+def character_save(archetype=9, values=(50,) * 8):
+    """A player record set: archetype and the eight current attributes."""
+    import des_fields
+    i32 = lambda v: (v & 0xFFFFFFFF).to_bytes(4, 'little')
+    sf = save.SaveFile()
+    sf.records = [save.Field(save.name_key('PLAYER_ARCHETYPE'), save.T_I32, i32(archetype))]
+    sf.records += [save.Field(save.name_key('PLAYER_CURRENT' + a), save.T_I32, i32(v))
+                   for a, v in zip(des_fields.ATTRS, values)]
+    return save.SaveFile(sf.build())
+
+
+class RespecTests(unittest.TestCase):
+    def test_points_move_at_the_same_soul_level(self):
+        import des_character as character
+        sf = character_save()
+        before = sf.build()
+        after = character.redistribute(sf, {'VIT': 60, 'strength': 40})
+        self.assertEqual((60, 40), (after['VITALITY'], after['STRENGTH']))
+        again = save.SaveFile(sf.build())
+        self.assertEqual(320, character.soul_level(character.attributes(again)))
+        self.assertEqual(len(before), len(sf.build()))
+
+    def test_refusals_leave_the_save_unchanged(self):
+        import des_character as character
+        sf = character_save()
+        before = sf.build()
+        floor = character.class_floor(sf)                       # Royalty
+        for change in ({'VIT': 60},                             # soul level would rise
+                       {'VIT': 100, 'STR': 0},                  # out of range
+                       {'LUC': floor['LUCK'] - 1, 'VIT': 50 + 50 - floor['LUCK'] + 1},
+                       {'VIT': 55.0, 'STR': 45},
+                       {'SPEED': 10}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                character.redistribute(sf, change)
+        self.assertEqual(before, sf.build())
+
+    def test_cli_respec_writes_and_refuses(self):
+        import contextlib
+        import io
+        import des_editor
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'USR-DATA'
+            path.write_bytes(character_save().build())
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, des_editor.main(['respec', str(path), 'VIT=60', 'STR=40', '--no-backup']))
+            with self.assertRaises(ValueError):
+                des_editor.main(['respec', str(path), 'VIT=70'])
+            self.assertEqual(60, save.SaveFile(path.read_bytes()).get('PLAYER_CURRENTVITALITY'))
+
 
 class SaveTests(unittest.TestCase):
     def test_signed_int_round_trip(self):

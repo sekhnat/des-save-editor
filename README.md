@@ -26,17 +26,20 @@ macOS, and a standard-library Python CLI covers scripting.
 
 - **Character**: name, class, souls, all eight attributes, vitals, resistances, spells and counters.
 - **Tendency**: set each world and the character from Pure Black to Pure White, see which of the 32 tendency events (black phantoms, NPCs, doors, treasure) are on, and trigger one by putting the tendency into the range the game's own table requires.
-- **Items**: browse the inventory, storage box and equipment slots, edit quantities and durability, and add items from a 2,291-entry catalog.
+- **Items**: browse the inventory, storage box and equipment slots, edit quantities and durability, change a weapon's upgrade level or path, and add items from a 2,291-entry catalog.
+- **Attributes**: move points between the eight attributes at the same soul level.
 - **World state**: inspect per-entity records (archstones, boss loot, chains, statues) labelled with their level and defining game file.
 - **Safe by default**: nothing is written by loading a file, the original bytes are always kept, every edit has undo/redo, and exports are validated before they are offered.
 - **Everything is inspectable**: full tree view, raw field editing, JSON dumps, conflict-checked patches and a before/after diff.
 
 > [!WARNING]
-> A checksum-valid file is not necessarily a game-safe edit. Character-form
-> edits are the best understood. Everything beyond it, such as quantity and
-> durability edits, **item creation** and **world-state edits**, is experimental
-> and opt-in: it follows the layout measured from real saves but has not been
-> verified in game. Back up your entire `_SaveData` folder first.
+> A checksum-valid file is not necessarily a game-safe edit. Inventory quantity
+> and durability edits, adding items to the inventory, weapon upgrades and
+> attribute redistribution were checked in the game (on the Kyty emulator): the
+> menus showed them and the game's own save kept them. **Storage-box edits**
+> were kept but not seen on screen, and **world-state edits** other than
+> `BROKEN` have no observed effect, so both stay experimental and opt-in. Back up
+> your entire `_SaveData` folder first.
 
 ## Download
 
@@ -89,7 +92,7 @@ actually completed.
 
 | View | What it provides |
 |---|---|
-| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells, records, options and coverage warnings; inventory, storage box and equipment slots with experimental **Add item…**; recovered arrays |
+| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels/paths (storage box: experimental); recovered arrays |
 | **Tendency** | Character and the five worlds on a −200 to 200 slider with band, presets and all-world buttons; every tendency event with its required range, live on/off status, **Trigger** (single or several at once) and the events a change turns on or off |
 | **All fields** | Named and unknown records with strict scalar, text and hex editing, filtering, 100 records per page |
 | **Tree** | Container hierarchy and absolute file offsets, 200 records per page |
@@ -155,9 +158,11 @@ python3 src/des_editor.py info FILE                               # header, chec
 python3 src/des_editor.py items FILE [--json]                     # inventory, storage, equipment
 python3 src/des_editor.py get FILE PLAYER_SOULS
 python3 src/des_editor.py set FILE PLAYER_SOULS=250000 --out /tmp/USR-DATA
-python3 src/des_editor.py add FILE weapon 20700 --experimental    # Dragon Bone Smasher
-python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
-python3 src/des_editor.py add FILE ring 123 --experimental        # records trophy history
+python3 src/des_editor.py add FILE weapon 20700                   # Dragon Bone Smasher
+python3 src/des_editor.py add FILE ring 123                       # records trophy history
+python3 src/des_editor.py upgrade FILE 12                         # levels and paths of inventory weapon 12
+python3 src/des_editor.py upgrade FILE 12 20110                   # make it Broadsword+10
+python3 src/des_editor.py respec FILE VIT=40 STR=30               # same soul level
 python3 src/des_editor.py world FILE --filter TEXT                # world-state entities
 python3 src/des_editor.py tendency FILE                           # world/character tendency and events
 python3 src/des_editor.py tendency FILE --trigger 20300           # tendency for one event
@@ -180,10 +185,13 @@ python3 src/des_editor.py patch FILE edits.patch.json --out /tmp/USR-DATA
 python3 src/des_editor.py dump FILE dump.json
 python3 src/des_editor.py verify FILE
 python3 src/des_editor.py items FILE [--json]
-python3 src/des_editor.py inv FILE --experimental --qty 9=40 --durability 0=200 --box-qty 4=30 --out /tmp/USR-DATA
-python3 src/des_editor.py add FILE weapon 20700 --experimental                       # Dragon Bone Smasher
+python3 src/des_editor.py inv FILE --qty 9=40 --durability 0=200 --out /tmp/USR-DATA
+python3 src/des_editor.py inv FILE --box-qty 4=30 --experimental --out /tmp/USR-DATA
+python3 src/des_editor.py add FILE weapon 20700                                      # Dragon Bone Smasher
 python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
-python3 src/des_editor.py add FILE ring 123 --experimental                           # records trophy history
+python3 src/des_editor.py add FILE ring 123                                          # records trophy history
+python3 src/des_editor.py upgrade FILE INDEX [NEW_ID] [--storage --experimental]
+python3 src/des_editor.py respec FILE [VIT=40 STR=30 ...] [--out /tmp/USR-DATA]
 python3 src/des_editor.py arrays FILE
 python3 src/des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
 python3 src/des_editor.py blobs FILE
@@ -197,6 +205,7 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
 
 - `items` lists the inventory, storage box, equipment slots and the number of dead-enemy indices.
+- `upgrade` without a new id lists the weapon's upgrade levels and paths; with one, it changes only the item id (and an equipped slot's id), as the game does. `respec` without assignments shows the attributes and the starting class's minimums; with them, it moves points while keeping the soul level.
 - `arrays` lists the recovered fixed-slot arrays with family names, slot letters, real field names and values; `aslot` writes one slot by array state and suffix character (the letter the listing shows).
 - `blobs` sizes every blob and summarises world-state containers; `world` lists their entities with level, file and named records; `wset` makes an experimental same-size edit of one record addressed by entity GUID and key.
 - `tendency` shows the character and each world with its band and the events it enables; `--set` takes `character`, `character_lr` or a world (`boletaria`, `stonefang`, `latria`, `storms`, `valley`), `--trigger` an event number from `--events`, and a combination no value can satisfy is refused with the conflict.
@@ -210,7 +219,8 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 
 </details>
 
-`inv`, `add` and `wset` require `--experimental`. `add` creates a full `USR-DATA`
+Storage-box edits (`inv --box-qty`, `add --to storage`, `upgrade --storage`) and
+`wset` require `--experimental`. `add` creates a full `USR-DATA`
 through the same validated path as the page. For in-place writes, `set`, `patch`,
 `inv`, `wset` and `aslot` first create a collision-resistant timestamped backup
 (`set --no-backup` is an explicit opt-out). Edited bytes are validated, written to

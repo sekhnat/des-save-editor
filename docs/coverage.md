@@ -6,10 +6,12 @@ tendency (with the game's event conditions) and per-entity world state. A name r
 proof of gameplay meaning, and a checksum-valid file is not necessarily a
 game-safe edit.
 
-Edits beyond the character form are experimental and opt-in. Quantity,
-durability and storage-quantity edits keep every record size. Item creation
-inserts records that follow the layout measured from real saves but has not been
-verified in game.
+Inventory quantity and durability edits, adding items to the inventory, weapon
+upgrades and attribute redistribution were checked in the game on 2026-11-15
+(Kyty, `tools/ingame_check.py`): the menus showed each edit and the game's own
+save kept it (see [Research notes](research.md#in-game-checks)). Storage-box
+edits were kept by the game's save but could not be seen on screen, and world
+state is confirmed only for `BROKEN`; both stay experimental and opt-in.
 
 [← Back to the README](../README.md)
 
@@ -19,6 +21,9 @@ verified in game.
 - [Options](#options)
 - [Inventory, storage box and equipment](#inventory-storage-box-and-equipment)
 - [Adding items](#adding-items)
+- [Weapon upgrades](#weapon-upgrades)
+- [Attribute redistribution](#attribute-redistribution)
+- [New Game+](#new-game)
 - [Dead enemies, not inventory](#dead-enemies-not-inventory)
 - [Catalog IDs](#catalog-ids)
 - [Fixed-slot arrays](#fixed-slot-arrays)
@@ -76,15 +81,17 @@ executable.
   1 armor, 2 ring, 4 goods). With it, every item in both samples resolves to a
   catalog name.
 - `_QUANTITY` holds a little-endian count.
-- Equipment slots reference inventory entries through their `_INDEX` value. Slot
-  meanings (which hand, which quick slot) are not verified.
+- Equipment slots reference inventory entries through their `_INDEX` value. Seen
+  in game: slot 0 is left hand 1, slot 1 right hand 1, slot 2 left hand 2 and
+  slot 3 right hand 2. Other slot meanings are not verified.
 - `EQUIPMENT_INVENTORY_COUNT` is normally a top-level record, but the game also
   writes it as the last child of a top-level container that precedes the entries
   (container `0x4081F683` declaring 8 children instead of 5). Both layouts are
   accepted.
 
-**Editing is experimental and opt-in:** inventory quantity (1–999) and
-durability, and the storage low-quantity byte (1–255), as same-size edits. The
+**Editing:** inventory quantity (1–999) and durability are same-size edits,
+confirmed in game. The storage low-quantity byte (1–255) is experimental and
+opt-in: the game kept it, but the storage box was not opened in game. The
 `_COUNT` fields are read-only in the form. Stack and durability maxima from the
 equip PARAMs (`maxQuantity`, `maxStorageQuantity`, `durabilityMax`) are shown as
 hints and enforced only by item creation; the samples' durabilities sit at or
@@ -92,8 +99,12 @@ below them.
 
 ## Adding items
 
-Experimental and opt-in: enable the card's *Enable experimental …* toggle, then
-use **Add item…** (or the CLI `add`).
+Use **Add item…** (or the CLI `add`). Additions to the inventory were confirmed
+in game: a weapon, an armor piece, a ring, a new goods stack and units added to
+an existing stack all appeared in the menus, sorted where the game sorts them,
+and survived the game's own save. Additions to the storage box were kept by the
+game's save but not seen, so they need the *Enable experimental storage-box
+edits* toggle (CLI: `--experimental`).
 
 - **What is offered.** Supported rows carry PARAM creation data, and the others
   are listed with the reason: weapons, armor, rings and goods with a usable sort
@@ -119,6 +130,40 @@ use **Add item…** (or the CLI `add`).
 - **Refusals.** Layouts that do not match the measured framing are refused, never
   repaired: missing or duplicate counts, incomplete or ambiguous entries, nested
   family records, wrong ordering, and exhausted entry or reference bounds.
+
+## Weapon upgrades
+
+A weapon's upgrade levels and paths are separate catalog rows linked by the
+EquipParamWeapon `originEquipWep` chain (Broadsword → Broadsword+1 … +10, and
+Broadsword → Sharp Broadsword+1 …). The editor offers every row that shares the
+weapon's unupgraded root and changes only the item id: `EQUIPID` in the
+inventory, the low 28 bits of `EQUIPTYPEID` in storage, and an equipped weapon's
+`EQUIPMENT_SLOT##_EQUIPMENTID`. `DISPLAYID` is left alone because the game does
+the same: in real saves an upgraded weapon keeps the sort id from when it was
+acquired (a Compound Short Bow+6 still carries the +0 bow's, a Crescent
+Falchion+4 the Crescent Falchion+1's). Durability above the new maximum is
+lowered to it.
+
+Confirmed in game for the inventory: an equipped Large Sword of Moonlight+5
+changed to +2 showed as +2 in right hand 1 and was kept. A storage-box upgrade
+(Bastard Sword → +10) was kept but not seen, so it is experimental.
+
+## Attribute redistribution
+
+**Redistribute attributes** (CLI `respec`) moves points between the eight
+`PLAYER_CURRENT*` attributes while their sum, and so the soul level, stays the
+same. Each attribute stays between the starting class's value and 99. In game,
+VIT 50 → 60 and STR 50 → 40 showed on the Status screen at the same soul level
+and were kept. The game did **not** recompute the stored max HP, MP or stamina
+on load or save (HP stayed 1,123), although item burden changed at once. The
+`PLAYER_BASE*` records are left alone; their meaning is not established (one
+sample holds base 30 with current 50).
+
+## New Game+
+
+Not editable. The exit screen shows *Games completed*, but neither `CLEARCOUNT`
+(1 → 2) nor `CLEARSTATE` (1 → 2) changed it, although the game kept both values
+in its save. The counter it displays is stored elsewhere.
 
 ## Dead enemies, not inventory
 
@@ -204,9 +249,11 @@ The largest blob (key `6d87f588`) holds per-entity records keyed by entity GUIDs
 from the game's prefab files: archstones, boss loot, broken objects, chains,
 statues, moved objects' transforms. 431 of 437 entities in the larger sample are
 labelled with their level and file. Names such as `BOSS_LOOT_VISIBLE` or
-`O2110_0000_CHAINS_BOL_SAVE` come from the game's own strings; what changing them
-does in game is not verified, so world edits are opt-in, same-size and
-experimental. The blob framing is in [Save format](format.md#world-state-blobs).
+`O2110_0000_CHAINS_BOL_SAVE` come from the game's own strings. One record type
+was seen working in game: setting `BROKEN` from 1 to 0 on the seven broken
+objects at the 1-1 start put an intact wooden barricade back where the debris
+lay, and the game kept the change. What changing the other records does is not
+verified, so world edits stay opt-in, same-size and experimental. The blob framing is in [Save format](format.md#world-state-blobs).
 
 ## Append-only saves
 

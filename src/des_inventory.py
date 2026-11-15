@@ -214,6 +214,77 @@ def set_storage_quantity(sf, index: int, quantity) -> None:
         raise ValueError('HIGHQUANTITY is non-zero; its meaning is not verified')
     fields['LOWQUANTITY'].value = _whole(quantity, 1, 255, 'storage quantity')
 
+
+def upgrade_root(entry: dict, catalog: dict) -> dict:
+    """The unupgraded weapon an upgrade row descends from, following `origin`."""
+    seen = set()
+    while entry.get('origin') is not None and entry['id'] not in seen:
+        seen.add(entry['id'])
+        parent = catalog.get((entry['category'], entry['origin']))
+        if parent is None:
+            break
+        entry = parent
+    return entry
+
+
+def upgrade_family(category: str, item_id: int, catalog: dict | None = None) -> list[dict]:
+    """Every weapon row (levels and paths) sharing this one's unupgraded root."""
+    catalog = _catalog() if catalog is None else catalog
+    entry = catalog.get((category, item_id))
+    if category != 'Weapon' or entry is None:
+        return []
+    root = upgrade_root(entry, catalog)['id']
+    return sorted((row for (kind, _), row in catalog.items()
+                   if kind == 'Weapon' and upgrade_root(row, catalog)['id'] == root),
+                  key=lambda row: row['id'])
+
+
+def set_weapon_variant(sf, index: int, new_id, destination: str = 'inventory') -> None:
+    """Change a weapon to another level or path of its upgrade family.
+
+    Only the item ID changes, as when the game upgrades a weapon: real saves
+    keep the sort component of DISPLAYID from when the weapon was acquired
+    (a Compound Short Bow+6 still carries the +0 bow's sortId), so DISPLAYID
+    is left alone. An equipped inventory weapon's EQUIPMENT_SLOT##_EQUIPMENTID
+    follows the new ID. Durability above the new maximum is lowered to it.
+    """
+    catalog = _catalog()
+    if destination == 'inventory':
+        fields = _editable(sf, 'EQUIPMENT_INVENTORY', INVENTORY_PARTS, index)
+        kind, old_id = category(_value(fields, 'TYPE') or 0), _value(fields, 'EQUIPID')
+    elif destination == 'storage':
+        fields = _editable(sf, 'EQUIPMENT_STORAGEBOX', STORAGE_PARTS, index)
+        typed = _value(fields, 'EQUIPTYPEID')
+        kind, old_id = category(typed), typed & 0x0FFFFFFF
+    else:
+        raise ValueError("destination must be 'inventory' or 'storage'")
+    if kind != 'Weapon':
+        raise ValueError(f'{destination} entry {index} is not a weapon')
+    new_id = _whole(new_id, 0, 0x0FFFFFFF, 'weapon id')
+    family = {row['id']: row for row in upgrade_family(kind, old_id, catalog)}
+    if old_id not in family:
+        raise ValueError(f'weapon {old_id} is not in the catalog')
+    if new_id not in family:
+        raise ValueError(f'weapon {new_id} is not an upgrade level or path of '
+                         f'{upgrade_root(family[old_id], catalog)["name"]}')
+    target = family[new_id]
+    durability_part = 'DURABILITY_CURRENT' if destination == 'inventory' else 'DURABILITY'
+    limit = target.get('durabilityMax')
+    if destination == 'inventory':
+        ref = _value(fields, 'INDEX')
+        present = sf.key_index()
+        slots = [present[SLOT_EQUIPMENT_KEYS[slot]][0] for slot in range(MAX_SLOTS)
+                 if SLOT_INVENTORY_KEYS[slot] in present and SLOT_EQUIPMENT_KEYS[slot] in present
+                 and present[SLOT_INVENTORY_KEYS[slot]][0].value == ref
+                 and present[SLOT_EQUIPMENT_KEYS[slot]][0].value == old_id]
+        fields['EQUIPID'].value = new_id
+        for slot in slots:
+            slot.value = new_id
+    else:
+        fields['EQUIPTYPEID'].value = CREATION_CATEGORY_BITS['Weapon'] | new_id
+    if isinstance(limit, int) and limit > 0 and fields[durability_part].value > limit:
+        fields[durability_part].value = limit
+
 # --------------------------------------------------------------------------- #
 #  Item creation (experimental, verified in memory but not yet in game)
 # --------------------------------------------------------------------------- #

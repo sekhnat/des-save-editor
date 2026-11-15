@@ -10,7 +10,9 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py dump   <USR-DATA> out.json
     python3 des_editor.py patch  <USR-DATA> out.json --out <USR-DATA>
     python3 des_editor.py items  <USR-DATA>          # inventory, storage, equipment
-    python3 des_editor.py add    <USR-DATA> weapon 20700 --experimental   # add item (experimental)
+    python3 des_editor.py add    <USR-DATA> weapon 20700      # add an item to the inventory
+    python3 des_editor.py upgrade <USR-DATA> 69 10603         # weapon level/path
+    python3 des_editor.py respec <USR-DATA> VIT=60 STR=40   # same soul level
     python3 des_editor.py world  <USR-DATA>          # world-state entities
     python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
@@ -28,6 +30,7 @@ import sys
 import time
 
 import des_arrays
+import des_character
 import des_diff
 import des_fields
 import des_inventory
@@ -322,7 +325,7 @@ def cmd_items(path: str, as_json: bool) -> int:
 
 def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
             box_quantities: list[str], out: str | None) -> int:
-    """Experimental same-size edits of inventory and storage values."""
+    """Same-size edits of inventory values; storage-box quantities are experimental."""
     sf = des_save.load(path)
     for specs, setter, label in ((quantities, des_inventory.set_quantity, 'quantity'),
                                  (durabilities, des_inventory.set_durability, 'durability'),
@@ -339,7 +342,7 @@ def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
 
 def cmd_add(path: str, category: str, item_id: str, destination: str, quantity: str,
             out: str | None) -> int:
-    """Experimental item creation, written only after the operation succeeds."""
+    """Item creation, written only after the operation succeeds (storage box: experimental)."""
     name = {'weapon': 'Weapon', 'armor': 'Armor', 'ring': 'Ring',
             'goods': 'Goods'}.get(category.strip().lower())
     if name is None:
@@ -352,6 +355,52 @@ def cmd_add(path: str, category: str, item_id: str, destination: str, quantity: 
     label = entry['name'] if entry else '?'
     print(f"  added {label} ({name} {numeric_id}) to the {destination}")
     return _write(created, path, out)
+
+
+def cmd_upgrade(path: str, index: str, new_id: str, storage: bool, list_family: bool,
+                out: str | None) -> int:
+    """Change a weapon to another upgrade level or path of the same weapon."""
+    sf = des_save.load(path)
+    destination = 'storage' if storage else 'inventory'
+    rows = des_inventory.storage(sf) if storage else des_inventory.inventory(sf)
+    row = next((r for r in rows if r['index'] == int(index)), None)
+    if row is None:
+        raise ValueError(f'{destination} entry {index} does not exist')
+    if list_family or new_id is None:
+        for entry in des_inventory.upgrade_family(row['category'], row['id']):
+            mark = '  <- current' if entry['id'] == row['id'] else ''
+            print(f"  {entry['id']:>7}  {entry['name']}{mark}")
+        return 0
+    numeric_id = int(new_id, 0)
+    des_inventory.set_weapon_variant(sf, int(index), numeric_id, destination)
+    entry = des_inventory._catalog().get(('Weapon', numeric_id))
+    print(f"  {destination} {int(index):02d}: {row['name']} -> {entry['name'] if entry else numeric_id}")
+    return _write(sf, path, out)
+
+
+def cmd_respec(path: str, assignments: list[str], out: str | None, no_backup: bool) -> int:
+    """Move points between attributes at the same soul level."""
+    sf = des_save.load(path)
+    if not assignments:
+        values, floor = des_character.attributes(sf), des_character.class_floor(sf)
+        print(f"  soul level {des_character.soul_level(values)}")
+        for name in des_character.ATTRS:
+            print(f"  {name.lower():<13} {values[name]!s:>3}   (class minimum {floor[name]})")
+        return 0
+    changes = {}
+    for spec in assignments:
+        name, sep, value = spec.partition('=')
+        if not sep:
+            raise ValueError(f'bad assignment {spec!r} (expected ATTRIBUTE=VALUE, e.g. VIT=40)')
+        changes[name] = int(value, 0)
+    before = des_character.attributes(sf)
+    after = des_character.redistribute(sf, changes)
+    for name in des_character.ATTRS:
+        if after[name] != before[name]:
+            print(f"  {name.lower():<13} {before[name]} -> {after[name]}")
+    print(f"  soul level stays {des_character.soul_level(after)}; max HP/MP/stamina keep their "
+          "stored values (the game did not recompute them)")
+    return _write(sf, path, out, backup=not no_backup)
 
 
 def cmd_arrays(path: str, as_json: bool) -> int:
@@ -661,11 +710,17 @@ def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: b
 
 
 # --------------------------------------------------------------------------- #
-# Commands that write something not yet verified in game need --experimental.
+# Edits not yet confirmed in game need --experimental. Inventory quantity,
+# durability, item creation and weapon upgrades were shown and kept by the game
+# (Kyty, 2026-11-15; docs/research.md). Storage-box edits were kept by the
+# game's own save but not seen on screen; world-state records beyond BROKEN
+# have no observed effect.
+STORAGE_UNSEEN = "storage-box edits are kept by the game but were not seen in game"
 EXPERIMENTAL = {
-    "inv": "inventory edits are not yet verified in game",
-    "wset": "world-state record meanings are unverified",
-    "add": "item creation is not yet verified in game",
+    "inv": lambda a: STORAGE_UNSEEN if a.box_qty else None,
+    "wset": lambda a: "world-state record meanings are unverified",
+    "add": lambda a: STORAGE_UNSEEN if a.destination == "storage" else None,
+    "upgrade": lambda a: STORAGE_UNSEEN if a.storage and a.id is not None and not a.list_family else None,
 }
 
 COMMANDS = {
@@ -680,6 +735,8 @@ COMMANDS = {
     "items": lambda a: cmd_items(a.file, a.as_json),
     "add": lambda a: cmd_add(a.file, a.category, a.id, a.destination, a.quantity, a.out),
     "inv": lambda a: cmd_inv(a.file, a.qty, a.durability, a.box_qty, a.out),
+    "respec": lambda a: cmd_respec(a.file, a.assignments, a.out, a.no_backup),
+    "upgrade": lambda a: cmd_upgrade(a.file, a.index, a.id, a.storage, a.list_family, a.out),
     "arrays": lambda a: cmd_arrays(a.file, a.as_json),
     "aslot": lambda a: cmd_aslot(a.file, a.state, a.sets, a.clear, a.out),
     "blobs": lambda a: cmd_blobs(a.file),
@@ -717,7 +774,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("file")
     p.add_argument("--json", action="store_true", dest="as_json")
 
-    p = sub.add_parser("add", help="experimental: add an item to the inventory or storage box")
+    p = sub.add_parser("add", help="add an item to the inventory (storage box: experimental)")
     p.add_argument("file")
     p.add_argument("category", help="weapon, armor, ring or goods")
     p.add_argument("id", help="catalog item id (category-specific)")
@@ -726,12 +783,28 @@ def main(argv: list[str]) -> int:
     p.add_argument("--quantity", default="1",
                    help="stack units for goods and ammunition (default 1)")
     p.add_argument('--experimental', action='store_true',
-                   help='acknowledge that item creation is not yet verified in game')
+                   help='acknowledge that storage-box additions were not seen in game')
     p.add_argument("--out", help="write to this path instead of in place")
-    p = sub.add_parser("inv", help="experimental same-size edits of inventory and storage values")
+    p = sub.add_parser("respec", help="move points between attributes at the same soul level")
+    p.add_argument("file")
+    p.add_argument("assignments", nargs="*", metavar="ATTRIBUTE=VALUE",
+                   help="e.g. VIT=40 STR=30; omit to show attributes and class minimums")
+    p.add_argument("--out", help="write to this path instead of in place")
+    p.add_argument("--no-backup", action="store_true")
+    p = sub.add_parser("upgrade", help="change a weapon's upgrade level or path (storage box: experimental)")
+    p.add_argument("file")
+    p.add_argument("index", help="inventory (or with --storage, storage box) entry index")
+    p.add_argument("id", nargs="?", help="the new weapon id; omit to list the weapon's levels and paths")
+    p.add_argument("--storage", action="store_true", help="the index is a storage box entry")
+    p.add_argument("--list", action="store_true", dest="list_family",
+                   help="list the weapon's levels and paths")
+    p.add_argument('--experimental', action='store_true',
+                   help='acknowledge that storage-box upgrades were not seen in game')
+    p.add_argument("--out", help="write to this path instead of in place")
+    p = sub.add_parser("inv", help="same-size edits of inventory values (storage box: experimental)")
     p.add_argument("file")
     p.add_argument('--experimental', action='store_true',
-                   help='acknowledge that edits are not yet verified in game')
+                   help='acknowledge that storage-box edits were not seen in game')
     p.add_argument("--qty", action="append", default=[], metavar="INDEX=N",
                    help="inventory stack size (1..999)")
     p.add_argument("--durability", action="append", default=[], metavar="INDEX=N")
@@ -794,8 +867,9 @@ def main(argv: list[str]) -> int:
     a = ap.parse_args(argv)
     if a.cmd == "tendency" and not a.file and not a.list_events:
         ap.error("tendency needs a file (or --events)")
-    if a.cmd in EXPERIMENTAL and not a.experimental:
-        ap.error(f'{a.cmd} requires --experimental: {EXPERIMENTAL[a.cmd]}')
+    reason = EXPERIMENTAL[a.cmd](a) if a.cmd in EXPERIMENTAL else None
+    if reason and not a.experimental:
+        ap.error(f'{a.cmd} requires --experimental here: {reason}')
     return COMMANDS[a.cmd](a)
 
 

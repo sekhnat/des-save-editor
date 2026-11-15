@@ -13,6 +13,10 @@ init is the initial durability of weapons and armor; ammo is 1 for arrows and
 bolts. Old catalogs without the extra fields still embed unchanged, which
 disables add-item but not browsing or existing edits.
 
+CLASSES rows are [archetype, name, CharaInitParam row, starting attributes in
+des_fields.ATTRS order]. WEAPON_ORIGIN maps a weapon id to the id it is upgraded from (the catalog's
+`origin`), which gives each weapon's family of levels and paths.
+
 Use --stdout to emit only the replacement script block (useful for build tools)
 and --check to test that the page matches itemdb.json.
 """
@@ -51,10 +55,14 @@ def catalog_block(doc: dict) -> str:
     # Escaping < prevents a localized name from terminating the inline script.
     encoded = [json.dumps(row, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
                .replace('\u2028', '\\u2028').replace('\u2029', '\\u2029') for row in rows]
-    classes = json.dumps([[c['archetype'], c['name'], c['row']] for c in doc.get('classes', [])],
+    classes = json.dumps([[c['archetype'], c['name'], c['row'], c.get('baseStats', [])]
+                          for c in doc.get('classes', [])],
                          ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c')
+    origins = {entry['id']: entry['origin'] for entry in doc['items']
+               if entry['category'] == 'Weapon' and isinstance(entry.get('origin'), int)}
     return (START + '\nconst ITEMDB = [\n' + ',\n'.join(encoded) + '\n];\n'
-            + 'const CLASSES = ' + classes + ';\n' + END + '\n')
+            + 'const CLASSES = ' + classes + ';\n'
+            + 'const WEAPON_ORIGIN = ' + json.dumps(origins, separators=(',', ':')) + ';\n' + END + '\n')
 
 
 def embed(html: str, doc: dict) -> str:
