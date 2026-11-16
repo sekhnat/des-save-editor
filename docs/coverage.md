@@ -104,7 +104,8 @@ in game: a weapon, an armor piece, a ring, a new goods stack and units added to
 an existing stack all appeared in the menus, sorted where the game sorts them,
 and survived the game's own save. Additions to the storage box were kept by the
 game's save but not seen, so they need the *Enable experimental storage-box
-edits* toggle (CLI: `--experimental`).
+edits* toggle (CLI: `--experimental`). Easy mode shows a warning when the storage
+box is chosen instead, and turns the flag on for that file when the item is added.
 
 - **What is offered.** Supported rows carry PARAM creation data, and the others
   are listed with the reason: weapons, armor, rings and goods with a usable sort
@@ -158,6 +159,10 @@ and were kept. The game did **not** recompute the stored max HP, MP or stamina
 on load or save (HP stayed 1,123), although item burden changed at once. The
 `PLAYER_BASE*` records are left alone; their meaning is not established (one
 sample holds base 30 with current 50).
+
+A **level change** (Easy mode's attribute card when the total changes, CLI
+`respec --level`) uses the same fields and bounds but lets the sum, and so the
+soul level, change. It has **not** been checked in game yet.
 
 ## New Game+
 

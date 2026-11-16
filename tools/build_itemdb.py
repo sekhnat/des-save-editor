@@ -20,6 +20,16 @@ from des_gamedata import load_params, parse_bnd3, parse_ctxt, parse_param  # noq
 CREATION_TABLES = {'Weapon': 'EQUIP_PARAM_WEAPON_ST', 'Armor': 'EQUIP_PARAM_PROTECTOR_ST',
                    'Ring': 'EQUIP_PARAM_ACCESSORY_ST', 'Goods': 'EQUIP_PARAM_GOODS_ST'}
 AMMO_CATEGORIES = (13, 14)          # weaponCategory: arrows and bolts
+# Item kind for the editor's glyphs, from each table's own type field. The
+# value lists were matched against item names in the PS5 dump (2026-11-16).
+KIND_FIELDS = {
+    'Weapon': ('weaponCategory', ('dagger', 'sword', 'thrust', 'curved', 'axe', 'hammer', 'spear',
+                                  'polearm', 'catalyst', 'fist', 'bow', 'crossbow', 'shield',
+                                  'arrow', 'bolt')),
+    'Armor': ('protectorCategory', ('head', 'body', 'arms', 'legs', 'hair')),
+    'Goods': ('goodsType', ('consumable', 'key', 'material', 'demonsoul')),
+    'Ring': ('accessoryCategory', ('ring',)),
+}
 BND_TABLES = {
     'EquipParamGoods.param': 'Goods', 'EquipParamWeapon.param': 'Weapon',
     'EquipParamProtector.param': 'Armor', 'EquipParamAccessory.param': 'Ring',
@@ -96,14 +106,18 @@ def build_catalog(game: str | Path, language: str = 'en-gb') -> dict:
             entry['durability'] = row['durability']
         if row.get('weaponCategory') in AMMO_CATEGORIES:
             entry['ammo'] = True
+        field, kinds = KIND_FIELDS[kind]
+        if isinstance(row.get(field), int) and 0 <= row[field] < len(kinds):
+            entry['kind'] = kinds[row[field]]
     classes = _classes(tables.get('CHARACTER_INIT_PARAM', {}), items)
     if not items:
         raise ValueError('No PARAM rows or localized names found in the supplied game folder')
     rows = sorted(items.values(), key=lambda entry: (entry['category'], entry['id']))
-    return {'schema': 4, 'language': language, 'count': len(rows),
+    return {'schema': 5, 'language': language, 'count': len(rows),
             'categories': dict(sorted(Counter(entry['category'] for entry in rows).items())),
-            'note': 'IDs are category-specific. Limits, sort ids, durability and the '
-                    'ammunition classification come from the equip PARAMs via their PARAMDEFs.',
+            'note': 'IDs are category-specific. Limits, sort ids, durability, the '
+                    'ammunition classification and the item kind come from the equip PARAMs '
+                    'via their PARAMDEFs.',
             'classes': classes, 'items': rows}
 
 

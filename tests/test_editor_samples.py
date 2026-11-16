@@ -64,6 +64,7 @@ class BrowserTests(unittest.TestCase):
         self.errors = []
         self.page.on('pageerror', lambda error: self.errors.append(str(error)))
         self.page.on('dialog', lambda dialog: dialog.accept())
+        self.page.add_init_script("localStorage.setItem('des-editor-mode', 'advanced')")  # full editor
         self.page.goto((EDITOR / 'des_editor.html').as_uri())
 
     def tearDown(self):

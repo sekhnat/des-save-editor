@@ -15,6 +15,7 @@ fixture = Path(os.environ.get('DES_SAVE_DIR', root.parent / '_SaveData/PPSA01341
 with sync_playwright() as p:
     browser = p.chromium.launch()
     page = browser.new_page()
+    page.add_init_script("localStorage.setItem('des-editor-mode', 'advanced')")  # full editor
     page.goto((root / 'des_editor.html').as_uri())
     if fixture.exists():
         page.set_input_files('#file', str(fixture))

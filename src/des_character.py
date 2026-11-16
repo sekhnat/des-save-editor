@@ -1,4 +1,4 @@
-"""Character attributes: move points between them at the same soul level.
+"""Character attributes: move points between them, or change the soul level.
 
 The game shows and keeps PLAYER_CURRENT<ATTRIBUTE> (measured in Kyty on
 2026-11-15: a save with VIT 60 / STR 40 written by the editor showed those
@@ -9,7 +9,8 @@ not recompute them on load or save, so they keep their old values.
 
 Soul level is sum(current attributes) - 80, so a redistribution that keeps the
 sum keeps the soul level. Each attribute stays within the starting class's
-value (CharaInitParam row 1000 + archetype) and 99.
+value (CharaInitParam row 1000 + archetype) and 99. set_attributes() lets
+the sum, and so the soul level, change; that has not been checked in game.
 """
 from __future__ import annotations
 
@@ -53,6 +54,19 @@ def attribute_name(text: str) -> str:
 
 def redistribute(sf, changes: dict[str, int]) -> dict[str, int]:
     """Set some current attributes, keeping the soul level; nothing changes on error."""
+    return _assign(sf, changes, keep_level=True)
+
+
+def set_attributes(sf, changes: dict[str, int]) -> dict[str, int]:
+    """Set some current attributes and let the soul level follow; nothing changes on error.
+
+    Same bounds and fields as redistribute(). Not checked in game: only
+    redistribution at the same soul level has been seen on the Status screen.
+    """
+    return _assign(sf, changes, keep_level=False)
+
+
+def _assign(sf, changes: dict[str, int], keep_level: bool) -> dict[str, int]:
     before = attributes(sf)
     level = soul_level(before)
     if level is None:
@@ -68,7 +82,7 @@ def redistribute(sf, changes: dict[str, int]) -> dict[str, int]:
             raise ValueError(f'{name.lower()} must be {floor[name]}..{MAX_ATTRIBUTE} '
                              f'(the starting class has {floor[name]})')
     moved = soul_level(after) - level
-    if moved:
+    if moved and keep_level:
         raise ValueError(f'the new attributes are {abs(moved)} point{"s" * (abs(moved) != 1)} '
                          f'{"over" if moved > 0 else "under"} soul level {level}; '
                          'take them from or give them to another attribute')

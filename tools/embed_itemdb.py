@@ -6,11 +6,13 @@ Rows keep their historical meanings and gain creation metadata for add-item:
     [id, name, cat]                                  text-only / schema-3 entry
     [id, name, cat, limit, box]                      schema-3 entry with limits
     [id, name, cat, limit, box, sort, init, ammo]    PARAM-backed entry (schema 4)
+    [id, name, cat, limit, box, sort, init, ammo, kind]   with the item kind (schema 5)
 
 limit is maxQuantity for goods and durabilityMax for weapons and armor; sort is
 the PARAM sortId (None for unusable values such as the -1 placeholder rows);
 init is the initial durability of weapons and armor; ammo is 1 for arrows and
-bolts. Old catalogs without the extra fields still embed unchanged, which
+bolts; kind is the type name from the equip PARAM (sword, head, key, ...) that
+picks the editor's glyph. Old catalogs without the extra fields still embed unchanged, which
 disables add-item but not browsing or existing edits.
 
 CLASSES rows are [archetype, name, CharaInitParam row, starting attributes in
@@ -47,6 +49,8 @@ def _row(entry: dict) -> list:
             sort if isinstance(sort, int) and 0 <= sort <= 0xFFFF else None,
             entry.get('durability'),
             1 if entry.get('ammo') else 0]
+    if entry.get('kind'):
+        row.append(entry['kind'])
     return row
 
 

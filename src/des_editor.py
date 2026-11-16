@@ -13,6 +13,7 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py add    <USR-DATA> weapon 20700      # add an item to the inventory
     python3 des_editor.py upgrade <USR-DATA> 69 10603         # weapon level/path
     python3 des_editor.py respec <USR-DATA> VIT=60 STR=40   # same soul level
+    python3 des_editor.py respec <USR-DATA> VIT=70 --level  # soul level follows
     python3 des_editor.py world  <USR-DATA>          # world-state entities
     python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
@@ -378,8 +379,9 @@ def cmd_upgrade(path: str, index: str, new_id: str, storage: bool, list_family: 
     return _write(sf, path, out)
 
 
-def cmd_respec(path: str, assignments: list[str], out: str | None, no_backup: bool) -> int:
-    """Move points between attributes at the same soul level."""
+def cmd_respec(path: str, assignments: list[str], out: str | None, no_backup: bool,
+               level: bool = False) -> int:
+    """Move points between attributes at the same soul level, or change it with level."""
     sf = des_save.load(path)
     if not assignments:
         values, floor = des_character.attributes(sf), des_character.class_floor(sf)
@@ -394,12 +396,13 @@ def cmd_respec(path: str, assignments: list[str], out: str | None, no_backup: bo
             raise ValueError(f'bad assignment {spec!r} (expected ATTRIBUTE=VALUE, e.g. VIT=40)')
         changes[name] = int(value, 0)
     before = des_character.attributes(sf)
-    after = des_character.redistribute(sf, changes)
+    after = (des_character.set_attributes if level else des_character.redistribute)(sf, changes)
     for name in des_character.ATTRS:
         if after[name] != before[name]:
             print(f"  {name.lower():<13} {before[name]} -> {after[name]}")
-    print(f"  soul level stays {des_character.soul_level(after)}; max HP/MP/stamina keep their "
-          "stored values (the game did not recompute them)")
+    old, new = des_character.soul_level(before), des_character.soul_level(after)
+    print(f"  soul level {'stays ' + str(new) if old == new else f'{old} -> {new} (not checked in game)'}; "
+          "max HP/MP/stamina keep their stored values (the game did not recompute them)")
     return _write(sf, path, out, backup=not no_backup)
 
 
@@ -735,7 +738,7 @@ COMMANDS = {
     "items": lambda a: cmd_items(a.file, a.as_json),
     "add": lambda a: cmd_add(a.file, a.category, a.id, a.destination, a.quantity, a.out),
     "inv": lambda a: cmd_inv(a.file, a.qty, a.durability, a.box_qty, a.out),
-    "respec": lambda a: cmd_respec(a.file, a.assignments, a.out, a.no_backup),
+    "respec": lambda a: cmd_respec(a.file, a.assignments, a.out, a.no_backup, a.level),
     "upgrade": lambda a: cmd_upgrade(a.file, a.index, a.id, a.storage, a.list_family, a.out),
     "arrays": lambda a: cmd_arrays(a.file, a.as_json),
     "aslot": lambda a: cmd_aslot(a.file, a.state, a.sets, a.clear, a.out),
@@ -785,12 +788,14 @@ def main(argv: list[str]) -> int:
     p.add_argument('--experimental', action='store_true',
                    help='acknowledge that storage-box additions were not seen in game')
     p.add_argument("--out", help="write to this path instead of in place")
-    p = sub.add_parser("respec", help="move points between attributes at the same soul level")
+    p = sub.add_parser("respec", help="move points between attributes at the same soul level, or level up/down with --level")
     p.add_argument("file")
     p.add_argument("assignments", nargs="*", metavar="ATTRIBUTE=VALUE",
                    help="e.g. VIT=40 STR=30; omit to show attributes and class minimums")
     p.add_argument("--out", help="write to this path instead of in place")
     p.add_argument("--no-backup", action="store_true")
+    p.add_argument("--level", action="store_true",
+                   help="let the soul level change with the attributes (not checked in game)")
     p = sub.add_parser("upgrade", help="change a weapon's upgrade level or path (storage box: experimental)")
     p.add_argument("file")
     p.add_argument("index", help="inventory (or with --storage, storage box) entry index")

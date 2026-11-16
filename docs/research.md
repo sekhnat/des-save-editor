@@ -199,7 +199,12 @@ and uses exact PARAM row IDs. Counts: Armor 147, Goods 157, Ring 35, Skill 28,
 Spell 40, Weapon 1884. `hasParam` distinguishes rows backed by a parameter table
 from text-only entries, and schema-4 rows additionally carry `sortId`, initial
 `durability` and an `ammo` flag (weaponCategory 13/14) as the creation metadata
-for add-item.
+for add-item. Schema 5 adds `kind`, the item type that picks the editor's glyph.
+It comes from `weaponCategory` 0–14 (dagger, sword, thrust, curved, axe, hammer,
+spear, polearm, catalyst, fist, bow, crossbow, shield, arrow, bolt),
+`protectorCategory` 0–4 (head, body, arms, legs, hair), `goodsType` 0–3
+(consumable, key, material, demonsoul) and `accessoryCategory` 0 (ring). These
+meanings were matched against item names in the PS5 dump.
 
 The embed tools offer `--stdout` or `--check` modes for reproducible builds
 (`tools/embed_itemdb.py --check` covers the page block).

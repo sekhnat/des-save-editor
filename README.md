@@ -24,10 +24,11 @@ macOS, and a standard-library Python CLI covers scripting.
 
 ## Highlights
 
+- **Easy and Advanced modes**: Easy shows only souls, name, class and attributes, world tendency sliders, and adding items, with a character figure and an icon for every item. Advanced is the full editor. The page remembers your choice.
 - **Character**: name, class, souls, all eight attributes, vitals, resistances, spells and counters.
 - **Tendency**: set each world and the character from Pure Black to Pure White, see which of the 32 tendency events (black phantoms, NPCs, doors, treasure) are on, and trigger one by putting the tendency into the range the game's own table requires.
 - **Items**: browse the inventory, storage box and equipment slots, edit quantities and durability, change a weapon's upgrade level or path, and add items from a 2,291-entry catalog.
-- **Attributes**: move points between the eight attributes at the same soul level.
+- **Attributes**: move points between the eight attributes at the same soul level, or change the soul level (not yet checked in game).
 - **World state**: inspect per-entity records (archstones, boss loot, chains, statues) labelled with their level and defining game file.
 - **Safe by default**: nothing is written by loading a file, the original bytes are always kept, every edit has undo/redo, and exports are validated before they are offered.
 - **Everything is inspectable**: full tree view, raw field editing, JSON dumps, conflict-checked patches and a before/after diff.
@@ -38,7 +39,9 @@ macOS, and a standard-library Python CLI covers scripting.
 > attribute redistribution were checked in the game (on the Kyty emulator): the
 > menus showed them and the game's own save kept them. **Storage-box edits**
 > were kept but not seen on screen, and **world-state edits** other than
-> `BROKEN` have no observed effect, so both stay experimental and opt-in. Back up
+> `BROKEN` have no observed effect, so both stay experimental and opt-in (Easy
+> mode adds to the storage box after a warning instead of the toggle). The
+> Easy-mode level change and class change are not checked in game yet. Back up
 > your entire `_SaveData` folder first.
 
 ## Download
@@ -63,7 +66,9 @@ edits asks for confirmation.
    This retains the original profile-folder names. File selection and folder drops
    also work, and nothing is written merely by loading a file.
 3. Click **Original backup** for an exact download of the loaded bytes.
-4. Edit fields, then review **Checks & coverage** and **Changes**.
+4. Make your edits. **Easy** mode (the default) covers souls, attributes, tendency and
+   adding items; switch to **Advanced** for every field, then review
+   **Checks & coverage** and **Changes** there.
 5. **Save file** writes through a browser save dialog where supported, otherwise
    it requests a download. Put the file back as **`USR-DATA`** in the correct
    `SAVEDATA0PlayerProfileN` or `SAVEDATA0OptionsProfile0` folder.
@@ -90,6 +95,15 @@ actually completed.
 
 ## Features
 
+**Easy mode** has two views:
+
+| View | What it provides |
+|---|---|
+| **Character** | A figure that shows which armour parts are worn, name, class, souls with **Max souls**, and the eight attributes (keeping the total redistributes at the same soul level; changing it levels up or down). Equipped, inventory and storage box tables sit side by side, each scrolling and filtering on its own, with an icon per item, editable stackable quantities and **+ Add** to the inventory or storage box (storage shows a warning instead of needing the experimental toggle) |
+| **Tendency** | Character and world sliders, presets and all-world buttons, without the event tables |
+
+**Advanced mode** has every view:
+
 | View | What it provides |
 |---|---|
 | **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels/paths (storage box: experimental); recovered arrays |
@@ -101,6 +115,10 @@ actually completed.
 | **Item catalog** | All 2,291 category-scoped entries, including wide weapon/armor IDs, spells and skills |
 | **Changes** | Before/after comparison with the immutable original; export conflict-checked scalar patches |
 | **JSON / patches** | Full dump, file import/export, plain field maps and path-based patches |
+
+Item icons and the character figure are original line drawings, not game art.
+Each item's icon is chosen by its type in the game's equip PARAMs
+(`weaponCategory`, `protectorCategory`, `goodsType`, `accessoryCategory`).
 
 Large binary fields open in a separate inspector with strict hex edits and exact
 binary download/import. It does **not** interpret unknown blob formats; the
@@ -163,6 +181,7 @@ python3 src/des_editor.py add FILE ring 123                       # records trop
 python3 src/des_editor.py upgrade FILE 12                         # levels and paths of inventory weapon 12
 python3 src/des_editor.py upgrade FILE 12 20110                   # make it Broadsword+10
 python3 src/des_editor.py respec FILE VIT=40 STR=30               # same soul level
+python3 src/des_editor.py respec FILE VIT=45 --level              # soul level follows (not checked in game)
 python3 src/des_editor.py world FILE --filter TEXT                # world-state entities
 python3 src/des_editor.py tendency FILE                           # world/character tendency and events
 python3 src/des_editor.py tendency FILE --trigger 20300           # tendency for one event
@@ -205,7 +224,7 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
 
 - `items` lists the inventory, storage box, equipment slots and the number of dead-enemy indices.
-- `upgrade` without a new id lists the weapon's upgrade levels and paths; with one, it changes only the item id (and an equipped slot's id), as the game does. `respec` without assignments shows the attributes and the starting class's minimums; with them, it moves points while keeping the soul level.
+- `upgrade` without a new id lists the weapon's upgrade levels and paths; with one, it changes only the item id (and an equipped slot's id), as the game does. `respec` without assignments shows the attributes and the starting class's minimums; with them, it moves points while keeping the soul level, or with `--level` lets the soul level change.
 - `arrays` lists the recovered fixed-slot arrays with family names, slot letters, real field names and values; `aslot` writes one slot by array state and suffix character (the letter the listing shows).
 - `blobs` sizes every blob and summarises world-state containers; `world` lists their entities with level, file and named records; `wset` makes an experimental same-size edit of one record addressed by entity GUID and key.
 - `tendency` shows the character and each world with its band and the events it enables; `--set` takes `character`, `character_lr` or a world (`boletaria`, `stonefang`, `latria`, `storms`, `valley`), `--trigger` an event number from `--events`, and a combination no value can satisfy is refused with the conflict.

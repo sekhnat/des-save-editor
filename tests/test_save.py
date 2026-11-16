@@ -1051,6 +1051,22 @@ class RespecTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 des_editor.main(['respec', str(path), 'VIT=70'])
             self.assertEqual(60, save.SaveFile(path.read_bytes()).get('PLAYER_CURRENTVITALITY'))
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, des_editor.main(['respec', str(path), 'VIT=70', '--level', '--no-backup']))
+            self.assertEqual(70, save.SaveFile(path.read_bytes()).get('PLAYER_CURRENTVITALITY'))
+
+    def test_level_change_lets_the_soul_level_follow(self):
+        import des_character as character
+        sf = character_save()
+        after = character.set_attributes(sf, {'VIT': 60, 'STR': 45})
+        self.assertEqual((60, 45), (after['VITALITY'], after['STRENGTH']))
+        self.assertEqual(325, character.soul_level(character.attributes(save.SaveFile(sf.build()))))
+        before = sf.build()
+        floor = character.class_floor(sf)
+        for change in ({'VIT': 100}, {'LUC': floor['LUCK'] - 1}, {'VIT': 55.0}, {'SPEED': 10}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                character.set_attributes(sf, change)
+        self.assertEqual(before, sf.build())
 
 
 class SaveTests(unittest.TestCase):
@@ -1430,20 +1446,22 @@ class CatalogCreationTests(unittest.TestCase):
         # IDs repeat across categories, so rows are keyed (cat, id).
         rows = {(row[2], row[0]): row for row in self._rows()}
         # First five columns keep their historical meanings; creation data is appended.
-        self.assertEqual([20700, 'Dragon Bone Smasher', 'W', 600, None, 3051, 600, 0],
+        self.assertEqual([20700, 'Dragon Bone Smasher', 'W', 600, None, 3051, 600, 0, 'sword'],
                          rows['W', 20700])
-        self.assertEqual([123, "Master's Ring", 'R', None, None, 18, None, 0], rows['R', 123])
+        self.assertEqual([123, "Master's Ring", 'R', None, None, 18, None, 0, 'ring'], rows['R', 123])
         # Arrows and bolts are stackable ammunition; placeholder rows keep no sort id.
-        self.assertEqual([160000, 'Arrow', 'W', 200, None, 1302, 200, 1], rows['W', 160000])
-        self.assertEqual([170000, 'Bolt', 'W', 200, None, 1402, 200, 1], rows['W', 170000])
+        self.assertEqual([160000, 'Arrow', 'W', 200, None, 1302, 200, 1, 'arrow'], rows['W', 160000])
+        self.assertEqual([170000, 'Bolt', 'W', 200, None, 1402, 200, 1, 'bolt'], rows['W', 170000])
         for row in self._rows():
-            self.assertIn(len(row), (3, 5, 8), row)
+            self.assertIn(len(row), (3, 5, 8, 9), row)
             if len(row) < 8:
                 self.assertNotIn((row[2], row[0]), (('W', 20700), ('R', 123), ('W', 160000),
                                                     ('W', 170000)),
                                  'PARAM-backed equip rows must carry creation metadata')
             else:
                 self.assertIsInstance(row[7], int)
+                if len(row) == 9:
+                    self.assertIsInstance(row[8], str)
                 if row[5] is not None:
                     self.assertTrue(0 <= row[5] <= 0xFFFF, row)
         # Weapon 100300 "No Equipment" is a placeholder with sortId -1, while armor
@@ -1463,7 +1481,7 @@ class CatalogCreationTests(unittest.TestCase):
                     'Spell': 'S', 'Skill': 'K'}[entry['category']], entry['id'])
             if des_items.creation_problem(entry) is None:
                 row = rows[key]
-                self.assertEqual(8, len(row), (entry, row))
+                self.assertIn(len(row), (8, 9), (entry, row))
                 self.assertIsNotNone(row[5], entry)
                 if entry['category'] in ('Weapon', 'Armor'):
                     self.assertIsNotNone(row[6], entry)
@@ -1486,7 +1504,7 @@ class CatalogParamCreationTests(unittest.TestCase):
     @unittest.skipUnless(HAVE_GAME, 'no game files (set DES_GAME_DIR to run this)')
     def test_builder_derives_creation_metadata_from_params(self):
         doc = builder.build_catalog(GAME, 'en-gb')
-        self.assertEqual(4, doc['schema'])
+        self.assertEqual(5, doc['schema'])
         entries = {(e['category'], e['id']): e for e in doc['items']}
         sword = entries['Weapon', 20700]
         self.assertFalse(sword.get('ammo', False))
@@ -1498,6 +1516,11 @@ class CatalogParamCreationTests(unittest.TestCase):
                          {key: goods[key] for key in ('sortId', 'maxQuantity', 'maxStorageQuantity')})
         self.assertTrue(entries['Weapon', 160000]['ammo'])
         self.assertTrue(entries['Weapon', 170000]['ammo'])
+        # Item kinds come from each equip PARAM's own type field.
+        self.assertEqual(['sword', 'arrow', 'ring', 'consumable', 'head'],
+                         [entries[key].get('kind') for key in (('Weapon', 20700), ('Weapon', 160000),
+                                                                ('Ring', 123), ('Goods', 1001),
+                                                                ('Armor', 100000))])
         # Placeholder rows keep their raw sortId, which the eligibility rules reject.
         self.assertEqual(-1, entries['Weapon', 100300]['sortId'])
         self.assertEqual(-1, entries['Weapon', 169000]['sortId'])

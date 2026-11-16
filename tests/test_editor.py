@@ -32,11 +32,16 @@ class SyntheticBrowserTests(unittest.TestCase):
         cls.browser.close()
         cls.playwright.stop()
 
+    # These suites drive the full editor; EasyModeBrowserTests covers Easy mode.
+    mode = 'advanced'
+
     def setUp(self):
         self.page = self.browser.new_page()
         self.errors = []
         self.page.on('pageerror', lambda error: self.errors.append(str(error)))
         self.page.on('dialog', lambda dialog: dialog.accept())
+        if self.mode:
+            self.page.add_init_script(f"localStorage.setItem('des-editor-mode', '{self.mode}')")
         self.page.goto((EDITOR / 'des_editor.html').as_uri())
 
     def tearDown(self):
@@ -521,6 +526,7 @@ class AddItemBrowserTests(SyntheticBrowserTests):
 class TendencyBrowserTests(unittest.TestCase):
     """The Tendency tab, with the fixtures of SyntheticBrowserTests (not a subclass,
     so the parent's tests do not run twice)."""
+    mode = 'advanced'
     setUpClass = SyntheticBrowserTests.__dict__['setUpClass']
     tearDownClass = SyntheticBrowserTests.__dict__['tearDownClass']
     setUp = SyntheticBrowserTests.setUp
@@ -596,6 +602,129 @@ class TendencyBrowserTests(unittest.TestCase):
               || !same(choices.map(tdBand), c.bands);
         }).length""", [cases, choices])
         self.assertEqual(0, mismatches)
+
+
+class EasyModeBrowserTests(unittest.TestCase):
+    """Easy mode: Character, Items and Tendency only, on the same edit rules."""
+    mode = None                     # fresh browser storage: the page picks Easy itself
+    setUpClass = SyntheticBrowserTests.__dict__['setUpClass']
+    tearDownClass = SyntheticBrowserTests.__dict__['tearDownClass']
+    setUp = SyntheticBrowserTests.setUp
+    tearDown = SyntheticBrowserTests.tearDown
+    load_bytes = SyntheticBrowserTests.load_bytes
+
+    @staticmethod
+    def player(archetype=9, values=(50,) * 8) -> bytes:
+        sf = test_save.character_save(archetype, values)
+        sf.records.insert(0, des_save.Field(des_save.name_key('PLAYER_NAME'), des_save.T_STR, b'Hero'))
+        return des_save.SaveFile(sf.build()).build()
+
+    def visible_tabs(self):
+        return self.page.locator('.tabs button:visible').all_inner_texts()
+
+    def test_easy_is_the_default_and_the_choice_is_remembered(self):
+        self.load_bytes(self.player())
+        self.assertEqual('easy', self.page.evaluate('state.mode'))
+        self.assertEqual(['Character', 'Tendency'], self.visible_tabs())
+        self.assertTrue(self.page.locator('#tab-character #charcard').is_visible())
+        self.assertFalse(self.page.locator('#quick').is_visible())
+        self.page.click('#modeswitch [data-mode="advanced"]')
+        self.assertEqual(['Editor', 'Tendency', 'All fields', 'Tree', 'World state', 'Field reference',
+                          'Item catalog', 'Changes', 'JSON'], self.visible_tabs())
+        self.assertEqual('editor', self.page.evaluate('state.tab'))
+        self.page.reload()
+        self.load_bytes(self.player())
+        self.assertEqual('advanced', self.page.evaluate('state.mode'))
+        self.assertEqual(1, self.page.locator('[id="diagcard"]').count())
+
+    def test_easy_attributes_level_change_and_redistribution_match_python(self):
+        import des_character
+        raw = self.player()
+        self.load_bytes(raw)
+        vit = self.page.locator('[data-attr=VITALITY]')
+        vit.fill('60')
+        vit.dispatch_event('input')
+        self.assertIn('320 → 330', self.page.text_content('#easyattrstatus'))
+        self.assertEqual('Apply level change', self.page.text_content('#easyattrapply'))
+        self.page.click('#easyattrapply')
+        expected = des_save.SaveFile(raw)
+        des_character.set_attributes(expected, {'VIT': 60})
+        self.assertEqual(list(expected.build()), self.page.evaluate('Array.from(current().save.build())'))
+        for name, value in (('VITALITY', '55'), ('STRENGTH', '55')):
+            box = self.page.locator(f'[data-attr={name}]')
+            box.fill(value)
+            box.dispatch_event('input')
+        self.assertIn('stays 330', self.page.text_content('#easyattrstatus'))
+        self.page.click('#easyattrapply')
+        des_character.redistribute(expected, {'VIT': 55, 'STR': 55})
+        self.assertEqual(list(expected.build()), self.page.evaluate('Array.from(current().save.build())'))
+        luck = self.page.locator('[data-attr=LUCK]')
+        luck.fill('3')
+        luck.dispatch_event('input')
+        self.assertTrue(self.page.locator('#easyattrapply').is_disabled())
+
+    def test_easy_class_select_is_undoable(self):
+        self.load_bytes(self.player())
+        self.page.select_option('#easyclass', '0')
+        self.assertEqual(0, self.page.evaluate('current().save.get("PLAYER_ARCHETYPE")'))
+        self.page.click('#undo')
+        self.assertEqual(9, self.page.evaluate('current().save.get("PLAYER_ARCHETYPE")'))
+
+    def test_easy_tendency_shows_sliders_without_events(self):
+        import des_tendency
+        self.load_bytes(test_save.tendency_save(worlds={1: 120}).build())
+        self.page.click('button[data-tab="tendency"]')
+        names = self.page.locator('#tab-tendency .tdname:visible').all_inner_texts()
+        self.assertEqual(['Character tendency'] + [w['name'] for w in des_tendency.WORLDS], names)
+        self.assertEqual(0, self.page.locator('#tab-tendency .tdevent').count())
+        self.assertEqual(0, self.page.locator('#tdselection').count())
+        self.page.fill('#td-boletaria-num', '-150')
+        self.page.locator('#td-boletaria-num').dispatch_event('change')
+        self.assertEqual([-150, -150], self.page.evaluate(
+            '["TENDENCY_WORLD01_LEFTRIGHT","TENDENCY_WORLD01_BLACKWHITE"].map(n => current().save.get(n))'))
+
+    def test_easy_tables_and_storage_addition_match_python(self):
+        source = AddItemBrowserTests.fixture().build()
+        self.load_bytes(source)
+        equipped = self.page.locator('#easyequipped .easyrow')
+        self.assertEqual(1, equipped.count())
+        self.assertEqual('L1', equipped.locator('.slot').inner_text())
+        self.assertIn('Buckler', equipped.inner_text())
+        self.assertEqual(2, self.page.locator('#easyinv .easyrow svg.glyph').count())
+        self.assertEqual(1, self.page.locator('#easybox .easyrow svg.glyph').count())
+        self.page.click('#easyaddbox')
+        self.assertEqual('storage', self.page.input_value('#itemdestination'))
+        self.assertTrue(self.page.locator('#itemstoragewarn').is_visible())
+        self.page.fill('#itemsearch', 'Mail Coif')
+        self.page.click('#itemlist tr[data-cat="A"][data-id="100400"]')
+        self.page.click('#additemapply')
+        expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Armor', 100400,
+                                                 destination='storage').build()
+        self.assertEqual(expected, bytes(self.page.evaluate('current().save.build()')))
+        self.assertTrue(self.page.evaluate('current().experimental'))
+        self.assertIn('Mail Coif', self.page.inner_text('#easybox'))
+        self.assertEqual('character', self.page.evaluate('state.tab'))
+
+    def test_easy_inventory_filter_and_add_button(self):
+        self.load_bytes(AddItemBrowserTests.fixture().build())
+        self.page.fill('#easyinv input[type=text]', 'moon')
+        self.assertEqual(1, self.page.locator('#easyinv .easyrow').count())
+        self.assertIn('1 of 2', self.page.inner_text('#easyinv .gearhead'))
+        self.assertEqual(1, self.page.locator('#easybox .easyrow').count())
+        self.page.locator('#easyinv input[type=number]').fill('40')
+        self.page.locator('#easyinv input[type=number]').dispatch_event('change')
+        self.assertEqual(40, self.page.evaluate('inventoryRows(current().save)[1].quantity'))
+        self.assertEqual('moon', self.page.input_value('#easyinv input[type=text]'))
+        self.page.click('#easyaddinv')
+        self.assertEqual('inventory', self.page.input_value('#itemdestination'))
+        self.assertFalse(self.page.locator('#itemstoragewarn').is_visible())
+
+    def test_every_catalog_kind_has_a_glyph(self):
+        self.assertEqual([], self.page.evaluate(
+            '[...new Set(ITEMDB.map(r => itemKind(r[2], r[0])))].filter(k => !GLYPHS[k])'))
+        self.assertEqual('head', self.page.evaluate('itemKind("A", 100000)'))
+        self.assertEqual('unknown', self.page.evaluate('itemKind(null, 5)'))
+
 
 if __name__ == '__main__':
     unittest.main()
