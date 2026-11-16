@@ -20,6 +20,7 @@ python3 -m unittest discover -s tests -v
 python3 tests/benchmark_editor.py
 python3 tools/embed_fields.py --check     # page field and tendency tables match src/
 python3 tools/build_tendencydb.py GAME --check   # tendency catalog matches the game files
+python3 tools/build_flagdb.py GAME --check       # event-flag database matches the game scripts
 python3 tools/embed_entitydb.py --check   # page carries the current entity index
 python3 tools/embed_icons.py --check      # page carries iconpack.json
 python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341

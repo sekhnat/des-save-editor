@@ -15,6 +15,8 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py respec <USR-DATA> VIT=60 STR=40   # same soul level
     python3 des_editor.py respec <USR-DATA> VIT=70 --level  # soul level follows
     python3 des_editor.py world  <USR-DATA>          # world-state entities
+    python3 des_editor.py events <USR-DATA>          # event flags: bosses, NPC quests
+    python3 des_editor.py events <USR-DATA> --respawn phalanx    # make a boss alive again
     python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
 Writing always leaves a timestamped `.bak` copy next to the file and
@@ -36,6 +38,7 @@ import des_diff
 import des_fields
 import des_inventory
 import des_items
+import des_flags
 import des_save
 import des_tendency
 from des_save import SaveFile, name_key
@@ -636,6 +639,122 @@ def _tendency_report(state: dict) -> dict:
             "worlds": worlds}
 
 
+def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bool,
+               sets: list[str], respawn: str | None, npc: str | None,
+               out: str | None, no_backup: bool) -> int:
+    """Event flags: the bits the game's scripts set and test."""
+    F = des_flags
+    db = F.load_db()
+    if list_known:
+        rows = {
+            "bosses": db.bosses if db else [],
+            "npcs": [{"list": n["list"],
+                      "states": [f"{s['id']} {s['name']}" for s in n["states"]]}
+                     for n in (db.npcs if db else [])],
+        }
+        if as_json:
+            print(json.dumps(rows, indent=1))
+            return 0
+        print("  bosses (death flag, soul flag)")
+        for b in rows["bosses"]:
+            print(f"    {b['id']:>5} {b['name']:<20} soul {b['soul']:>5}  {b['world']}")
+        print("  NPC quest states (one set at a time; +1000 backup twin)")
+        for n in rows["npcs"]:
+            print(f"    {n['list']}")
+            for s in n["states"]:
+                print(f"      {s}")
+        return 0
+    if path is None:
+        raise ValueError("events needs a file (or --list)")
+    sf = des_save.load(path)
+    if db is None:
+        print("  (flagdb.json not found: run tools/build_flagdb.py; "
+              "showing raw bit counts only)")
+        if as_json:
+            print(json.dumps(F.summary(sf), indent=1))
+        else:
+            for key, info in F.summary(sf).items():
+                print(f"  {key}  {info['bits']} bits set  ({info['note']})")
+        return 0
+
+    changed = False
+    try:
+        if respawn:
+            result = F.respawn_boss(sf, db, respawn)
+            print(f"  {result['boss']} alive again (cleared flags "
+                  f"{', '.join(map(str, result['cleared']))})")
+            changed = True
+        if npc:
+            npc_name, sep, state = npc.partition("=")
+            if not sep:
+                raise ValueError(f"bad --npc {npc!r} (expected NPC=STATE, "
+                                 "e.g. baldwin=work)")
+            result = F.set_npc_state(sf, db, npc_name, state)
+            print(f"  {result['npc']} -> {result['state']} (flag {result['id']})")
+            changed = True
+        for item in sets:
+            name, sep, value = item.partition("=")
+            if not sep or value not in ("0", "1"):
+                raise ValueError(f"bad assignment {item!r} (expected ID=0 or ID=1)")
+            flag = F.parse_target(name)
+            F.set_flag(sf, flag, value == "1")
+            label = db.event_label(flag)
+            print(f"  flag {flag} -> {value}" + (f" ({label})" if label else ""))
+            changed = True
+    except ValueError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+    if changed:
+        return _write(sf, path, out, backup=not no_backup)
+
+    # read-only report
+    report = {
+        "summary": F.summary(sf),
+        "bosses": F.bosses(sf, db),
+        "npcs": [{k: n[k] for k in ("list", "set", "backup")}
+                 for n in F.npc_states(sf, db)],
+    }
+    if text:
+        needle = text.lower()
+        report["bosses"] = [b for b in report["bosses"] if needle in b["name"].lower()]
+        report["npcs"] = [n for n in report["npcs"]
+                          if needle in n["list"].lower()
+                          or any(needle in s.lower() for s in n["set"])]
+        flags = []
+        for raw in _flag_iter(sf):
+            label = db.event_label(raw)
+            if label and needle in label.lower():
+                flags.append({"id": raw, "label": label})
+        report["matching_flags"] = flags
+    if as_json:
+        print(json.dumps(report, indent=1))
+        return 0
+    print(f"{path}")
+    for key, info in report["summary"].items():
+        print(f"  event flags {key}: {info['bits']} set "
+              f"({info['bytes']} B, capacity {info['capacity']}) - {info['note']}")
+    print("  bosses")
+    for b in report["bosses"]:
+        soul = f", soul {'taken' if b['soul_taken'] else 'not taken'}" \
+            if b["soul_taken"] is not None else ""
+        print(f"    {'DEAD' if b['defeated'] else 'alive'}  {b['name']:<20} "
+              f"flag {b['id']}{soul}")
+    print("  NPC quest states (set | has backup twin)")
+    for n in report["npcs"]:
+        if n["set"] or n["backup"]:
+            print(f"    {n['list'][:-10]:<18} {', '.join(n['set']) or '-'}"
+                  f"{'  |  ' + ', '.join(n['backup']) if n['backup'] else ''}")
+    return 0
+
+
+def _flag_iter(sf):
+    """Set flags of the primary event-flag blob."""
+    field = sf.find(des_flags.PRIMARY)
+    if field is None:
+        return []
+    return list(des_flags.iter_flags(field.raw))
+
+
 def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: bool,
                  as_json: bool, out: str | None, no_backup: bool) -> int:
     T = des_tendency
@@ -719,11 +838,14 @@ def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: b
 # game's own save but not seen on screen; world-state records beyond BROKEN
 # have no observed effect.
 STORAGE_UNSEEN = "storage-box edits are kept by the game but were not seen in game"
+EVENTFLAG_UNSEEN = ("event-flag edits are decoded from the game's scripts but not "
+                    "yet checked in game")
 EXPERIMENTAL = {
     "inv": lambda a: STORAGE_UNSEEN if a.box_qty else None,
     "wset": lambda a: "world-state record meanings are unverified",
     "add": lambda a: STORAGE_UNSEEN if a.destination == "storage" else None,
     "upgrade": lambda a: STORAGE_UNSEEN if a.storage and a.id is not None and not a.list_family else None,
+    "events": lambda a: EVENTFLAG_UNSEEN if (a.sets or a.respawn or a.npc) else None,
 }
 
 COMMANDS = {
@@ -744,7 +866,10 @@ COMMANDS = {
     "aslot": lambda a: cmd_aslot(a.file, a.state, a.sets, a.clear, a.out),
     "blobs": lambda a: cmd_blobs(a.file),
     "world": lambda a: cmd_world(a.file, a.as_json, a.group, a.text),
+    "world": lambda a: cmd_world(a.file, a.as_json, a.group, a.text),
     "wset": lambda a: cmd_wset(a.file, a.guid, a.assignments, a.occurrence, a.out),
+    "events": lambda a: cmd_events(a.file, a.as_json, a.text, a.list_known, a.sets,
+                                   a.respawn, a.npc, a.out, a.no_backup),
     "diff": lambda a: cmd_diff(a.before, a.after, a.as_json),
     "selftest": lambda a: cmd_selftest(a.paths),
     "fields": lambda a: cmd_fields(),
@@ -857,6 +982,24 @@ def main(argv: list[str]) -> int:
     p.add_argument("before")
     p.add_argument("after")
     p.add_argument("--json", action="store_true", dest="as_json")
+
+    p = sub.add_parser("events", help="show or edit event flags (bosses, NPC quests, pickups)")
+    p.add_argument("file", nargs="?", help="USR-DATA (not needed with --list)")
+    p.add_argument("--list", action="store_true", dest="list_known",
+                   help="list every known boss flag and NPC state machine")
+    p.add_argument("--filter", dest="text", metavar="TEXT",
+                   help="only entries whose name or description contains this")
+    p.add_argument("--set", action="append", default=[], dest="sets", metavar="ID=0|1",
+                   help="set or clear one flag by number (e.g. --set 4096=0)")
+    p.add_argument("--respawn", metavar="BOSS",
+                   help="clear a boss's death flag and its soul-taken flag (name from --list)")
+    p.add_argument("--npc", metavar="NPC=STATE",
+                   help="put an NPC into exactly one quest state (e.g. baldwin=work)")
+    p.add_argument("--json", action="store_true", dest="as_json")
+    p.add_argument('--experimental', action='store_true',
+                   help="acknowledge that event-flag edits are not yet checked in game")
+    p.add_argument("--out", help="write to this path instead of in place")
+    p.add_argument("--no-backup", action="store_true")
 
     p = sub.add_parser("tendency", help="show or edit world and character tendency; trigger tendency events")
     p.add_argument("file", nargs="?", help="USR-DATA (not needed with --events)")

@@ -190,6 +190,7 @@ python3 tools/embed_entitydb.py
 python3 tools/embed_fields.py                                         # after editing src/des_fields.py
 python3 tools/build_keydb.py /path/to/PPSA01342-app --save USR-DATA   # name candidates
 python3 tools/build_tendencydb.py /path/to/PPSA01342-app --check      # tendency catalog vs game
+python3 tools/build_flagdb.py /path/to/PPSA01341-app0                # event-flag database (see research-event-flags.md)
 python3 tools/parse_loadouts.py /path/to/PPSA01342-app                # loadout checks
 ```
 

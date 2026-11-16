@@ -2,7 +2,7 @@
 
 The container can be parsed and rebuilt, and most of a played profile can be
 named and read: character, options, inventory, storage box, equipment, spells,
-tendency (with the game's event conditions) and per-entity world state. A name recovered from a hash is still not
+tendency (with the game's event conditions), event flags and per-entity world state. A name recovered from a hash is still not
 proof of gameplay meaning, and a checksum-valid file is not necessarily a
 game-safe edit.
 
@@ -29,6 +29,7 @@ state is confirmed only for `BROKEN`; both stay experimental and opt-in.
 - [Fixed-slot arrays](#fixed-slot-arrays)
 - [Tendency and character-creator presets](#tendency-and-character-creator-presets)
 - [World state](#world-state)
+- [Event flags](#event-flags)
 - [Append-only saves](#append-only-saves)
 - [Supported formats and bounds](#supported-formats-and-bounds)
 
@@ -233,9 +234,10 @@ the mapping and the field roles were measured in Kyty (see
 - **Triggering an event** sets the tendency to the nearest value inside its
   range, 1 past a threshold (e.g. −181 for "−180 or lower"). The editor reports
   the other events this turns on or off, and refuses combinations that no value
-  can satisfy. Events that remove an enemy "until killed" depend on event flags
-  as well, and a one-shot event that has already happened stays done. Event
-  flags are not decoded.
+  can satisfy. Events that remove an enemy "until killed" also depend on event
+  flags, and a one-shot event that has already happened stays done: see
+  [Event flags](research-event-flags.md), which decodes them and maps each
+  tendency judge to the flags it drives.
 - **When it takes effect.** The game applies world tendency when an area loads
   (`BP_ApplyPendingQwc` after an archstone warp; the Nexus on entry).
 - **Verification status.** Verified in Kyty:
@@ -259,6 +261,23 @@ was seen working in game: setting `BROKEN` from 1 to 0 on the seven broken
 objects at the 1-1 start put an intact wooden barricade back where the debris
 lay, and the game kept the change. What changing the other records does is not
 verified, so world edits stay opt-in, same-size and experimental. The blob framing is in [Save format](format.md#world-state-blobs).
+
+## Event flags
+
+The flags the game's scripts set and test (`SetEventFlag` / `IsCompleteEvent`):
+boss deaths, NPC quest states, opened doors, one-shot pickups. They live as
+plain bit fields (bit position = flag id) in three fixed-size blobs; the
+primary one (`522ad995`, flags 0–18047) is proven against saves — boss flags
+match the demon souls each save holds, every NPC shows exactly one quest state
+matching its story progress, and a New Game+ wipes world flags but keeps the
+Nexus's. Meanings come from the game's own scripts, compiled into
+`flagdb.json` by `tools/build_flagdb.py`; the full story, the recipes
+(respawn a boss, fix an NPC questline, re-collect a one-shot item) and the
+open questions are in [Event flags](research-event-flags.md).
+
+The `events` command reads them; `--respawn`, `--npc` and `--set` edit them
+and are experimental (not yet checked in game). The two further flag banks
+(`0af4946a`, `78a5c2d7`) are shown but not yet attributed.
 
 ## Append-only saves
 

@@ -229,6 +229,8 @@ python3 src/des_editor.py respec FILE VIT=45 --level              # soul level f
 python3 src/des_editor.py world FILE --filter TEXT                # world-state entities
 python3 src/des_editor.py tendency FILE                           # world/character tendency and events
 python3 src/des_editor.py tendency FILE --trigger 20300           # tendency for one event
+python3 src/des_editor.py events FILE                             # event flags: bosses, NPC quests
+python3 src/des_editor.py events FILE --respawn phalanx           # make a boss alive again (not checked in game)
 python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA     # record-level delta
 ```
 
@@ -264,6 +266,9 @@ python3 src/des_editor.py tendency FILE [--json]
 python3 src/des_editor.py tendency --events
 python3 src/des_editor.py tendency FILE --set boletaria=-200 --set character=180 --out /tmp/USR-DATA
 python3 src/des_editor.py tendency FILE --trigger 20300 --trigger 30140 --out /tmp/USR-DATA
+python3 src/des_editor.py events FILE [--json] [--filter TEXT]
+python3 src/des_editor.py events --list
+python3 src/des_editor.py events FILE --respawn BOSS --npc NPC=STATE --set ID=0 --experimental --out /tmp/USR-DATA
 python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
 
@@ -272,6 +277,7 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 - `arrays` lists the recovered fixed-slot arrays with family names, slot letters, real field names and values; `aslot` writes one slot by array state and suffix character (the letter the listing shows).
 - `blobs` sizes every blob and summarises world-state containers; `world` lists their entities with level, file and named records; `wset` makes an experimental same-size edit of one record addressed by entity GUID and key.
 - `tendency` shows the character and each world with its band and the events it enables; `--set` takes `character`, `character_lr` or a world (`boletaria`, `stonefang`, `latria`, `storms`, `valley`), `--trigger` an event number from `--events`, and a combination no value can satisfy is refused with the conflict.
+- `events` reads the event flags the game's scripts set and test: which bosses are dead (with their soul-taken flags), every NPC's quest state, and a searchable list of what each flag means (`--filter`, `--list`). `--respawn`, `--npc` and `--set` flip bits — experimental until checked in game; the how and why is in [Event flags](docs/research-event-flags.md).
 - `diff` prints the record-level and world-state delta, so two saves of the same character can be compared directly:
 
   ```text
@@ -297,6 +303,7 @@ destination untouched. Blob assignments are hex, not UTF-8 text.
 | [Coverage and limits](docs/coverage.md) | What is decoded and how far each part can be trusted: character, classes, options, inventory, adding items, arrays, tendency, world state, bounds |
 | [Save format](docs/format.md) | Container layout, record types, world-state framing |
 | [Research notes](docs/research.md) | How names and structures were recovered, how to identify a field, rebuilding the embedded tables and icons |
+| [Event flags](docs/research-event-flags.md) | The decoded event-flag system: where the flags live, what they mean, respawning bosses and fixing NPC quests |
 | [Development](docs/development.md) | Running the tests, benchmarks and the desktop app, and cutting a release |
 
 ## Scope
