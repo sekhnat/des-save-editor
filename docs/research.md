@@ -204,7 +204,61 @@ It comes from `weaponCategory` 0–14 (dagger, sword, thrust, curved, axe, hamme
 spear, polearm, catalyst, fist, bow, crossbow, shield, arrow, bolt),
 `protectorCategory` 0–4 (head, body, arms, legs, hair), `goodsType` 0–3
 (consumable, key, material, demonsoul) and `accessoryCategory` 0 (ring). These
-meanings were matched against item names in the PS5 dump.
+meanings were matched against item names in the PS5 dump. Schema 6 adds
+`placeholder` to the five empty-slot rows the game names "No Equipment"
+(`des_gamedata.placeholder_items`): armour rows with sortId -1 and
+equipModelId 0 (101700 head, 201700 body, 301500 arms, 401500 legs), and the
+sortId -1 fist-category weapon that CharaInitParam puts in empty hands
+(100300). Starting loadouts use 101700 as an empty helm and 100300 as an empty
+hand. The page embeds the flag as row column 10.
 
 The embed tools offer `--stdout` or `--check` modes for reproducible builds
 (`tools/embed_itemdb.py --check` covers the page block).
+
+```bash
+python3 tools/build_icons.py --game /path/to/PPSA01341-app0 --report   # coverage only
+python3 tools/build_icons.py --game /path/to/PPSA01341-app0            # writes iconpack.json (~45 s)
+python3 tools/embed_icons.py                                           # ICONS block; --check to verify
+```
+
+## UI atlas and item icons
+
+The remake ships no per-item icon files: its inventory icons live in the global
+UI atlas (`src/des_uiatlas.py` reads it).
+
+- `ui/textures/_ps5/global.ctal` is the sprite table: a length-prefixed atlas
+  path (`$/ui/textures/_ps5/****/global_pages.ctxr`), a u32 count (1,229), then
+  40-byte records `u32 name hash, 4 × (u, v) f32 corners, u32 page`.
+- Sprite names are hashed with **FNV-1a 32 over the uppercased name** (the same
+  hash as save keys): `TEX_INVICON_PLACEHOLDER`, `Tex_StatIcon_Weight` and the
+  `Tex_InvIcon_*` names in eboot all match.
+- `ui/textures/_ps5/_ps5/global_pages.ctxr` is a 0x4D-byte header followed by
+  five 4096² RGBA8 pages (64 MiB each), in the GPU's standard 64 KiB tiling:
+  128 × 128 texel blocks in row-major order, and within a block the byte address
+  bits 2–15 come from x0 x1 y0 y1 y2 x2 y3 x3 y4 x4 y5 x5 y6 x6 (AMD's
+  SW_64KB_S pattern for 4-byte texels). The decoder was checked by eye and by
+  transparent sprite gutters.
+- The inventory icons are named `Tex_InvIcon_<key>`. Most are 260 × 300
+  tiles (483 of them); a few large weapons use bigger ones (Dragon Bone
+  Smasher, Large Sword of Moonlight, the axes and Meat Cleaver 300 × 420,
+  Shotel 300 × 400, the light crossbow 322 × 372, the heavy and gargoyle
+  crossbows 500 × 500). Two unused ring rows name 2048 × 2048 placeholder
+  sheets, which the builder skips (sprites over 512 px are not icons). The key comes from string fields the remake added to the
+  equip PARAMs (8-byte pointers into each PARAM's string block, read by
+  `des_gamedata.param_strings`):
+
+  | Table | Key | Rows with an icon |
+  |---|---|---|
+  | Goods | `bpPreviewKey` | 146 / 149 |
+  | Ring | `bpPreviewKey` | 31 / 33 |
+  | Spell | pointer at row offset 48, past the 48-byte PARAMDEF (rows are 56 bytes) | 34 / 34 |
+  | Weapon | `wp_a_<equipModelId:04d>_<bpPreviewSuffix>` | 1,866 / 1,882 |
+  | Armour | `<hd\|bd\|am\|lg>_<m\|f>_<equipModelId:04d>_<bpPreviewSuffix[_Female]>`, or `_a_` (gender-neutral) for the enemy sets | 110 / 126 |
+
+  The legacy `iconId` is not the key: Elixir and Bearbug Grains share iconId
+  1036 but have different icons. The unmatched rows are unused or unlabelled
+  data. The empty-slot placeholders are skipped on purpose: the bare head's
+  sprite is blank and the others show the base underclothes, which would read
+  as real gear. The nine standard tiles left over are other art.
+- There is no 2D player or class portrait: the menus render the character in
+  3D, and `charcreator.ctal` holds only face-feature thumbnails.

@@ -1453,20 +1453,23 @@ class CatalogCreationTests(unittest.TestCase):
         self.assertEqual([160000, 'Arrow', 'W', 200, None, 1302, 200, 1, 'arrow'], rows['W', 160000])
         self.assertEqual([170000, 'Bolt', 'W', 200, None, 1402, 200, 1, 'bolt'], rows['W', 170000])
         for row in self._rows():
-            self.assertIn(len(row), (3, 5, 8, 9), row)
+            self.assertIn(len(row), (3, 5, 8, 9, 10), row)
             if len(row) < 8:
                 self.assertNotIn((row[2], row[0]), (('W', 20700), ('R', 123), ('W', 160000),
                                                     ('W', 170000)),
                                  'PARAM-backed equip rows must carry creation metadata')
             else:
                 self.assertIsInstance(row[7], int)
-                if len(row) == 9:
+                if len(row) >= 9:
                     self.assertIsInstance(row[8], str)
+                if len(row) == 10:                  # empty-slot placeholder flag
+                    self.assertEqual(1, row[9])
                 if row[5] is not None:
                     self.assertTrue(0 <= row[5] <= 0xFFFF, row)
         # Weapon 100300 "No Equipment" is a placeholder with sortId -1, while armor
         # 100300 (Leather Cap) is a regular creatable row: IDs are per category.
         self.assertIsNone(rows['W', 100300][5])
+        self.assertEqual(1, rows['W', 100300][9])
         self.assertEqual(11, rows['A', 100300][5])
 
     def test_embedded_rows_stay_backward_compatible(self):
@@ -1504,7 +1507,7 @@ class CatalogParamCreationTests(unittest.TestCase):
     @unittest.skipUnless(HAVE_GAME, 'no game files (set DES_GAME_DIR to run this)')
     def test_builder_derives_creation_metadata_from_params(self):
         doc = builder.build_catalog(GAME, 'en-gb')
-        self.assertEqual(5, doc['schema'])
+        self.assertEqual(6, doc['schema'])
         entries = {(e['category'], e['id']): e for e in doc['items']}
         sword = entries['Weapon', 20700]
         self.assertFalse(sword.get('ammo', False))
@@ -1524,6 +1527,11 @@ class CatalogParamCreationTests(unittest.TestCase):
         # Placeholder rows keep their raw sortId, which the eligibility rules reject.
         self.assertEqual(-1, entries['Weapon', 100300]['sortId'])
         self.assertEqual(-1, entries['Weapon', 169000]['sortId'])
+        # Exactly the five empty-slot rows ("No Equipment") are flagged.
+        self.assertEqual({('Armor', 101700), ('Armor', 201700), ('Armor', 301500), ('Armor', 401500),
+                          ('Weapon', 100300)},
+                         {key for key, e in entries.items() if e.get('placeholder')})
+        self.assertNotIn('placeholder', entries['Weapon', 169000])
         text_only = next(e for e in doc['items']
                          if e['category'] == 'Goods' and not e['hasParam'])
         self.assertNotIn('sortId', text_only)

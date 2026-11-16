@@ -24,7 +24,7 @@ macOS, and a standard-library Python CLI covers scripting.
 
 ## Highlights
 
-- **Easy and Advanced modes**: Easy shows only souls, name, class and attributes, world tendency sliders, and adding items, with a character figure and an icon for every item. Advanced is the full editor. The page remembers your choice.
+- **Easy and Advanced modes**: Easy shows only souls, name, class and attributes, world tendency sliders, and adding items, with a paper doll of the equipped gear and the game's own inventory icon for each item. Advanced is the full editor. The page remembers your choice.
 - **Character**: name, class, souls, all eight attributes, vitals, resistances, spells and counters.
 - **Tendency**: set each world and the character from Pure Black to Pure White, see which of the 32 tendency events (black phantoms, NPCs, doors, treasure) are on, and trigger one by putting the tendency into the range the game's own table requires.
 - **Items**: browse the inventory, storage box and equipment slots, edit quantities and durability, change a weapon's upgrade level or path, and add items from a 2,291-entry catalog.
@@ -99,7 +99,7 @@ actually completed.
 
 | View | What it provides |
 |---|---|
-| **Character** | A figure that shows which armour parts are worn, name, class, souls with **Max souls**, and the eight attributes (keeping the total redistributes at the same soul level; changing it levels up or down). Equipped, inventory and storage box tables sit side by side, each scrolling and filtering on its own, with an icon per item, editable stackable quantities and **+ Add** to the inventory or storage box (storage shows a warning instead of needing the experimental toggle) |
+| **Character** | A paper doll of the game icons for the worn head, body, arms and legs pieces and the L1/R1 hand items, name, class, souls with **Max souls**, and the eight attributes (keeping the total redistributes at the same soul level; changing it levels up or down). Equipped, inventory and storage box tables sit side by side, each scrolling and filtering on its own, with an icon per item, editable stackable quantities and **+ Add** to the inventory or storage box (storage shows a warning instead of needing the experimental toggle) |
 | **Tendency** | Character and world sliders, presets and all-world buttons, without the event tables |
 
 **Advanced mode** has every view:
@@ -116,9 +116,23 @@ actually completed.
 | **Changes** | Before/after comparison with the immutable original; export conflict-checked scalar patches |
 | **JSON / patches** | Full dump, file import/export, plain field maps and path-based patches |
 
-Item icons and the character figure are original line drawings, not game art.
-Each item's icon is chosen by its type in the game's equip PARAMs
-(`weaponCategory`, `protectorCategory`, `goodsType`, `accessoryCategory`).
+Item icons are the game's own inventory icons, extracted from the remake's UI
+atlas by `tools/build_icons.py` and embedded in the page (483 icons covering
+2,187 goods, weapon, armour, ring and spell rows; armour has male and female
+versions and follows the save's gender). Rows without a game icon (unused
+data) fall back to an original line drawing
+chosen by the item's type in the equip PARAMs (`weaponCategory`,
+`protectorCategory`, `goodsType`, `accessoryCategory`). The character card
+shows the worn armour's icons as a paper doll; with no icon to show it falls
+back to a drawn figure.
+
+The game fills an empty slot with a placeholder it names "No Equipment": bare
+hands, and a bare head, body, arms and legs. The editor and the CLI label these
+by slot ("Bare head (No Equipment)"), give them a dashed empty-slot symbol
+instead of a game icon, and the paper doll shows the slot as empty.
+
+Item icons are extracted from *Demon's Souls* (2020), © Sony Interactive
+Entertainment; they are shown for identification only.
 
 Large binary fields open in a separate inspector with strict hex edits and exact
 binary download/import. It does **not** interpret unknown blob formats; the

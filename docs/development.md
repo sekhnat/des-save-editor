@@ -4,7 +4,8 @@
 
 ## Tests
 
-Run from the repository root. Tests that need real saves read `DES_SAVE_DIR`
+Run from the repository root. The atlas tests need numpy (`tools/build_icons.py` also needs Pillow).
+Tests that need real saves read `DES_SAVE_DIR`
 (your `_SaveData/PPSA01341` copy), and tests that need the game files read
 `DES_GAME_DIR` (the `PPSA01342-app` folder). They are skipped, with the reason
 printed, when those are not set.
@@ -20,10 +21,11 @@ python3 tests/benchmark_editor.py
 python3 tools/embed_fields.py --check     # page field and tendency tables match src/
 python3 tools/build_tendencydb.py GAME --check   # tendency catalog matches the game files
 python3 tools/embed_entitydb.py --check   # page carries the current entity index
+python3 tools/embed_icons.py --check      # page carries iconpack.json
 python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341
 ```
 
-The full suite is 202 tests and runs in about 30 s without the optional fixture
+The full suite is 220 tests and runs in about 45 s without the optional fixture
 environment (most of them format, structure, tools and browser flows). Regression
 coverage includes all three original files, malformed records, strict numeric and
 hex bounds, atomic imports and writes, undo/redo, async-save races, JSON drafts,

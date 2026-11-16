@@ -166,6 +166,63 @@ def read_param(definition: bytes, data: bytes) -> dict[int, dict]:
     return out
 
 
+def param_string_at(data: bytes, pointer: int) -> str | None:
+    """The NUL-terminated string a PARAM row pointer refers to (None for null/invalid)."""
+    if not 0 < pointer < len(data):
+        return None
+    end = data.find(b'\0', pointer)
+    if end < 0:
+        return None
+    return data[pointer:end].decode('latin-1')
+
+
+def param_strings(definition: bytes, data: bytes) -> dict[int, dict[str, str]]:
+    """``string`` fields of every row: 8-byte pointers into the PARAM's string block.
+
+    The remake added such fields (``bpPreviewKey``, ``bpPreviewSuffix``, ...);
+    ``read_param`` skips them. Rows are located the same way and need not match
+    the definition's stride, because only the named fields are read.
+    """
+    spec = parse_paramdef(definition)
+    if spec['type'] != param_type(data):
+        raise ValueError(f"PARAMDEF {spec['type']} does not describe PARAM {param_type(data)}")
+    layout, _ = paramdef_layout(spec['fields'])
+    fields = [f for f in layout if f['type'] == 'string' and f['size'] == 8]
+    out = {}
+    for row_id, offset in param_rows(data):
+        row = {}
+        for field in fields:
+            if offset + field['offset'] + 8 > len(data):
+                raise ValueError(f'PARAM row {row_id} exceeds file bounds')
+            value = param_string_at(data, struct.unpack_from('<Q', data, offset + field['offset'])[0])
+            if value is not None:
+                row[field['name']] = value
+        out[row_id] = row
+    return out
+
+
+HAND_FIELDS = ('equip_Wep_Right', 'equip_Subwep_Right', 'equip_Wep_Left', 'equip_Subwep_Left')
+FIST_CATEGORY = 9
+
+
+def placeholder_items(tables: dict[str, dict[int, dict]]) -> set[tuple[str, int]]:
+    """The game's empty-slot rows ("No Equipment"): bare head, body, arms, legs and fist.
+
+    Armour placeholders are the unsortable rows (sortId -1) with model 0 (no
+    mesh); the fist is the unsortable fist-category weapon that starting
+    loadouts (CharaInitParam) put in an empty hand.
+    """
+    out = {('Armor', row_id) for row_id, row in tables.get('EQUIP_PARAM_PROTECTOR_ST', {}).items()
+           if row.get('sortId') == -1 and row.get('equipModelId') == 0}
+    weapons = tables.get('EQUIP_PARAM_WEAPON_ST', {})
+    for init in tables.get('CHARACTER_INIT_PARAM', {}).values():
+        for field in HAND_FIELDS:
+            row = weapons.get(init.get(field))
+            if row and row.get('sortId') == -1 and row.get('weaponCategory') == FIST_CATEGORY:
+                out.add(('Weapon', init[field]))
+    return out
+
+
 def load_params(game: Path) -> dict[str, dict[int, dict]]:
     """Every gameparam table whose definition matches its rows, by PARAMDEF type."""
     dvd = Path(game) / 'cp11demonssouls/dvdroot'

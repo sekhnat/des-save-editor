@@ -13,7 +13,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
-from des_gamedata import load_params, parse_bnd3, parse_ctxt, parse_param  # noqa: E402
+from des_gamedata import load_params, parse_bnd3, parse_ctxt, parse_param, placeholder_items  # noqa: E402
 
 # Creation metadata (add-item): display sort id, initial durability and the
 # stackable-ammunition classification, read from the equip PARAMs.
@@ -109,15 +109,19 @@ def build_catalog(game: str | Path, language: str = 'en-gb') -> dict:
         field, kinds = KIND_FIELDS[kind]
         if isinstance(row.get(field), int) and 0 <= row[field] < len(kinds):
             entry['kind'] = kinds[row[field]]
+    # Empty-slot rows ("No Equipment"): the editor labels them by slot instead.
+    for key in placeholder_items(tables):
+        if key in items:
+            items[key]['placeholder'] = True
     classes = _classes(tables.get('CHARACTER_INIT_PARAM', {}), items)
     if not items:
         raise ValueError('No PARAM rows or localized names found in the supplied game folder')
     rows = sorted(items.values(), key=lambda entry: (entry['category'], entry['id']))
-    return {'schema': 5, 'language': language, 'count': len(rows),
+    return {'schema': 6, 'language': language, 'count': len(rows),
             'categories': dict(sorted(Counter(entry['category'] for entry in rows).items())),
             'note': 'IDs are category-specific. Limits, sort ids, durability, the '
-                    'ammunition classification and the item kind come from the equip PARAMs '
-                    'via their PARAMDEFs.',
+                    'ammunition classification, the item kind and the empty-slot placeholder '
+                    'flag come from the equip PARAMs via their PARAMDEFs.',
             'classes': classes, 'items': rows}
 
 

@@ -690,8 +690,8 @@ class EasyModeBrowserTests(unittest.TestCase):
         self.assertEqual(1, equipped.count())
         self.assertEqual('L1', equipped.locator('.slot').inner_text())
         self.assertIn('Buckler', equipped.inner_text())
-        self.assertEqual(2, self.page.locator('#easyinv .easyrow svg.glyph').count())
-        self.assertEqual(1, self.page.locator('#easybox .easyrow svg.glyph').count())
+        self.assertEqual(2, self.page.locator('#easyinv .easyrow .glyph').count())
+        self.assertEqual(1, self.page.locator('#easybox .easyrow .glyph').count())
         self.page.click('#easyaddbox')
         self.assertEqual('storage', self.page.input_value('#itemdestination'))
         self.assertTrue(self.page.locator('#itemstoragewarn').is_visible())
@@ -718,6 +718,51 @@ class EasyModeBrowserTests(unittest.TestCase):
         self.page.click('#easyaddinv')
         self.assertEqual('inventory', self.page.input_value('#itemdestination'))
         self.assertFalse(self.page.locator('#itemstoragewarn').is_visible())
+
+    def test_game_icons_replace_glyphs_where_the_pack_has_one(self):
+        self.load_bytes(AddItemBrowserTests.fixture().build())
+        # The Buckler in L1 shows its game icon in the table and on the paper doll.
+        self.assertEqual(1, self.page.locator('#easyequipped .easyrow img.glyph.icon').count())
+        doll = self.page.locator('#charcard .figure.doll')
+        self.assertEqual(1, doll.count())
+        self.assertEqual(1, doll.locator('[data-part="l1"] img.glyph.icon').count())
+        self.assertEqual(0, doll.locator('[data-part="head"] img').count())
+        self.assertEqual(1, doll.locator('[data-part="head"] svg.glyph.empty').count())
+        self.assertTrue(self.page.locator('#iconcredit').is_visible())
+        kinds = self.page.evaluate('''[itemGlyph("W", 10000).tagName, itemGlyph("W", 1234567).tagName,
+            itemGlyph("A", 100700, false).src === itemGlyph("A", 100700, true).src,
+            iconFor("W", 10003) === iconFor("W", 10000), iconFor("G", 9926) === iconFor("G", 9922)]''')
+        self.assertEqual(['IMG', 'svg', False, True, False], kinds)
+
+    def test_paper_doll_uses_the_saves_gender(self):
+        def save(is_male):
+            sf = des_save.SaveFile(AddItemBrowserTests.fixture().build())
+            sf.records.insert(0, des_save.Field(des_save.name_key('PLAYER_ISMALE'), des_save.T_U8, bytes([is_male])))
+            return des_save.SaveFile(sf.build()).build()
+        self.load_bytes(save(0))
+        self.assertTrue(self.page.evaluate('saveIsFemale(current().save)'))
+        self.assertEqual(self.page.evaluate('iconFor("A", 100700, true)'),
+                         self.page.evaluate('itemGlyph("A", 100700).src'))
+        self.assertIn('Female', self.page.get_attribute('#charcard .figure.doll', 'aria-label'))
+        self.page.reload()
+        self.load_bytes(save(1))
+        self.assertEqual(self.page.evaluate('iconFor("A", 100700, false)'),
+                         self.page.evaluate('itemGlyph("A", 100700).src'))
+
+    def test_empty_slot_items_are_named_by_slot_and_count_as_nothing_worn(self):
+        names = self.page.evaluate('["W:100300","A:101700","A:201700","A:301500","A:401500"].map(k => ITEM_BY_CAT.get(k))')
+        self.assertEqual(['Bare hands (No Equipment)', 'Bare head (No Equipment)', 'Bare body (No Equipment)',
+                          'Bare arms (No Equipment)', 'Bare legs (No Equipment)'], names)
+        self.assertEqual(['svg', 'glyph empty'], self.page.evaluate(
+            '[itemGlyph("A", 201700).tagName, itemGlyph("A", 201700).getAttribute("class")]'))
+        self.assertIsNone(self.page.evaluate('iconFor("A", 201700)'))
+        self.assertIsNotNone(self.page.evaluate('creationProblem("W", 100300)'))   # still not addable
+
+    def test_without_icons_the_drawn_figure_returns(self):
+        self.load_bytes(AddItemBrowserTests.fixture().build())
+        self.assertEqual('svg', self.page.evaluate(
+            '(() => { const keep = new Map(ICON_OF); ICON_OF.clear();'
+            ' try { return characterFigure(current().save).tagName; } finally { for (const [k, v] of keep) ICON_OF.set(k, v); } })()'))
 
     def test_every_catalog_kind_has_a_glyph(self):
         self.assertEqual([], self.page.evaluate(

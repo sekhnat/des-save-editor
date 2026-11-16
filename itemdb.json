@@ -1,5 +1,5 @@
 {
-  "schema": 5,
+  "schema": 6,
   "language": "en-gb",
   "count": 2291,
   "categories": {
@@ -10,7 +10,7 @@
     "Spell": 40,
     "Weapon": 1884
   },
-  "note": "IDs are category-specific. Limits, sort ids, durability, the ammunition classification and the item kind come from the equip PARAMs via their PARAMDEFs.",
+  "note": "IDs are category-specific. Limits, sort ids, durability, the ammunition classification, the item kind and the empty-slot placeholder flag come from the equip PARAMs via their PARAMDEFs.",
   "classes": [
     {
       "archetype": 0,
@@ -342,7 +342,8 @@
       "durabilityMax": 200,
       "sortId": -1,
       "durability": 200,
-      "kind": "head"
+      "kind": "head",
+      "placeholder": true
     },
     {
       "id": 101800,
@@ -642,7 +643,8 @@
       "durabilityMax": 200,
       "sortId": -1,
       "durability": 200,
-      "kind": "body"
+      "kind": "body",
+      "placeholder": true
     },
     {
       "id": 201800,
@@ -962,7 +964,8 @@
       "durabilityMax": 200,
       "sortId": -1,
       "durability": 200,
-      "kind": "arms"
+      "kind": "arms",
+      "placeholder": true
     },
     {
       "id": 301700,
@@ -1292,7 +1295,8 @@
       "durabilityMax": 200,
       "sortId": -1,
       "durability": 200,
-      "kind": "legs"
+      "kind": "legs",
+      "placeholder": true
     },
     {
       "id": 401800,
@@ -20383,7 +20387,8 @@
       "durabilityMax": 150,
       "sortId": -1,
       "durability": 150,
-      "kind": "fist"
+      "kind": "fist",
+      "placeholder": true
     },
     {
       "id": 109000,

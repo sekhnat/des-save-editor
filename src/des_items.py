@@ -46,11 +46,22 @@ ALL_SLOT_KEYS = [slot_key(index) for index in range(10 * SLOT_CHUNKS)]
 SLOT_KEY_SET = frozenset(ALL_SLOT_KEYS)
 
 
+# The game names its empty-slot rows (bare hands, head, body, arms, legs) all
+# "No Equipment"; they are shown by slot, as in the editor page.
+PLACEHOLDER_NAMES = {'fist': 'Bare hands', 'head': 'Bare head', 'body': 'Bare body',
+                     'arms': 'Bare arms', 'legs': 'Bare legs'}
+
+
 @functools.lru_cache(maxsize=4)
 def _read_itemdb(path: str, mtime_ns: int, size: int) -> dict:
     """Parsed catalog document; mtime and size in the key make a rewritten file reload."""
     with open(path, encoding='utf-8') as stream:
-        return json.load(stream)
+        doc = json.load(stream)
+    for entry in doc.get('items', []):
+        if entry.get('placeholder'):
+            entry['gameName'] = entry['name']
+            entry['name'] = f"{PLACEHOLDER_NAMES.get(entry.get('kind'), 'Empty slot')} ({entry['name']})"
+    return doc
 
 
 def _itemdb(path: str | None) -> dict | None:
