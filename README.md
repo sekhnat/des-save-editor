@@ -1,59 +1,92 @@
 <div align="center">
 
-<img src="desktop/build/icons/128x128.png" alt="" width="96" height="96">
+<a href="https://github.com/sekhnat/des-save-editor/releases/latest"><img src="docs/assets/banner.svg" alt="Demon's Souls Save Editor" width="100%"></a>
 
-# Demon's Souls Save Editor
+<br>
 
-**An offline editor for decrypted PS5 `USR-DATA` saves of Demon's Souls (`PPSA01341`).**
+**An offline save editor for *Demon's Souls* (2020) on PS5 — decrypted `USR-DATA`, title `PPSA01341`.**
 
-[![Release](https://img.shields.io/github/v/release/sekhnat/des-save-editor?label=release)](https://github.com/sekhnat/des-save-editor/releases/latest)
-[![Build](https://github.com/sekhnat/des-save-editor/actions/workflows/desktop.yml/badge.svg)](https://github.com/sekhnat/des-save-editor/actions/workflows/desktop.yml)
-[![License](https://img.shields.io/github/license/sekhnat/des-save-editor)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/sekhnat/des-save-editor?style=flat-square&label=release&color=c9a86a)](https://github.com/sekhnat/des-save-editor/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/sekhnat/des-save-editor/total?style=flat-square&color=8a8274)](https://github.com/sekhnat/des-save-editor/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/sekhnat/des-save-editor/desktop.yml?style=flat-square&label=build)](https://github.com/sekhnat/des-save-editor/actions/workflows/desktop.yml)
+[![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux%20%7C%20browser-555?style=flat-square)](#download)
+[![Python](https://img.shields.io/badge/CLI-Python%203%20·%20stdlib%20only-3776ab?style=flat-square)](#command-line)
+[![License](https://img.shields.io/github/license/sekhnat/des-save-editor?style=flat-square&color=555)](LICENSE)
 
-[Download](#download) · [Quick start](#quick-start) · [Features](#features) · [Command line](#command-line) · [Documentation](#documentation)
+[**Download**](#download) · [Quick start](#quick-start) · [Features](#features) · [Command line](#command-line) · [Documentation](#documentation)
 
 </div>
 
 ---
 
-A single self-contained page (`des_editor.html`) that reads, edits and rebuilds
-**version-7 decrypted `USR-DATA`** files. It needs no server, installation, game
-assets or network access, and its content-security policy blocks network
-requests. The same page is also packaged as a desktop app for Windows, Linux and
-macOS, and a standard-library Python CLI covers scripting.
+## Overview
+
+Demon's Souls Save Editor is a single self-contained page, `des_editor.html`, that
+reads, edits and rebuilds **version-7 decrypted `USR-DATA`** files. The same page
+ships as a desktop app for Windows, macOS and Linux, and a Python command-line
+tool covers scripting and batch work.
+
+| At a glance | |
+|---|---|
+| **Runs** | In any modern browser, as a desktop app, or from the command line |
+| **Needs** | Nothing: no server, installation, game files or network access |
+| **Network** | None. The page's content-security policy blocks every request |
+| **Safety** | Loading never writes. Originals are kept, every edit can be undone, and exports are validated |
+| **CLI** | Python 3 standard library only |
 
 ## Highlights
 
-- **Easy and Advanced modes**: Easy shows only souls, name, class and attributes, world tendency sliders, and adding items, with a paper doll of the equipped gear and the game's own inventory icon for each item. Advanced is the full editor. The page remembers your choice.
-- **Character**: name, class, souls, all eight attributes, vitals, resistances, spells and counters.
-- **Tendency**: set each world and the character from Pure Black to Pure White, see which of the 32 tendency events (black phantoms, NPCs, doors, treasure) are on, and trigger one by putting the tendency into the range the game's own table requires.
-- **Items**: browse the inventory, storage box and equipment slots, edit quantities and durability, change a weapon's upgrade level or path, and add items from a 2,291-entry catalog.
-- **Attributes**: move points between the eight attributes at the same soul level, or change the soul level (not yet checked in game).
-- **World state**: inspect per-entity records (archstones, boss loot, chains, statues) labelled with their level and defining game file.
-- **Safe by default**: nothing is written by loading a file, the original bytes are always kept, every edit has undo/redo, and exports are validated before they are offered.
-- **Everything is inspectable**: full tree view, raw field editing, JSON dumps, conflict-checked patches and a before/after diff.
+- **Easy and Advanced modes.** Easy covers what most people want: souls, name, class,
+  attributes, world tendency and adding items. It shows a paper doll of the equipped
+  gear and the game's own icon for every item. Advanced is the full editor. The page
+  remembers your choice.
+- **Character.** Name, class, souls, all eight attributes, vitals, resistances,
+  spells and counters.
+- **World tendency.** Set each world and the character anywhere from Pure Black to
+  Pure White. See which of the 32 tendency events (black phantoms, NPCs, doors,
+  treasure) are active, and trigger one by moving tendency into the range the game's
+  own table requires.
+- **Items.** Browse the inventory, storage box and equipment slots. Edit quantities
+  and durability, change a weapon's upgrade level or path, and add items from a
+  2,291-entry catalog.
+- **Attributes.** Move points between attributes at the same soul level, or change
+  the soul level.
+- **World state.** Inspect per-entity records (archstones, boss loot, chains,
+  statues), each labelled with its level and the game file that defines it.
+- **Fully inspectable.** Tree view, raw field editing, JSON dumps, conflict-checked
+  patches and a before/after diff.
+
+## Verification status
+
+Every edit below writes a checksum-valid file. Edits marked *verified* were also
+loaded in the game (on the Kyty emulator): the menus showed them and the game's own
+save kept them.
+
+| Edit | Status |
+|---|---|
+| Inventory quantity and durability | ✅ Verified in game |
+| Adding items to the inventory | ✅ Verified in game |
+| Weapon upgrade level and path | ✅ Verified in game |
+| Attribute redistribution at the same soul level | ✅ Verified in game |
+| Storage-box edits | ⚠️ Experimental, opt-in: the game kept them, but they were not seen on screen |
+| World-state edits (other than `BROKEN`) | ⚠️ Experimental, opt-in: no observed effect |
+| Soul-level change, class change | ⏳ Not yet checked in game |
 
 > [!WARNING]
-> A checksum-valid file is not necessarily a game-safe edit. Inventory quantity
-> and durability edits, adding items to the inventory, weapon upgrades and
-> attribute redistribution were checked in the game (on the Kyty emulator): the
-> menus showed them and the game's own save kept them. **Storage-box edits**
-> were kept but not seen on screen, and **world-state edits** other than
-> `BROKEN` have no observed effect, so both stay experimental and opt-in (Easy
-> mode adds to the storage box after a warning instead of the toggle). The
-> Easy-mode level change and class change are not checked in game yet. Back up
-> your entire `_SaveData` folder first.
+> A checksum-valid file is not necessarily a game-safe edit. **Back up your entire
+> `_SaveData` folder before you start.** Easy mode adds to the storage box only
+> after a warning, instead of requiring the experimental toggle.
 
 ## Download
 
-Get the latest build from the [**Releases**](https://github.com/sekhnat/des-save-editor/releases/latest) page,
-or just open `des_editor.html` from a checkout in any modern browser.
+Get the latest build from the [**Releases**](https://github.com/sekhnat/des-save-editor/releases/latest)
+page, or open `des_editor.html` from a checkout in any modern browser.
 
 | Platform | File | Notes |
 |---|---|---|
 | Windows | `…-win-x64-portable.exe` or the `…-win-x64.exe` installer | Unsigned: SmartScreen may ask you to choose *More info → Run anyway* |
+| macOS | `…-mac-arm64.dmg` (Apple silicon) or `…-mac-x64.dmg` (Intel) | Unsigned: right-click → **Open** the first time |
 | Linux | `…-linux-x86_64.AppImage` | `chmod +x` it; needs `libfuse2` on newer distributions |
-| macOS | `…-mac-x64.dmg` / `…-mac-arm64.dmg` | Unsigned: right-click → **Open** the first time |
 
 The desktop app is Electron hosting the unmodified `des_editor.html` with the
 network blocked, so it behaves exactly like the page. Closing it with unexported
@@ -63,21 +96,21 @@ edits asks for confirmation.
 
 1. **Back up** your entire `_SaveData` folder, with the game or emulator closed.
 2. Open `des_editor.html` (or the desktop app) and choose **Choose folder… → `_SaveData`**.
-   This retains the original profile-folder names. File selection and folder drops
-   also work, and nothing is written merely by loading a file.
+   This keeps the original profile-folder names. Selecting files and dropping
+   folders also work, and loading never writes anything.
 3. Click **Original backup** for an exact download of the loaded bytes.
-4. Make your edits. **Easy** mode (the default) covers souls, attributes, tendency and
-   adding items; switch to **Advanced** for every field, then review
+4. Make your edits. **Easy** mode (the default) covers souls, attributes, tendency
+   and adding items. Switch to **Advanced** for every field, then review
    **Checks & coverage** and **Changes** there.
-5. **Save file** writes through a browser save dialog where supported, otherwise
-   it requests a download. Put the file back as **`USR-DATA`** in the correct
+5. **Save file** writes through a browser save dialog where one is supported, and
+   otherwise requests a download. Put the file back as **`USR-DATA`** in the correct
    `SAVEDATA0PlayerProfileN` or `SAVEDATA0OptionsProfile0` folder.
 6. Or use **Save all (ZIP)** for one bundle holding every loaded profile's edited
-   copy, its immutable original and a mapping manifest. Confirm the download
+   copy, its unmodified original and a mapping manifest. Confirm that the download
    completed before replacing files.
 
 <details>
-<summary>Details about exports and the ZIP</summary>
+<summary>Exports and the ZIP bundle</summary>
 
 The ZIP's `edited/` and `originals/` trees contain **only `USR-DATA` files**. Keep
 your emulator `.blocks` capacity files and the rest of the original folder. When
@@ -85,77 +118,74 @@ bare files were loaded without their folders, the bundle uses descriptive
 placeholder folders that you must match to the real profile folders yourself;
 loading the full save folder avoids that ambiguity.
 
-The loaded original is never replaced by an export. **Revert all** always
-restores the original payload, even after several exports, and undo history
-survives exports. The page warns before closing with unexported edits or
-unapplied drafts. A browser download request cannot prove that the download
-actually completed.
+The loaded original is never replaced by an export. **Revert all** always restores
+the original payload, even after several exports, and undo history survives
+exports. The page warns before closing with unexported edits or unapplied drafts.
+A browser download request cannot prove that the download actually completed.
 
 </details>
 
 ## Features
 
-**Easy mode** has two views:
+### Easy mode
 
 | View | What it provides |
 |---|---|
-| **Character** | A paper doll of the game icons for the worn head, body, arms and legs pieces and the L1/R1 hand items, name, class, souls with **Max souls**, and the eight attributes (keeping the total redistributes at the same soul level; changing it levels up or down). Equipped, inventory and storage box tables sit side by side, each scrolling and filtering on its own, with an icon per item, editable stackable quantities and **+ Add** to the inventory or storage box (storage shows a warning instead of needing the experimental toggle) |
+| **Character** | A paper doll of the game icons for the worn head, body, arms and legs pieces and the L1/R1 hand items; name, class, souls with **Max souls**, and the eight attributes (keeping the total redistributes at the same soul level, changing it levels up or down). Equipped, inventory and storage-box tables sit side by side, each scrolling and filtering on its own, with an icon per item, editable stackable quantities and **+ Add** to the inventory or storage box |
 | **Tendency** | Character and world sliders, presets and all-world buttons, without the event tables |
 
-**Advanced mode** has every view:
+### Advanced mode
 
 | View | What it provides |
 |---|---|
-| **Editor** | Character and class, souls, base/current attributes, vitals, resistance, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels/paths (storage box: experimental); recovered arrays |
-| **Tendency** | Character and the five worlds on a −200 to 200 slider with band, presets and all-world buttons; every tendency event with its required range, live on/off status, **Trigger** (single or several at once) and the events a change turns on or off |
+| **Editor** | Character and class, souls, base and current attributes, vitals, resistances, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels and paths (storage box: experimental); recovered arrays |
+| **Tendency** | Character and the five worlds on a −200 to 200 slider with band, presets and all-world buttons; every tendency event with its required range, live on/off status, **Trigger** (one or several at once) and the events a change turns on or off |
 | **All fields** | Named and unknown records with strict scalar, text and hex editing, filtering, 100 records per page |
 | **Tree** | Container hierarchy and absolute file offsets, 200 records per page |
 | **World state** | Every world-state entity with its level and defining game file, named records, filtering, 200 per page; opt-in same-size edits |
 | **Field reference** | The 92 named fields with editor metadata, hashes, descriptions and values in the active file. A further 12,600 indexed family names and 19 world-state names label records in the other views |
-| **Item catalog** | All 2,291 category-scoped entries, including wide weapon/armor IDs, spells and skills |
-| **Changes** | Before/after comparison with the immutable original; export conflict-checked scalar patches |
-| **JSON / patches** | Full dump, file import/export, plain field maps and path-based patches |
+| **Item catalog** | All 2,291 category-scoped entries, including wide weapon and armour IDs, spells and skills |
+| **Changes** | Before/after comparison with the unmodified original; export conflict-checked scalar patches |
+| **JSON / patches** | Full dump, file import and export, plain field maps and path-based patches |
 
-Item icons are the game's own inventory icons, extracted from the remake's UI
-atlas by `tools/build_icons.py` and embedded in the page (483 icons covering
-2,187 goods, weapon, armour, ring and spell rows; armour has male and female
-versions and follows the save's gender). Rows without a game icon (unused
-data) fall back to an original line drawing
-chosen by the item's type in the equip PARAMs (`weaponCategory`,
-`protectorCategory`, `goodsType`, `accessoryCategory`). The character card
-shows the worn armour's icons as a paper doll; with no icon to show it falls
-back to a drawn figure.
+### Item icons and the paper doll
 
-The game fills an empty slot with a placeholder it names "No Equipment": bare
-hands, and a bare head, body, arms and legs. The editor and the CLI label these
-by slot ("Bare head (No Equipment)"), give them a dashed empty-slot symbol
-instead of a game icon, and the paper doll shows the slot as empty.
+Item icons are the game's own inventory icons, extracted from the remake's UI atlas
+by `tools/build_icons.py` and embedded in the page: 475 icons covering 2,183 goods,
+weapon, armour, ring and spell rows. Armour has male and female versions and follows
+the save's gender. Rows without a game icon (unused data) fall back to an original
+line drawing chosen by the item's type in the equip PARAMs (`weaponCategory`,
+`protectorCategory`, `goodsType`, `accessoryCategory`). The character card shows the
+worn armour's icons as a paper doll, and falls back to a drawn figure when there is
+no icon to show.
 
-Item icons are extracted from *Demon's Souls* (2020), © Sony Interactive
-Entertainment; they are shown for identification only.
+The game fills an empty slot with a placeholder it names "No Equipment": bare hands,
+and a bare head, body, arms and legs. The editor and the CLI label these by slot
+("Bare head (No Equipment)") and give them a dashed empty-slot symbol instead of a
+game icon, and the paper doll shows the slot as empty.
 
-Large binary fields open in a separate inspector with strict hex edits and exact
-binary download/import. It does **not** interpret unknown blob formats; the
-world-state container has its own view.
+### Editing tools
 
-**Quick actions:** max souls, refill effective HP/MP/stamina, copy current
-attributes to base attributes, and set attributes to 99 (with confirmation).
-Effective HP/MP maxima are *not* overwritten automatically from base values,
-because form, equipment and game rules can make them differ.
-
-**Shortcuts:** `Ctrl/Cmd+S` exports the active save. Outside text inputs,
-`Ctrl/Cmd+Z` undoes and `Ctrl/Cmd+Shift+Z` or `Ctrl+Y` redoes. `Esc` closes
-dialogs, `Tab` stays inside an open dialog, and arrow keys, `Home` and `End`
-navigate the view tabs.
+- **Binary fields.** Large binary fields open in a separate inspector with strict hex
+  edits and exact binary download and import. It does **not** interpret unknown blob
+  formats; the world-state container has its own view.
+- **Quick actions.** Max souls, refill effective HP/MP/stamina, copy current
+  attributes to base attributes, and set attributes to 99 (with confirmation).
+  Effective HP/MP maxima are *not* overwritten from base values automatically,
+  because form, equipment and game rules can make them differ.
+- **Shortcuts.** `Ctrl/Cmd+S` exports the active save. Outside text inputs,
+  `Ctrl/Cmd+Z` undoes and `Ctrl/Cmd+Shift+Z` or `Ctrl+Y` redoes. `Esc` closes
+  dialogs, `Tab` stays inside an open dialog, and arrow keys, `Home` and `End`
+  move between the view tabs.
 
 <details>
 <summary>Undo, redo and drafts</summary>
 
-Undo/redo groups typing within a focused field, creates no history entry merely
-for focusing, and preserves redo until an actual edit. History is limited to 60
-snapshots and about 20 MiB per profile (at least one snapshot). JSON drafts
-survive tab and profile changes; stale drafts are rejected rather than
-overwriting newer edits. Text inputs and textareas keep native text undo.
+Undo/redo groups typing within a focused field, creates no history entry merely for
+focusing, and keeps redo until an actual edit. History is limited to 60 snapshots
+and about 20 MiB per profile (at least one snapshot). JSON drafts survive tab and
+profile changes; stale drafts are rejected rather than overwriting newer edits. Text
+inputs and textareas keep native text undo.
 
 </details>
 
@@ -169,20 +199,20 @@ Plain field maps are accepted by both the browser and the CLI:
 
 Raw four-byte and blob values use strict hex strings or `{"hex":"00112233"}`.
 Unknown or ambiguous keys reject the **entire** patch. Repeated keys must be
-addressed by path using a patch exported from **Changes**; those patches check
-key, type, path and expected original bytes before anything is applied.
+addressed by path using a patch exported from **Changes**; those patches check key,
+type, path and expected original bytes before anything is applied.
 
 Structural changes, such as adding or removing array records, need a full
-`USR-DATA` export rather than a scalar patch. Use **Add item…** (or the CLI
-`add`) for item creation instead of hand-crafting records.
+`USR-DATA` export rather than a scalar patch. Use **Add item…** (or the CLI `add`)
+to create items instead of hand-crafting records.
 
-Full browser dumps retain keys, types, structure and complete scalar precision;
-non-finite floats and negative zero use hex to preserve their exact bits.
-Applying an invalid dump never discards existing edits or modifies undo history.
+Full browser dumps keep keys, types, structure and complete scalar precision;
+non-finite floats and negative zero use hex to preserve their exact bits. Applying
+an invalid dump never discards existing edits or changes undo history.
 
 ## Command line
 
-Python's standard library is sufficient.
+The CLI needs only Python 3's standard library.
 
 ```bash
 python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341   # check every file in a save folder
@@ -253,13 +283,12 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 </details>
 
 Storage-box edits (`inv --box-qty`, `add --to storage`, `upgrade --storage`) and
-`wset` require `--experimental`. `add` creates a full `USR-DATA`
-through the same validated path as the page. For in-place writes, `set`, `patch`,
-`inv`, `wset` and `aslot` first create a collision-resistant timestamped backup
-(`set --no-backup` is an explicit opt-out). Edited bytes are validated, written to
-a temporary file, flushed and fsynced, then atomically replace the destination;
-failed edits leave the destination untouched. Blob assignments are hex, not UTF-8
-text.
+`wset` require `--experimental`. `add` creates a full `USR-DATA` through the same
+validated path as the page. For in-place writes, `set`, `patch`, `inv`, `wset` and
+`aslot` first create a collision-resistant timestamped backup (`set --no-backup` is
+an explicit opt-out). Edited bytes are validated, written to a temporary file,
+flushed and fsynced, then atomically replace the destination; failed edits leave the
+destination untouched. Blob assignments are hex, not UTF-8 text.
 
 ## Documentation
 
@@ -267,14 +296,27 @@ text.
 |---|---|
 | [Coverage and limits](docs/coverage.md) | What is decoded and how far each part can be trusted: character, classes, options, inventory, adding items, arrays, tendency, world state, bounds |
 | [Save format](docs/format.md) | Container layout, record types, world-state framing |
-| [Research notes](docs/research.md) | How names and structures were recovered, how to identify a field, rebuilding the embedded tables |
+| [Research notes](docs/research.md) | How names and structures were recovered, how to identify a field, rebuilding the embedded tables and icons |
 | [Development](docs/development.md) | Running the tests, benchmarks and the desktop app, and cutting a release |
 
 ## Scope
 
 Only the sampled **decrypted** format is supported. This project does not decrypt,
-re-sign or import encrypted retail-console saves, and it ships no game assets.
+re-sign or import encrypted retail-console saves. Apart from the embedded item icons
+and the logo in the banner, it ships no game files.
+
+## Credits and legal
+
+This is an unofficial fan project. It is not affiliated with or endorsed by Sony
+Interactive Entertainment, Bluepoint Games or FromSoftware. *Demon's Souls* is a
+trademark of Sony Interactive Entertainment.
+
+- Item icons are extracted from *Demon's Souls* (2020), © Sony Interactive
+  Entertainment; they are shown for identification only.
+- The banner's *Demon's Souls* logo is traced from a screenshot of the game's logo, © Sony Interactive
+  Entertainment. Its subtitle is set in [Cinzel](https://fonts.google.com/specimen/Cinzel) by
+  Natanael Gama under the SIL Open Font License 1.1.
 
 ## License
 
-[MIT](LICENSE)
+The code is released under the [MIT License](LICENSE).
