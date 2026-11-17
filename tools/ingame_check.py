@@ -10,6 +10,7 @@ WAYLAND_DISPLAY are never used, and there is no visible-window option.
     ingame_check.py run CASE [CASE ...]         boot with the cases' edits, look, save, judge, restore
     ingame_check.py run CASE --dry-run          apply the edits to a scratch copy and judge that only
     ingame_check.py boot [CASE ...]             back up, edit, boot to gameplay and leave it running
+    ingame_check.py boot --start MAP:SPAWN      the same with no edits, starting at an MSB player part
     ingame_check.py keys TOKEN ...              send keys to the running game (see KEYS)
     ingame_check.py shot NAME                   screenshot the running game
     ingame_check.py finish [--no-save]          save and exit, stop, judge, restore
@@ -50,6 +51,7 @@ from typing import Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src'))
+import des_flags  # noqa: E402
 import des_inventory  # noqa: E402
 import des_save  # noqa: E402
 import des_world  # noqa: E402
@@ -75,6 +77,14 @@ SAVE_AND_EXIT = ['Return', 'wait:2', 'e*4', 'wait:2', 'Up', 'wait:1', 'shot:exit
 
 # --- cases -----------------------------------------------------------------
 
+_LOCAL_FLAG = 720           # m02: Ostrava ("Rendle") thanks the player - a one-off conversation
+_BANK_ONLY_FLAG = 1380      # m02: Yuria ("the witch") thanks the player - likewise
+_HIGH_FLAG = 10770          # m02 high range (bank 78a5c2d7): the Tower Shield pickup in 1-2
+_HIGH_BANK_ONLY = 10766     # m02 high range: an Unknown Hero Soul pickup in 1-2
+_REARM_FLAG = 10242         # m02: Late Moon Grass x2 in 1-1, 28 m straight ahead of spawn c0000_0001
+_LOOK = ['wait:8', 'shot:look-1', 'wait:6', 'shot:look-2']
+
+
 @dataclasses.dataclass
 class Case:
     about: str
@@ -83,6 +93,7 @@ class Case:
     expect: str                          # what the check asserts, for the report
     keys: list[str] = dataclasses.field(default_factory=list)
     precondition: Callable[[des_save.SaveFile], bool] | None = None
+    start: tuple[str, str] | None = None      # (map, MSB player part): where the game starts
 
 
 def _inventory(sf, category, item_id):
@@ -217,6 +228,67 @@ CASES: dict[str, Case] = {
         [['add', 'Armor', '100400', '--to', 'storage', '--experimental']],
         lambda sf: len(_storage(sf, 'Armor', 100400)) == 1,
         'one Mail Coif in storage', []),
+    # Event flags (written for the end-game LOL character, profile 1, on m02).
+    'flag-respawn': Case(
+        'event flags: respawn Phalanx (clear death flag 4096 and soul flag 4103)',
+        [['events', '--respawn', 'phalanx', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_flag(sf, 4096) and not des_flags.get_flag(sf, 4103),
+        'flags 4096 and 4103 clear', [],
+        lambda sf: des_flags.get_flag(sf, 4096) and des_flags.get_flag(sf, 4103)),
+    'flag-local': Case(
+        'event flags: clear Boletaria local flag 720 ("Rendle thanks") in its area slot and the current-area copy',
+        [['events', '--set', f'm02:{_LOCAL_FLAG}=0', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_local(sf, 1, _LOCAL_FLAG)
+        and not des_flags.get(sf.find(des_flags.PRIMARY).raw, _LOCAL_FLAG),
+        'flag 720 clear in the m02 slot and in the primary copy', [],
+        lambda sf: des_flags.current_area(sf) == 1 and des_flags.get_local(sf, 1, _LOCAL_FLAG)
+        and bool(des_flags.mirror_ok(sf))),
+    'flag-local-bankonly': Case(
+        'diagnostic: clear Boletaria local flag 1380 ("The witch thanks") in the area slot only, '
+        'leaving the current-area copy set: kept = the game trusts the slot, dropped = it trusts the copy',
+        [['events', '--set', f'm02:{_BANK_ONLY_FLAG}=0', '--bank-only', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_local(sf, 1, _BANK_ONLY_FLAG),
+        'flag 1380 clear in the m02 slot after the game saves', [],
+        lambda sf: des_flags.current_area(sf) == 1 and des_flags.get_local(sf, 1, _BANK_ONLY_FLAG)
+        and des_flags.get(sf.find(des_flags.PRIMARY).raw, _BANK_ONLY_FLAG)),
+    'flag-local-high': Case(
+        'event flags: clear Boletaria high-range flag 10770 (Tower Shield pickup) in bank 78a5c2d7 and the copy',
+        [['events', '--set', f'm02:{_HIGH_FLAG}=0', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_local(sf, 1, _HIGH_FLAG)
+        and not des_flags.get(sf.find(des_flags.PRIMARY).raw, _HIGH_FLAG),
+        'flag 10770 clear in the m02 slot of 78a5c2d7 and in the primary copy', [],
+        lambda sf: des_flags.current_area(sf) == 1 and des_flags.get_local(sf, 1, _HIGH_FLAG)
+        and bool(des_flags.mirror_ok(sf))),
+    'flag-local-high-bankonly': Case(
+        'diagnostic: clear Boletaria high-range flag 10766 in bank 78a5c2d7 only, leaving the copy set',
+        [['events', '--set', f'm02:{_HIGH_BANK_ONLY}=0', '--bank-only', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_local(sf, 1, _HIGH_BANK_ONLY),
+        'flag 10766 clear in the m02 slot after the game saves', [],
+        lambda sf: des_flags.current_area(sf) == 1 and des_flags.get_local(sf, 1, _HIGH_BANK_ONLY)),
+    'flag-respawn-visible': Case(
+        'event flags: full respawn of Phalanx, starting 14 m from its core in 1-1 (screenshots show whether it is back)',
+        [['events', '--respawn', 'phalanx', '--full', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_flag(sf, 4096) and not des_flags.get_flag(sf, 4103),
+        'flags 4096 and 4103 clear; look at the screenshots', _LOOK,
+        lambda sf: des_flags.get_flag(sf, 4096), ('m02_00_00_00', 'c0000_0006')),
+    'flag-respawn-plain-visible': Case(
+        'event flags: plain respawn of Phalanx (death and soul flags only), starting 14 m from its core in 1-1',
+        [['events', '--respawn', 'phalanx', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_flag(sf, 4096) and not des_flags.get_flag(sf, 4103),
+        'flags 4096 and 4103 clear; look at the screenshots', _LOOK,
+        lambda sf: des_flags.get_flag(sf, 4096), ('m02_00_00_00', 'c0000_0006')),
+    'flag-npc-visible': Case(
+        'event flags: put the (dead) Crestfallen Warrior back "in the Nexus", starting in the Nexus facing his spot',
+        [['events', '--npc', 'heartbreak=stone_pillar', '--experimental', '--no-backup']],
+        lambda sf: des_flags.get_flag(sf, 16420) and not des_flags.get_flag(sf, 16422),
+        'state flag 16420 set, 16422 clear; look at the screenshots', _LOOK,
+        lambda sf: des_flags.get_flag(sf, 16422), ('m01_00_00_00', 'c0000_0001')),
+    'flag-rearm-pickup': Case(
+        'event flags: re-arm the Late Moon Grass pickup (m02 10242) straight ahead of the 1-1 start',
+        [['events', '--set', f'm02:{_REARM_FLAG}=0', '--experimental', '--no-backup']],
+        lambda sf: not des_flags.get_local(sf, 1, _REARM_FLAG),
+        'flag 10242 clear in the m02 slot; look at the screenshots for the item glow', _LOOK,
+        lambda sf: des_flags.get_local(sf, 1, _REARM_FLAG), ('m02_00_00_00', 'c0000_0001')),
 }
 _ELIXIR = ('Goods', None)        # filled from the catalog at start-up
 
@@ -320,6 +392,32 @@ def apply_edits(source: Path, cases: list[str], out: Path) -> list[str]:
             current = target
         shutil.copyfile(current, out)
     return ran
+
+
+def move_to(kyty: Path, path: Path, profile: str, map_name: str, spawn: str) -> str:
+    """Start the character on another map at an MSB player part (Kyty's
+    demons-souls-save.py set-map), then refill the primary flag copy from the
+    new map's slots so the game does not save the old map's copy over it."""
+    tool = kyty / 'tools/local/demons-souls-save.py'
+    game = os.environ.get('DES_GAME_DIR')
+    if not game and (kyty / 'game-path.txt').exists():
+        game = (kyty / 'game-path.txt').read_text().strip()
+    if not game:
+        die('moving the character needs the game folder: set DES_GAME_DIR')
+    with tempfile.TemporaryDirectory() as scratch:
+        src, dst = Path(scratch) / 'src', Path(scratch) / 'dst'
+        (src / 'PPSA01341' / profile).mkdir(parents=True)
+        shutil.copyfile(path, src / 'PPSA01341' / profile / 'USR-DATA')
+        result = subprocess.run([sys.executable, str(tool), 'set-map', str(src), str(dst), map_name,
+                                 '--profile', profile, '--spawn', spawn, '--game', game],
+                                capture_output=True, text=True)
+        if result.returncode:
+            die(f'set-map failed: {result.stdout}{result.stderr}')
+        sf = des_save.load(str(dst / 'PPSA01341' / profile / 'USR-DATA'))
+    synced = des_flags.sync_mirror(sf)
+    des_save.save(sf, str(path))
+    return (f'set-map {map_name} --spawn {spawn}\n{result.stdout}'
+            f'primary flag copy refilled from the new map: {"changed" if synced else "unchanged"}\n')
 
 
 def judge(cases: list[str], original: Path, edited: Path, written: Path | None) -> dict:
@@ -488,7 +586,7 @@ def screenshot(session: dict, name: str) -> Path:
 
 # --- commands --------------------------------------------------------------
 
-def cmd_boot(cases: list[str], profile: str) -> dict:
+def cmd_boot(cases: list[str], profile: str, start: tuple[str, str] | None = None) -> dict:
     kyty = kyty_dir()
     tools_present()
     if SESSION.exists():
@@ -516,8 +614,17 @@ def cmd_boot(cases: list[str], profile: str) -> dict:
     save_session(session)              # from here on `restore` can put things back
     shutil.copytree(backup, saves, symlinks=True)
     log(session, f'saves backed up to {backup.name}; working copy in place')
+    if start and not cases:                  # explore from another spot, no edits
+        shutil.copyfile(run / 'original-USR-DATA', run / 'edited-USR-DATA')
+        (run / 'edits.txt').write_text(move_to(kyty, run / 'edited-USR-DATA', profile, *start))
+        shutil.copyfile(run / 'edited-USR-DATA', profile_file)
     if cases:
         ran = apply_edits(run / 'original-USR-DATA', cases, run / 'edited-USR-DATA')
+        starts = {CASES[name].start for name in cases} - {None}
+        if len(starts) > 1:
+            die(f'the cases start in different places: {sorted(starts)}')
+        if starts:
+            ran.append(move_to(kyty, run / 'edited-USR-DATA', profile, *starts.pop()))
         (run / 'edits.txt').write_text('\n'.join(ran))
         shutil.copyfile(run / 'edited-USR-DATA', profile_file)
         diff(run / 'original-USR-DATA', run / 'edited-USR-DATA', run / 'diff-edit.txt')
@@ -639,6 +746,9 @@ def main() -> int:
         p = sub.add_parser(name)
         p.add_argument('cases', nargs='*' if name == 'boot' else '+', choices=sorted(CASES), metavar='CASE')
         p.add_argument('--profile', default=PROFILE)
+        if name == 'boot':
+            p.add_argument('--start', metavar='MAP:SPAWN',
+                           help='start on another map at an MSB player part (e.g. m02_00_00_00:c0000_0006)')
         if name == 'run':
             p.add_argument('--dry-run', action='store_true')
             p.add_argument('--exit-keys', nargs='+', default=SAVE_AND_EXIT)
@@ -660,7 +770,8 @@ def main() -> int:
         return cmd_run(a.cases, a.profile, a.dry_run, a.exit_keys)
     elif a.command == 'boot':
         try:
-            session = cmd_boot(a.cases, a.profile)
+            start = tuple(a.start.split(':', 1)) if a.start else None
+            session = cmd_boot(a.cases, a.profile, start)
         except BaseException:
             if SESSION.exists():
                 cmd_restore()

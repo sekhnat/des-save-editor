@@ -124,6 +124,28 @@ means the game's own save still held it.
 | Storage quantity, storage addition, storage upgrade | not opened | yes |
 | `CLEARCOUNT` 1 → 2, `CLEARSTATE` 1 → 2 | *Games completed* stayed 1 | yes |
 
+**Results (2026-11-17, character `LOL`, end-game, in Boletaria 1-3).** Event
+flags ([Event flags](research-event-flags.md#in-game-check)):
+
+| Edit | Shown | Kept |
+|---|---|---|
+| Respawn Phalanx (clear flags 4096 and 4103) | not visited | yes |
+| Boletaria local flag 720 cleared in its slot and the current-map copy | not visited | yes |
+| Boletaria local flag 1380 cleared in its slot only | not visited | yes; the game rebuilt the copy from the slot |
+
+**Results (2026-11-17/18, `LOL` again, started at chosen spots with
+`ingame_check.py`'s new `start`/`--start`, which moves the character with
+Kyty's `set-map` and refills the flag copy from the new map's slots).**
+
+| Edit | Shown | Kept |
+|---|---|---|
+| Respawn Phalanx (death + soul flags), start 14 m from its core | **yes**: fog gate up and Phalanx's health bar, where a no-edit control from the same spot shows an open archway | yes |
+| Full respawn of Phalanx (also its fight and boss-room flags) | **yes**, the same | yes |
+| m02 flag 10770 (high range, bank `78a5c2d7`) cleared in slot and copy | not visited | yes |
+| m02 flag 10766 cleared in the `78a5c2d7` slot only | not visited | yes; the copy was rebuilt from the slot, as for the low range |
+| Re-arm the Late Moon Grass pickup (m02 10242), 28 m ahead of the 1-1 start | no difference visible from the start, compared with a control | yes |
+| Crestfallen Warrior (dead) set to "In the Nexus" | his spot was out of view | **advanced by the game**: it saved "Starting to fade away (late game)" with "In the Nexus" as the previous state, so it read the edited state and ran its own state change from there |
+
 Further observations:
 
 - **Equipment slots.** Slot 0 is left hand 1, slot 1 right hand 1, slot 2 left

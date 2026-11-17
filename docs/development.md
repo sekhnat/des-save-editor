@@ -20,13 +20,15 @@ python3 -m unittest discover -s tests -v
 python3 tests/benchmark_editor.py
 python3 tools/embed_fields.py --check     # page field and tendency tables match src/
 python3 tools/build_tendencydb.py GAME --check   # tendency catalog matches the game files
-python3 tools/build_flagdb.py GAME --check       # event-flag database matches the game scripts
+python3 tools/build_flagdb.py GAME --check       # event-flag database matches the game files
+python3 tools/build_flagdb.py GAME --coverage SAVE  # share of a save's set flags that have a label
+python3 tools/embed_flagdb.py --check     # page carries the current event-flag table
 python3 tools/embed_entitydb.py --check   # page carries the current entity index
 python3 tools/embed_icons.py --check      # page carries iconpack.json
 python3 src/des_editor.py selftest /path/to/_SaveData/PPSA01341
 ```
 
-The full suite is 220 tests and runs in about 45 s without the optional fixture
+The full suite is 290 tests and runs in about 45 s without the optional fixture
 environment (most of them format, structure, tools and browser flows). Regression
 coverage includes all three original files, malformed records, strict numeric and
 hex bounds, atomic imports and writes, undo/redo, async-save races, JSON drafts,

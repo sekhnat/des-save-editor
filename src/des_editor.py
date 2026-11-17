@@ -17,6 +17,9 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py world  <USR-DATA>          # world-state entities
     python3 des_editor.py events <USR-DATA>          # event flags: bosses, NPC quests
     python3 des_editor.py events <USR-DATA> --respawn phalanx    # make a boss alive again
+    python3 des_editor.py events <USR-DATA> --set m02:200=0 --experimental  # area-local flag
+    python3 des_editor.py events <USR-DATA> --rearm-pickups m02 --experimental  # pickups again
+    python3 des_editor.py events <USR-DATA> --sync-copy           # fix a mismatched flag copy
     python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
 Writing always leaves a timestamped `.bak` copy next to the file and
@@ -641,14 +644,17 @@ def _tendency_report(state: dict) -> dict:
 
 def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bool,
                sets: list[str], respawn: str | None, npc: str | None,
-               out: str | None, no_backup: bool) -> int:
+               out: str | None, no_backup: bool, bank_only: bool = False,
+               full: bool = False, defeat: str | None = None, forgive: str | None = None,
+               reset_map: str | None = None, rearm: str | None = None,
+               sync_copy: bool = False) -> int:
     """Event flags: the bits the game's scripts set and test."""
     F = des_flags
     db = F.load_db()
     if list_known:
         rows = {
             "bosses": db.bosses if db else [],
-            "npcs": [{"list": n["list"],
+            "npcs": [{"list": n["list"], "name": n.get("name", n["list"]),
                       "states": [f"{s['id']} {s['name']}" for s in n["states"]]}
                      for n in (db.npcs if db else [])],
         }
@@ -660,7 +666,7 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
             print(f"    {b['id']:>5} {b['name']:<20} soul {b['soul']:>5}  {b['world']}")
         print("  NPC quest states (one set at a time; +1000 backup twin)")
         for n in rows["npcs"]:
-            print(f"    {n['list']}")
+            print(f"    {n['list']}  ({n['name']})")
             for s in n["states"]:
                 print(f"      {s}")
         return 0
@@ -679,11 +685,49 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
 
     changed = False
     try:
+        if sync_copy:
+            area = F.current_area(sf)
+            if area is None:
+                raise ValueError("the save has no current area (MAPUID), so there is no copy to fix")
+            fixed = F.sync_mirror(sf)
+            print(f"  {db.area_name(area)}: flag copy "
+                  + ("rebuilt from the map slots" if fixed else "already matches the map slots"))
+            changed = changed or fixed
         if respawn:
-            result = F.respawn_boss(sf, db, respawn)
+            result = F.respawn_boss(sf, db, respawn, full=full)
+            local = (f"; {db.area_name(result['area'])} flags "
+                     f"{', '.join(map(str, result['cleared_local']))}"
+                     if result['cleared_local'] else "")
             print(f"  {result['boss']} alive again (cleared flags "
-                  f"{', '.join(map(str, result['cleared']))})")
+                  f"{', '.join(map(str, result['cleared']))}{local})")
             changed = True
+        if defeat:
+            result = F.defeat_boss(sf, db, defeat)
+            print(f"  {result['boss']} marked defeated (set flags "
+                  f"{', '.join(map(str, result['set']))})")
+            changed = True
+        if forgive:
+            result = F.forgive_npc(sf, db, forgive)
+            if result['restored'] is None:
+                print(f"  {result['npc']}: nothing to forgive (not hostile, "
+                      "or no previous state kept)")
+            else:
+                print(f"  {result['npc']} forgiven: back to flag {result['restored']}"
+                      + (f"; cleared {', '.join(f'm{a + 1:02d}:{f}' for a, f in result['cleared_local'])}"
+                         if result['cleared_local'] else ""))
+                changed = True
+        if reset_map:
+            area = F.parse_area(reset_map)
+            count = F.reset_map(sf, area)
+            print(f"  {db.area_name(area)}: cleared all {count} local flags")
+            changed = changed or count > 0
+        if rearm:
+            area = F.parse_area(rearm)
+            cleared = F.rearm_pickups(sf, db, area)
+            print(f"  {db.area_name(area)}: {len(cleared)} pickups re-armed")
+            for flag in cleared:
+                print(f"    {flag}  {db.event_label(flag, area)}")
+            changed = changed or bool(cleared)
         if npc:
             npc_name, sep, state = npc.partition("=")
             if not sep:
@@ -692,14 +736,30 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
             result = F.set_npc_state(sf, db, npc_name, state)
             print(f"  {result['npc']} -> {result['state']} (flag {result['id']})")
             changed = True
+        current = F.current_area(sf)
         for item in sets:
             name, sep, value = item.partition("=")
             if not sep or value not in ("0", "1"):
-                raise ValueError(f"bad assignment {item!r} (expected ID=0 or ID=1)")
-            flag = F.parse_target(name)
-            F.set_flag(sf, flag, value == "1")
-            label = db.event_label(flag)
-            print(f"  flag {flag} -> {value}" + (f" ({label})" if label else ""))
+                raise ValueError(f"bad assignment {item!r} (expected ID=0 or ID=1, "
+                                 "or AREA:ID=0|1 for a local flag)")
+            area, flag = F.parse_target(name)
+            if area is None and F.is_local(flag):
+                here = (f"; this save is on {db.area_name(current)}, e.g. "
+                        f"m{current + 1:02d}:{flag}={value}") if current is not None else ""
+                raise ValueError(f"flag {flag} is area-local: name its area "
+                                 f"(AREA:ID=V){here}")
+            if area is None:
+                F.set_flag(sf, flag, value == "1")
+                where = ""
+            else:
+                F.set_local(sf, area, flag, value == "1", mirror=not bank_only)
+                where = f"{db.area_name(area)} "
+                if area == current and not bank_only:
+                    where += "(+ current-area copy) "
+                elif bank_only:
+                    where += "(area slot only) "
+            label = db.event_label(flag, area)
+            print(f"  {where}flag {flag} -> {value}" + (f" ({label})" if label else ""))
             changed = True
     except ValueError as error:
         print(f"error: {error}", file=sys.stderr)
@@ -708,23 +768,36 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
         return _write(sf, path, out, backup=not no_backup)
 
     # read-only report
+    current = F.current_area(sf)
+    counts = F.local_counts(sf)
+    has_local = counts is not None
     report = {
         "summary": F.summary(sf),
+        "current_area": current,
+        "mirror_ok": F.mirror_ok(sf),
+        "local_counts": ({db.area_name(a): n for a, n in enumerate(counts)}
+                         if has_local else {}),
         "bosses": F.bosses(sf, db),
-        "npcs": [{k: n[k] for k in ("list", "set", "backup")}
+        "npcs": [{k: n[k] for k in ("list", "name", "set", "backup")}
                  for n in F.npc_states(sf, db)],
+        "shops": F.shop_counters(sf, db),
     }
     if text:
         needle = text.lower()
         report["bosses"] = [b for b in report["bosses"] if needle in b["name"].lower()]
         report["npcs"] = [n for n in report["npcs"]
-                          if needle in n["list"].lower()
+                          if needle in n["list"].lower() or needle in n["name"].lower()
                           or any(needle in s.lower() for s in n["set"])]
         flags = []
-        for raw in _flag_iter(sf):
+        for raw in F.global_flags(sf):
             label = db.event_label(raw)
             if label and needle in label.lower():
                 flags.append({"id": raw, "label": label})
+        for area in range(F.AREAS if has_local else 0):
+            for raw in F.local_flags(sf, area):
+                label = db.event_label(raw, area)
+                if label and needle in label.lower():
+                    flags.append({"area": f"m{area + 1:02d}", "id": raw, "label": label})
         report["matching_flags"] = flags
     if as_json:
         print(json.dumps(report, indent=1))
@@ -733,26 +806,35 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
     for key, info in report["summary"].items():
         print(f"  event flags {key}: {info['bits']} set "
               f"({info['bytes']} B, capacity {info['capacity']}) - {info['note']}")
+    if current is not None:
+        mirror = {True: "match its area slots", False: "DIFFER from its area slots",
+                  None: "not checked"}[report["mirror_ok"]]
+        print(f"  current area {db.area_name(current)}; primary local copies {mirror}")
+    if report["local_counts"]:
+        print("  local flags set per area: " + ", ".join(
+            f"{name.split()[0]} {n}" for name, n in report["local_counts"].items()))
     print("  bosses")
     for b in report["bosses"]:
         soul = f", soul {'taken' if b['soul_taken'] else 'not taken'}" \
             if b["soul_taken"] is not None else ""
         print(f"    {'DEAD' if b['defeated'] else 'alive'}  {b['name']:<20} "
               f"flag {b['id']}{soul}")
-    print("  NPC quest states (set | has backup twin)")
+    print("  NPC quest states (current | previous)")
     for n in report["npcs"]:
         if n["set"] or n["backup"]:
-            print(f"    {n['list'][:-10]:<18} {', '.join(n['set']) or '-'}"
+            print(f"    {n['name'][:24]:<24} {', '.join(n['set']) or '-'}"
                   f"{'  |  ' + ', '.join(n['backup']) if n['backup'] else ''}")
+    touched = [s for s in report["shops"] if s["value"]]
+    if touched:
+        print("  shop stock counters (8 flags each, read as one byte; meaning unconfirmed)")
+        for s in touched:
+            print(f"    {s['item']:<28} value {s['value']:>3}  (sold: {s['stock']}, "
+                  f"flags {s['flag']}..{s['flag'] + 7})")
+    if text:
+        print("  matching flags")
+        for f in report["matching_flags"]:
+            print(f"    {f.get('area', 'global'):>6} {f['id']:>5}  {f['label']}")
     return 0
-
-
-def _flag_iter(sf):
-    """Set flags of the primary event-flag blob."""
-    field = sf.find(des_flags.PRIMARY)
-    if field is None:
-        return []
-    return list(des_flags.iter_flags(field.raw))
 
 
 def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: bool,
@@ -838,14 +920,28 @@ def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: b
 # game's own save but not seen on screen; world-state records beyond BROKEN
 # have no observed effect.
 STORAGE_UNSEEN = "storage-box edits are kept by the game but were not seen in game"
-EVENTFLAG_UNSEEN = ("event-flag edits are decoded from the game's scripts but not "
-                    "yet checked in game")
+EVENTFLAG_UNSEEN = ("event-flag edits are kept by the game's own save but their "
+                    "effect was not yet seen in game")
+# Event-flag recipes whose effect was seen in game (docs/research.md#in-game-checks);
+# the page's EV_CONFIRMED holds the same names.
+EVENT_CONFIRMED: set[str] = {"respawn", "respawn-full",   # Phalanx back on screen, 2026-11-18
+                              "sync"}   # the game rebuilds the copy from the slots on load
+
+
+def _events_reason(a) -> str | None:
+    used = {name for name, on in (
+        ("set", a.sets), ("respawn", a.respawn and not a.full), ("respawn-full", a.respawn and a.full),
+        ("npc", a.npc), ("defeat", a.defeat), ("forgive", a.forgive),
+        ("reset-map", a.reset_map), ("rearm", a.rearm), ("sync", a.sync_copy)) if on}
+    return EVENTFLAG_UNSEEN if used - EVENT_CONFIRMED else None
+
+
 EXPERIMENTAL = {
     "inv": lambda a: STORAGE_UNSEEN if a.box_qty else None,
     "wset": lambda a: "world-state record meanings are unverified",
     "add": lambda a: STORAGE_UNSEEN if a.destination == "storage" else None,
     "upgrade": lambda a: STORAGE_UNSEEN if a.storage and a.id is not None and not a.list_family else None,
-    "events": lambda a: EVENTFLAG_UNSEEN if (a.sets or a.respawn or a.npc) else None,
+    "events": lambda a: _events_reason(a),
 }
 
 COMMANDS = {
@@ -869,7 +965,9 @@ COMMANDS = {
     "world": lambda a: cmd_world(a.file, a.as_json, a.group, a.text),
     "wset": lambda a: cmd_wset(a.file, a.guid, a.assignments, a.occurrence, a.out),
     "events": lambda a: cmd_events(a.file, a.as_json, a.text, a.list_known, a.sets,
-                                   a.respawn, a.npc, a.out, a.no_backup),
+                                   a.respawn, a.npc, a.out, a.no_backup, a.bank_only,
+                                   a.full, a.defeat, a.forgive, a.reset_map, a.rearm,
+                                   a.sync_copy),
     "diff": lambda a: cmd_diff(a.before, a.after, a.as_json),
     "selftest": lambda a: cmd_selftest(a.paths),
     "fields": lambda a: cmd_fields(),
@@ -989,17 +1087,31 @@ def main(argv: list[str]) -> int:
                    help="list every known boss flag and NPC state machine")
     p.add_argument("--filter", dest="text", metavar="TEXT",
                    help="only entries whose name or description contains this")
-    p.add_argument("--set", action="append", default=[], dest="sets", metavar="ID=0|1",
-                   help="set or clear one flag by number (e.g. --set 4096=0)")
+    p.add_argument("--set", action="append", default=[], dest="sets", metavar="[AREA:]ID=0|1",
+                   help="set or clear one flag: global by number (--set 4096=0), "
+                        "area-local (0..3199, 8192..12287) with its map (--set m02:200=0)")
     p.add_argument("--respawn", metavar="BOSS",
                    help="clear a boss's death flag and its soul-taken flag (name from --list)")
+    p.add_argument("--full", action="store_true",
+                   help="with --respawn: also clear the fight's fog/cutscene flags and boss-room flags")
+    p.add_argument("--defeat", metavar="BOSS", help="mark a boss defeated (sets its death flag)")
+    p.add_argument("--forgive", metavar="NPC",
+                   help="what seeking forgiveness does: a hostile NPC returns to their previous state")
+    p.add_argument("--reset-map", metavar="AREA",
+                   help="clear every local flag of one map (m01..m08): doors, levers, pickups, events")
+    p.add_argument("--rearm-pickups", metavar="AREA", dest="rearm",
+                   help="let one map's one-time pickups be picked up again")
+    p.add_argument("--sync-copy", action="store_true",
+                   help="rebuild the main flag block's copy of the current map's flags from that "
+                        "map's own slots (what the game does on load; repairs a mismatch)")
     p.add_argument("--npc", metavar="NPC=STATE",
                    help="put an NPC into exactly one quest state (e.g. baldwin=work)")
     p.add_argument("--json", action="store_true", dest="as_json")
     p.add_argument('--experimental', action='store_true',
-                   help="acknowledge that event-flag edits are not yet checked in game")
+                   help="acknowledge that event-flag edits are kept by the game but not yet seen in game")
     p.add_argument("--out", help="write to this path instead of in place")
     p.add_argument("--no-backup", action="store_true")
+    p.add_argument("--bank-only", action="store_true", help=argparse.SUPPRESS)
 
     p = sub.add_parser("tendency", help="show or edit world and character tendency; trigger tendency events")
     p.add_argument("file", nargs="?", help="USR-DATA (not needed with --events)")

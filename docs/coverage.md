@@ -265,19 +265,50 @@ verified, so world edits stay opt-in, same-size and experimental. The blob frami
 ## Event flags
 
 The flags the game's scripts set and test (`SetEventFlag` / `IsCompleteEvent`):
-boss deaths, NPC quest states, opened doors, one-shot pickups. They live as
-plain bit fields (bit position = flag id) in three fixed-size blobs; the
-primary one (`522ad995`, flags 0–18047) is proven against saves — boss flags
-match the demon souls each save holds, every NPC shows exactly one quest state
-matching its story progress, and a New Game+ wipes world flags but keeps the
-Nexus's. Meanings come from the game's own scripts, compiled into
-`flagdb.json` by `tools/build_flagdb.py`; the full story, the recipes
-(respawn a boss, fix an NPC questline, re-collect a one-shot item) and the
+boss deaths, NPC quest states, opened doors, one-shot pickups. They are plain
+bits (LSB first) in fixed-size blobs, in two numberings:
+
+- **Map-local flags** exist once per map, in two ranges. Flags 0–3199 are at
+  bit `area × 3200 + id` of `0af4946a`, and flags 8192–12287 at bit
+  `area × 4096 + (id − 8192)` of `78a5c2d7` (8 maps each). The primary blob
+  holds a copy of the current map's two slots (the map in `MAPUID`) at bit
+  `id`. The copy matches its slots exactly in every sampled save.
+- **Save-wide flags** (every other id) sit at bit `id` of the primary blob
+  (`522ad995`). Proven against saves: boss flags match the demon souls each
+  save holds, every NPC shows exactly one quest state, and a New Game+ wipes
+  world flags but keeps the Nexus's.
+
+Meanings are compiled into `flagdb.json` by `tools/build_flagdb.py` from:
+- the game's map layouts (pickups: a treasure's part entity id is its
+  taken-flag)
+- talk state machines and talk tables (dialogue progress, "heard" lines, the
+  speaker's official name)
+- script comments with a glossary for the machine translation's recurring
+  mistakes
+- the shop and item-lot tables
+- a small curated list
+
+About 94% of the flags an end-game save has set carry a description
+(`build_flagdb.py GAME --coverage SAVE`). The full story, the recipes and the
 open questions are in [Event flags](research-event-flags.md).
 
-The `events` command reads them; `--respawn`, `--npc` and `--set` edit them
-and are experimental (not yet checked in game). The two further flag banks
-(`0af4946a`, `78a5c2d7`) are shown but not yet attributed.
+The `events` command and the **Events** tab read them and offer these
+recipes:
+- respawn (and full respawn) or mark a boss defeated
+- set an NPC's quest state, or forgive a hostile NPC (the game's own
+  `SeekForgiveness` table)
+- re-arm a map's pickups (all, or one at a time from the Pickups list with
+  item icons) or reset a map
+- re-arm a tendency-gated one-time event (Tendency tab)
+- rebuild the current map's flag copy from its slots (`--sync-copy`, **Fix
+  the copy**), as the game does on load
+- set any flag
+
+Boss respawn was seen working in game (Phalanx back with its fog gate) and
+needs no opt-in, nor does the copy fix. The page marks each recipe button ✓ or
+EXP accordingly. Every other edit is experimental; the
+[in-game checks](research.md#in-game-checks) record what Kyty showed. The shop-stock counters (8 flags per limited item)
+are shown read-only, because what they count is not confirmed.
 
 ## Append-only saves
 

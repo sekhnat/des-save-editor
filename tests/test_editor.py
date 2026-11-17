@@ -19,6 +19,8 @@ import des_arrays
 import des_inventory
 sys.path.insert(0, str(EDITOR / 'tests'))
 import test_save
+import test_flags
+import des_flags
 
 
 class SyntheticBrowserTests(unittest.TestCase):
@@ -604,6 +606,247 @@ class TendencyBrowserTests(unittest.TestCase):
         self.assertEqual(0, mismatches)
 
 
+class EventsBrowserTests(unittest.TestCase):
+    """The Events tab: bosses, NPC states and per-area flags, byte-identical to des_flags."""
+    mode = 'advanced'
+    setUpClass = SyntheticBrowserTests.__dict__['setUpClass']
+    tearDownClass = SyntheticBrowserTests.__dict__['tearDownClass']
+    setUp = SyntheticBrowserTests.setUp
+    tearDown = SyntheticBrowserTests.tearDown
+    load_bytes = SyntheticBrowserTests.load_bytes
+
+    def setUp(self):
+        self.db = des_flags.load_db()
+        if self.db is None:
+            self.skipTest('flagdb.json not found (run tools/build_flagdb.py)')
+        SyntheticBrowserTests.setUp(self)
+
+    @staticmethod
+    def fixture():
+        return test_flags.flags_save({4096: 1, 4103: 1, 16440: 1, 16540: 1}, area=1,
+                                     local={(1, 200): 1, (5, 1050): 1})
+
+    def open_events(self, sf=None, experimental=True):
+        self.load_bytes((sf or self.fixture()).build())
+        self.page.click('button[data-tab="events"]')
+        if experimental:
+            self.page.check('#eventsexperimental')
+
+    def page_bytes(self) -> bytes:
+        return bytes(self.page.evaluate('Array.from(current().save.build())'))
+
+    def test_edits_wait_for_the_experimental_toggle(self):
+        self.open_events(experimental=False)
+        # respawn was seen working in game, so it needs no toggle; the rest do
+        self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="respawn"]').is_enabled())
+        self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_disabled())
+        self.assertTrue(self.page.locator('.evnpc[data-npc="baldwin_flag_list"] select').is_disabled())
+        self.assertTrue(self.page.locator('#evlocal input[data-flag="200"]').is_disabled())
+        self.page.check('#eventsexperimental')
+        self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_enabled())
+
+    def test_reads_match_python(self):
+        self.open_events(experimental=False)
+        dead = self.page.locator('.evboss.dead').evaluate_all('rows => rows.map(r => Number(r.dataset.boss))')
+        self.assertEqual([4096], dead)
+        self.assertIn('m02', self.page.inner_text('#evsummary'))
+        self.assertEqual(0, self.page.locator('#evmirrorwarn').count())
+        checked = self.page.locator('#evlocal .evlist input:checked').evaluate_all('b => b.map(x => Number(x.dataset.flag))')
+        self.assertEqual([200], checked)
+        self.page.select_option('#evarea', '5')
+        self.page.check('#evundocumented')                             # only set flags
+        checked = self.page.locator('#evlocal .evlist input:checked').evaluate_all('b => b.map(x => Number(x.dataset.flag))')
+        self.assertEqual([1050], checked)
+        self.assertEqual(1, self.page.locator('#evlocal .evflag').count())
+        self.assertIn('boss room', self.page.locator('#evlocal .evflag.on').inner_text().lower())
+
+    def test_respawn_matches_python_and_is_one_undo_step(self):
+        self.open_events()
+        self.page.click('.evboss[data-boss="4096"] button[data-action="respawn"]')
+        expected = self.fixture()
+        des_flags.respawn_boss(expected, self.db, 'phalanx')
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(1, self.page.evaluate('current().undo.length'))
+        self.page.click('#undo')
+        self.assertEqual(self.fixture().build(), self.page_bytes())
+
+    def test_npc_state_matches_python(self):
+        self.open_events()
+        self.page.select_option('.evnpc[data-npc="baldwin_flag_list"] select', '16441')
+        expected = self.fixture()
+        des_flags.set_npc_state(expected, self.db, 'baldwin', 'hostile')
+        self.assertEqual(expected.build(), self.page_bytes())
+
+    def test_local_edits_match_python(self):
+        self.open_events()
+        self.page.uncheck('#evlocal input[data-flag="200"]')          # current area: both copies
+        self.page.select_option('#evarea', '5')
+        self.page.fill('#evlocalfilter', '1111')
+        self.page.check('#evlocal input[data-flag="1111"]')           # another area: slot only
+        expected = self.fixture()
+        des_flags.set_local(expected, 1, 200, False)
+        des_flags.set_local(expected, 5, 1111, True)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(2, self.page.evaluate('current().undo.length'))
+
+    def test_raw_and_global_edits_match_python(self):
+        self.open_events()
+        self.page.select_option('#evrawarea', '0')
+        self.page.fill('#evrawid', '30')
+        self.page.click('#evrawapply')
+        self.page.fill('#evglobalfilter', '8084')
+        self.page.check('#evglobal input[data-flag="8084"]')
+        expected = self.fixture()
+        des_flags.set_local(expected, 0, 30, True)
+        des_flags.set_flag(expected, 8084, True)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.page.select_option('#evrawarea', 'g')
+        self.page.fill('#evrawid', '200')                               # local id, no area
+        self.page.click('#evrawapply')
+        self.assertIn('area-local', self.page.inner_text('#message'))
+        self.assertEqual(expected.build(), self.page_bytes())
+
+    def test_high_range_and_recipes_match_python(self):
+        backup = self.db.backup_offset
+        sf = test_flags.flags_save({6400: 1, 6403: 1, 6410: 1, 16441: 1, 16440 + backup: 1}, area=0,
+                                   local={(0, 390): 1, (0, 30): 1, (5, 1050): 1, (5, 11266): 1, (1, 10240): 1})
+        fresh = lambda: test_flags.flags_save({6400: 1, 6403: 1, 6410: 1, 16441: 1, 16440 + backup: 1}, area=0,
+                                              local={(0, 390): 1, (0, 30): 1, (5, 1050): 1, (5, 11266): 1, (1, 10240): 1})
+        self.open_events(sf)
+        self.page.click('.evboss[data-boss="6400"] button[data-action="respawn-full"]')
+        self.page.click('.evnpc[data-npc="baldwin_flag_list"] button[data-action="forgive"]')
+        self.page.select_option('#evpickarea', '5')
+        self.page.click('#evrearm')
+        self.page.select_option('#evarea', '1')
+        self.page.fill('#evlocalfilter', '10240')
+        self.page.uncheck('#evlocal input[data-flag="10240"]')        # high range, not current
+        self.page.fill('#evlocalfilter', '')
+        self.page.select_option('#evarea', '0')
+        self.page.click('#evresetmap')
+        expected = fresh()
+        des_flags.respawn_boss(expected, self.db, 'dragon god', full=True)
+        des_flags.forgive_npc(expected, self.db, 'baldwin')
+        des_flags.rearm_pickups(expected, self.db, 5)
+        des_flags.set_local(expected, 1, 10240, False)
+        des_flags.reset_map(expected, 0)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(5, self.page.evaluate('current().undo.length'))
+        self.assertTrue(des_flags.mirror_ok(des_save.SaveFile(self.page_bytes())))
+
+    def test_tendency_tab_lists_gated_events(self):
+        self.open_events(experimental=False)
+        self.page.click('button[data-tab="tendency"]')
+        rows = self.page.locator('#tdgated tbody tr')
+        self.assertGreater(rows.count(), 20)
+        happened = self.page.locator('#tdgated tr[data-flag="200"]').first.inner_text()
+        self.assertIn('Yes', happened)                                  # m02:200 set in the fixture
+
+    def test_options_profile_has_no_event_flags(self):
+        sf = des_save.SaveFile()
+        sf.records = [des_save.Field(des_save.name_key('PLAYER_NAME'), des_save.T_STR, b'T')]
+        self.open_events(des_save.SaveFile(sf.build()), experimental=False)
+        self.assertIn('no event flags', self.page.inner_text('#tab-events'))
+
+    def test_easy_mode_shows_bosses_npcs_and_pickups(self):
+        self.page.evaluate('setMode("easy")')
+        self.open_events(self.pickup_save(), experimental=False)
+        cards = self.page.locator('#tab-events section.card').evaluate_all('c => c.map(x => x.id).filter(Boolean)')
+        self.assertEqual(['evbosses', 'evnpcs', 'evpickups'], cards)
+        self.assertEqual(0, self.page.locator('button[data-action="respawn-full"]').count())
+        self.assertEqual(16, self.page.locator('.evboss').count())
+        again = self.page.locator('.evpick[data-flag="10242"] button[data-action="rearm"]')
+        self.assertTrue(again.is_disabled())                            # experimental
+        self.page.check('#eventsexperimental')
+        self.assertTrue(again.is_enabled())
+
+    @staticmethod
+    def pickup_save():
+        return test_flags.flags_save({4096: 1}, area=1, local={(1, 10240): 1, (1, 10242): 1, (5, 1050): 1})
+
+    def test_pickups_show_items_and_rearm_one(self):
+        self.open_events(self.pickup_save())
+        rows = self.page.locator('#evpickups .evpick')
+        self.assertEqual(len(self.db.pickups[1]), rows.count())         # current map: Boletaria
+        grass = self.page.locator('.evpick[data-flag="10242"]')
+        self.assertIn('Late Moon Grass ×2', grass.inner_text())
+        self.assertIn('Taken', grass.inner_text())
+        self.assertEqual(1, grass.locator('.glyph').count())
+        self.assertEqual(0, self.page.locator('.evpick[data-flag="10241"] button').count())   # not taken
+        grass.locator('button[data-action="rearm"]').click()
+        expected = self.pickup_save()
+        des_flags.set_local(expected, 1, 10242, False)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(1, self.page.evaluate('current().undo.length'))
+        self.page.select_option('#evpickarea', 'all')                 # search every map
+        self.page.fill('#evpickfilter', "master's ring")
+        ring = self.page.locator('.evpick[data-area="5"][data-flag="11266"]')
+        self.assertEqual(1, ring.count())
+        self.assertIn('Not taken', ring.inner_text())
+        self.page.check('#evpicktaken')
+        self.assertEqual(0, self.page.locator('#evpickups .evpick').count())
+
+    def test_map_flag_search_covers_all_maps(self):
+        self.open_events()                                              # on Boletaria (m02)
+        self.page.fill('#evlocalfilter', "master's ring")             # a Stonefang (m06) pickup
+        self.assertEqual(0, self.page.locator('#evlocal .evflag').count())
+        self.page.click('#evelsewhere button')
+        self.assertEqual('all', self.page.eval_on_selector('#evarea', 's => s.value'))
+        row = self.page.locator('#evlocal .evflag[data-area="5"]:has(input[data-flag="11266"])')
+        self.assertIn('Stonefang', row.inner_text())
+        row.locator('input').check()
+        expected = self.fixture()
+        des_flags.set_local(expected, 5, 11266, True)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(0, self.page.locator('#evresetmap').count())  # per-map tools hidden
+
+    def test_tendency_rearm_matches_python(self):
+        self.open_events(experimental=False)
+        self.page.click('button[data-tab="tendency"]')
+        again = self.page.locator('#tdgated tr[data-flag="200"] button[data-action="rearm"]').first
+        self.assertTrue(again.is_disabled())
+        self.page.check('#tdexperimental')
+        again = self.page.locator('#tdgated tr[data-flag="200"] button[data-action="rearm"]').first
+        again.click()
+        expected = self.fixture()
+        des_flags.set_local(expected, 1, 200, False)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertIn('No', self.page.locator('#tdgated tr[data-flag="200"]').first.inner_text())
+
+    def test_fix_copy_matches_sync_mirror(self):
+        broken = lambda: self.fixture()
+        sf = broken()
+        des_flags.set_local(sf, 1, 201, True, mirror=False)
+        self.open_events(des_save.SaveFile(sf.build()), experimental=False)
+        self.assertEqual(1, self.page.locator('#evmirrorwarn').count())
+        self.page.click('#evsyncmirror')                               # confirmed: no toggle needed
+        expected = des_save.SaveFile(sf.build())
+        des_flags.sync_mirror(expected)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(0, self.page.locator('#evmirrorwarn').count())
+
+    def test_buttons_say_whether_seen_in_game(self):
+        self.open_events(self.pickup_save(), experimental=False)
+        status = lambda sel: self.page.locator(sel).first.get_attribute('data-status')
+        self.assertEqual('confirmed', status('button[data-action="respawn"]'))
+        self.assertEqual('confirmed', status('button[data-action="respawn-full"]'))
+        for action in ('defeat', 'rearm', 'reset-map'):
+            self.assertEqual('experimental', status(f'button[data-action="{action}"]'), action)
+        self.assertEqual('experimental', status('.evnpc select'))
+        self.assertIn('✓', self.page.locator('button[data-action="respawn"]').first.inner_text())
+
+    def test_phone_width_has_no_sideways_scroll(self):
+        self.page.set_viewport_size({'width': 390, 'height': 844})
+        overflow = 'document.documentElement.scrollWidth - window.innerWidth'
+        self.open_events(self.pickup_save())
+        self.page.select_option('#evarea', 'all')
+        self.assertLessEqual(self.page.evaluate(overflow), 0, 'Events, advanced')
+        self.page.click('button[data-tab="tendency"]')
+        self.assertLessEqual(self.page.evaluate(overflow), 0, 'Tendency, advanced')
+        self.page.evaluate('setMode("easy")')
+        self.page.click('button[data-tab="events"]')
+        self.assertLessEqual(self.page.evaluate(overflow), 0, 'Events, easy')
+
+
 class EasyModeBrowserTests(unittest.TestCase):
     """Easy mode: Character, Items and Tendency only, on the same edit rules."""
     mode = None                     # fresh browser storage: the page picks Easy itself
@@ -625,11 +868,11 @@ class EasyModeBrowserTests(unittest.TestCase):
     def test_easy_is_the_default_and_the_choice_is_remembered(self):
         self.load_bytes(self.player())
         self.assertEqual('easy', self.page.evaluate('state.mode'))
-        self.assertEqual(['Character', 'Tendency'], self.visible_tabs())
+        self.assertEqual(['Character', 'Tendency', 'Events'], self.visible_tabs())
         self.assertTrue(self.page.locator('#tab-character #charcard').is_visible())
         self.assertFalse(self.page.locator('#quick').is_visible())
         self.page.click('#modeswitch [data-mode="advanced"]')
-        self.assertEqual(['Editor', 'Tendency', 'All fields', 'Tree', 'World state', 'Field reference',
+        self.assertEqual(['Editor', 'Tendency', 'Events', 'All fields', 'Tree', 'World state', 'Field reference',
                           'Item catalog', 'Changes', 'JSON'], self.visible_tabs())
         self.assertEqual('editor', self.page.evaluate('state.tab'))
         self.page.reload()

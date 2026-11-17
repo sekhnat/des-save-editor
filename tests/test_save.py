@@ -1420,6 +1420,19 @@ class CatalogTests(unittest.TestCase):
             self.assertEqual('Soul Arrow', by_category['Spell', 1000])
 
 
+class FlagTableEmbedTests(unittest.TestCase):
+    def test_page_carries_the_current_flag_table(self):
+        spec = importlib.util.spec_from_file_location('embed_flagdb', ROOT / 'tools/embed_flagdb.py')
+        embed = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(embed)
+        import des_flags
+        db = des_flags.load_db()
+        if db is None:
+            self.skipTest('flagdb.json not found')
+        html = (ROOT / 'des_editor.html').read_text(encoding='utf-8')
+        self.assertEqual(html, embed.embed(html, db), 'run tools/embed_flagdb.py')
+
+
 class CatalogCreationTests(unittest.TestCase):
     """Creation metadata travels from the PARAMs through itemdb.json to the page."""
 
