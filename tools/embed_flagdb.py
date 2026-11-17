@@ -9,7 +9,9 @@ page and the CLI describe a flag with the same words:
       ranges: [[first, end, bank key, bits per area]],   // the local ranges
       areas: 8, backup,
       areaNames: ["m01 Nexus", ...],
-      bosses: [[id, area, name, world, soul, [block flags], [room flags]]],
+      bosses: [[id, area, name, world, soul, [block flags], [room flags],
+                [[cat, item id, count, name]],        // what the soul pickup gives
+                [[flag, [[cat, id, count, name]]]]]], // one-time extras (flag 17800)
       npcs: [[list, name, [[id, STATE_CONSTANT, label, marker]], about, where]],
       forgive: [[list, hostile state id, [[area, flag], ...]]],  // SeekForgiveness
       local: [[[id, label, kind], ...] per area],  // kind: "p" pickup, "u" usage
@@ -53,6 +55,10 @@ KIND_CODES = {"pickup": "p", "usage": "u"}
 CATEGORY_CODES = {"Weapon": "W", "Armor": "A", "Ring": "R", "Goods": "G"}
 
 
+def _items(rows: list) -> list:
+    return [[CATEGORY_CODES.get(cat, '?'), item, count, name] for cat, item, count, name in rows]
+
+
 def table(db: des_flags.FlagDB) -> dict:
     F = des_flags
     local = []
@@ -75,7 +81,10 @@ def table(db: des_flags.FlagDB) -> dict:
         "backup": db.backup_offset,
         "areaNames": [db.area_name(a) for a in range(F.AREAS)],
         "bosses": [[b['id'], b['area'], b['name'], b['world'], b.get('soul'),
-                    b.get('block', []), b.get('room', [])] for b in db.bosses],
+                    b.get('block', []), b.get('room', []),
+                    _items(b.get('soul_items', [])),
+                    [[x['flag'], _items(x['items'])] for x in b.get('bonus', [])]]
+                   for b in db.bosses],
         "npcs": [[n['list'], n.get('name', n['list']),
                   [[s['id'], s['name'], s.get('label', ''), 1 if s.get('marker') else 0]
                    for s in n['states']],
@@ -87,8 +96,7 @@ def table(db: des_flags.FlagDB) -> dict:
         "scripts": scripts,
         "localAny": local_any,
         "global": glob,
-        "pickups": [[[flag, row['level'], [[CATEGORY_CODES.get(cat, '?'), item, count, name]
-                                          for cat, item, count, name in row['items']]]
+        "pickups": [[[flag, row['level'], _items(row['items'])]
                      for flag, row in sorted(db.pickup_items.get(area, {}).items())]
                     for area in range(F.AREAS)],
         "shops": [[s['flag'], s.get('name') or str(s['item']), s.get('stock')]

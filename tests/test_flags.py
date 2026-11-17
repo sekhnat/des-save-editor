@@ -56,6 +56,26 @@ def flags_save(primary: dict[int, int] | None = None,
     return save.SaveFile(sf.build())
 
 
+def defeat_save(primary: dict[int, int] | None = None, entries=None, area: int | None = None,
+                local: dict[tuple[int, int], int] | None = None) -> save.SaveFile:
+    """A save with an inventory the editor can add to (test_save.creation_save)
+    and the event-flag blobs of flags_save."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import test_save
+    grass = {'cat': 'G', 'id': 1001, 'quantity': 32, 'sort': 2}
+    inv = test_save.creation_save(entries or [grass], rings=[105])
+    extra = [r for r in flags_save(primary, area=area, local=local).records
+             if r.key != save.name_key('PLAYER_NAME')]
+    sf = save.SaveFile()
+    sf.records = inv.records + extra
+    return save.SaveFile(sf.build())
+
+
+def inventory_ids(sf: save.SaveFile) -> dict[tuple[str, int], int]:
+    import des_inventory
+    return {(r['category'], r['id']): r.get('quantity', 1) for r in des_inventory.inventory(sf)}
+
+
 class FlagDBTests(unittest.TestCase):
     def setUp(self):
         self.db = flags.load_db()
@@ -199,11 +219,53 @@ class RecipeTests(unittest.TestCase):
         self.assertTrue(flags.get_local(sf, 5, 200))       # not a boss-room flag
         self.assertEqual(5, god['area'] - 1)
 
-    def test_defeat_sets_only_the_death_flag(self):
-        sf = flags_save({})
-        flags.defeat_boss(sf, self.db, 'phalanx')
-        self.assertTrue(flags.get_flag(sf, 4096))
-        self.assertFalse(flags.get_flag(sf, 4103))
+    def test_defeat_hands_over_the_demon_soul(self):
+        sf = defeat_save({})
+        before = sf.build()
+        out, result = flags.defeat_boss(sf, self.db, 'phalanx')
+        self.assertEqual(before, sf.build())                   # source untouched
+        self.assertTrue(flags.get_flag(out, 4096))
+        self.assertTrue(flags.get_flag(out, 4103))             # soul taken
+        self.assertEqual(1, inventory_ids(out).get(('Goods', 15)))   # Lead Demon Soul
+        self.assertEqual(['Lead Demon Soul'], result['items'])
+        self.assertEqual([4103, 4096], sorted(result['set'], reverse=True))
+
+    def test_defeat_adds_to_an_existing_soul_stack(self):
+        soul = {'cat': 'G', 'id': 15, 'quantity': 1, 'sort': 1}
+        out, _ = flags.defeat_boss(defeat_save({}, entries=[soul]), self.db, 'phalanx')
+        self.assertEqual(2, inventory_ids(out)[('Goods', 15)])
+
+    def test_defeat_gives_the_nexial_agent_once(self):
+        out, first = flags.defeat_boss(defeat_save({}), self.db, 'old monk')
+        self.assertIn('Nexial Agent', first['items'])
+        self.assertTrue(flags.get_flag(out, 17800))
+        out, second = flags.defeat_boss(out, self.db, 'dragon god')
+        self.assertNotIn('Nexial Agent', second['items'])
+        self.assertEqual(['Dragon Demon Soul', 'Pure Dragonstone'], second['items'])
+        self.assertEqual(1, inventory_ids(out)[('Goods', 9993)])
+
+    def test_defeat_hands_over_every_item_of_the_pickup(self):
+        out, result = flags.defeat_boss(defeat_save({}), self.db, 'maiden astrea')
+        self.assertEqual(['Pureblood Demon Soul', 'Ring of Sincere Prayer', 'Nexial Agent'], result['items'])
+        self.assertIn(('Ring', 112), inventory_ids(out))
+
+    def test_defeat_without_soul_or_after_the_soul_was_taken(self):
+        out, result = flags.defeat_boss(defeat_save({}), self.db, 'phalanx', give_soul=False)
+        self.assertEqual(([4096], []), (result['set'], result['items']))
+        self.assertFalse(flags.get_flag(out, 4103))
+        out, result = flags.defeat_boss(defeat_save({4103: 1}), self.db, 'phalanx')
+        self.assertEqual([], result['items'])                  # soul already taken
+        self.assertNotIn(('Goods', 15), inventory_ids(out))
+
+    def test_defeat_refuses_a_dead_boss_and_fails_atomically(self):
+        with self.assertRaises(ValueError):
+            flags.defeat_boss(defeat_save({4096: 1}), self.db, 'phalanx')
+        two = [{'cat': 'G', 'id': 15, 'quantity': 1, 'sort': 1}, {'cat': 'G', 'id': 15, 'quantity': 1, 'sort': 1}]
+        sf = defeat_save({}, entries=two)                      # two stacks: the add refuses
+        before = sf.build()
+        with self.assertRaises(ValueError):
+            flags.defeat_boss(sf, self.db, 'phalanx')
+        self.assertEqual(before, sf.build())
 
     def test_forgive_mirrors_restore_backup_npc_state_flag(self):
         backup = self.db.backup_offset
@@ -397,6 +459,20 @@ class LocalDBTests(unittest.TestCase):
         self.assertIn(11266, self.db.pickups[5])
         self.assertGreater(sum(map(len, self.db.pickups.values())), 400)
 
+    def test_every_boss_soul_pickup_starts_with_its_demon_soul(self):
+        import des_inventory
+        catalog = des_inventory._catalog()
+        for boss in self.db.bosses:
+            category, item, count, _ = boss['soul_items'][0]
+            self.assertEqual('demonsoul', catalog[(category, item)]['kind'], boss['name'])
+        phalanx = self.db.find_boss('phalanx')
+        self.assertEqual([['Goods', 15, 1, 'Lead Demon Soul']], phalanx['soul_items'])
+        finals = sorted(b['name'] for b in self.db.bosses if b['bonus'])
+        self.assertEqual(['Dragon God', 'Maiden Astrea', 'Old Monk', 'Storm King'], finals)
+        for boss in self.db.bosses:
+            for extra in boss['bonus']:
+                self.assertEqual((17800, [['Goods', 9993, 1, 'Nexial Agent']]), (extra['flag'], extra['items']))
+
     def test_pickup_items_keep_ids_for_icons(self):
         rows = self.db.pickup_items
         for area, by_flag in rows.items():
@@ -471,6 +547,19 @@ class CliTests(unittest.TestCase):
         text = buffer.getvalue()
         self.assertIn('Phalanx', text)
         self.assertIn('baldwin_flag_list', text)
+
+    def test_defeat_cli_hands_over_the_soul(self):
+        save.save(defeat_save({}), self.path)
+        out = str(Path(self.tmp.name) / 'out')
+        self.assertEqual(0, self.des_editor.main(
+            ['events', self.path, '--defeat', 'phalanx', '--out', out]))   # seen in game: no flag
+        written = save.load(out)
+        self.assertTrue(flags.get_flag(written, 4096))
+        self.assertEqual(1, inventory_ids(written).get(('Goods', 15)))
+        out2 = str(Path(self.tmp.name) / 'out2')
+        self.assertEqual(0, self.des_editor.main(
+            ['events', self.path, '--defeat', 'phalanx', '--no-soul', '--experimental', '--out', out2]))
+        self.assertNotIn(('Goods', 15), inventory_ids(save.load(out2)))
 
     def test_sync_copy_needs_no_experimental_flag(self):
         sf = flags_save({}, area=1, local={(1, 200): 1})
@@ -554,8 +643,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(flags.mirror_ok(sf))
 
     def test_recipes_require_experimental(self):
-        for extra in (['--forgive', 'baldwin'], ['--reset-map', 'm02'], ['--defeat', 'phalanx'],
-                      ['--rearm-pickups', 'm02']):
+        for extra in (['--forgive', 'baldwin'], ['--reset-map', 'm02'], ['--rearm-pickups', 'm02']):
             with self.assertRaises(SystemExit):
                 self.des_editor.main(['events', self.path, *extra])
 

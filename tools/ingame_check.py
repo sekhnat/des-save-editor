@@ -289,6 +289,15 @@ CASES: dict[str, Case] = {
         lambda sf: not des_flags.get_local(sf, 1, _REARM_FLAG),
         'flag 10242 clear in the m02 slot; look at the screenshots for the item glow', _LOOK,
         lambda sf: des_flags.get_local(sf, 1, _REARM_FLAG), ('m02_00_00_00', 'c0000_0001')),
+    'flag-defeat-visible': Case(
+        'event flags: mark False King Allant defeated (death + soul flags, False King Demon Soul to the '
+        'inventory), starting at 1-4 spawn c0000_0000, 5 m from his MSB part (c7230_0001, entity 821)',
+        [['events', '--defeat', 'allant', '--experimental', '--no-backup']],
+        lambda sf: des_flags.get_flag(sf, 4480) and des_flags.get_flag(sf, 4503)
+        and bool(_inventory(sf, 'Goods', 7)),
+        'flags 4480 and 4503 set and the False King Demon Soul in the inventory; look at the screenshots',
+        _LOOK + ['Return', 'wait:2', 'e', 'wait:2', 'shot:inventory', 'l', 'wait:2'],
+        lambda sf: not des_flags.get_flag(sf, 4480), ('m02_03_00_00', 'c0000_0000')),
 }
 _ELIXIR = ('Goods', None)        # filled from the catalog at start-up
 

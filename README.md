@@ -52,12 +52,12 @@ tool covers scripting and batch work.
 - **Attributes.** Move points between attributes at the same soul level, or change
   the soul level.
 - **Events.** See which bosses are dead and every NPC's quest state, respawn a
-  boss, forgive a hostile NPC or put an NPC back into a quest state, see each
+  boss or mark it defeated (its demon soul goes into your inventory), forgive a hostile NPC or put an NPC back into a quest state, see each
   map's pickups with their item icons and re-arm them one at a time or all
   at once, and browse or search every map's event flags (doors, levers,
   pickups, conversations) by name: about 94% of the flags an end-game save has
-  set carry a description. Boss respawn is confirmed in game; the rest is
-  experimental.
+  set carry a description. Boss respawn and defeat are confirmed in game;
+  the rest is experimental.
 - **World state.** Inspect per-entity records (archstones, boss loot, chains,
   statues), each labelled with its level and the game file that defines it.
 - **Fully inspectable.** Tree view, raw field editing, JSON dumps, conflict-checked
@@ -140,7 +140,7 @@ A browser download request cannot prove that the download actually completed.
 |---|---|
 | **Character** | A paper doll of the game icons for the worn head, body, arms and legs pieces and the L1/R1 hand items; name, class, souls with **Max souls**, and the eight attributes (keeping the total redistributes at the same soul level, changing it levels up or down). Equipped, inventory and storage-box tables sit side by side, each scrolling and filtering on its own, with an icon per item, editable stackable quantities and **+ Add** to the inventory or storage box |
 | **Tendency** | Character and world sliders, presets and all-world buttons, without the event tables; which tendency-gated one-time events already happened, with **Re-arm** |
-| **Events** | Bosses (alive or defeated, demon soul taken, **Respawn**), each NPC's quest state as a picker with **Forgive** for hostile NPCs, and every map's **Pickups** with item icons and **Re-arm**; buttons marked ✓ work as is (seen in game), those marked EXP are behind an experimental toggle |
+| **Events** | Bosses (alive or defeated, which demon soul and whether it was taken, **Respawn** and **Mark defeated**, which puts the soul in your inventory), each NPC's quest state as a picker with **Forgive** for hostile NPCs, and every map's **Pickups** with item icons and **Re-arm**; buttons marked ✓ work as is (seen in game), those marked EXP are behind an experimental toggle |
 
 ### Advanced mode
 
@@ -148,7 +148,7 @@ A browser download request cannot prove that the download actually completed.
 |---|---|
 | **Editor** | Character and class, souls, base and current attributes, vitals, resistances, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels and paths (storage box: experimental); recovered arrays |
 | **Tendency** | Character and the five worlds on a −200 to 200 slider with band, presets and all-world buttons; every tendency event with its required range, live on/off status, **Trigger** (one or several at once) and the events a change turns on or off; the tendency-gated one-time events, whether each already happened, and **Re-arm** |
-| **Events** | Bosses with their death and soul flags, **Respawn**, **Full respawn** and **Mark defeated**; NPC quest states with **Forgive**; a **Pickups** list per map or across all maps (item icons, taken or not, **Re-arm** one or all); every map's flags (0–3199 and 8192–12287) and the save-wide flags with descriptions from the map layouts (pickups), talk tables and script comments, searchable per map or across all maps, with **Reset this map**; **Fix the copy** when the current map's flag copy disagrees with its slots; shop stock counters; set any flag by map and number. Buttons marked ✓ (respawn, fix) are confirmed in game; EXP edits are experimental |
+| **Events** | Bosses with their death and soul flags and the soul each gives, **Respawn**, **Full respawn** and **Mark defeated** (the demon soul and anything else the soul pickup gives go to the inventory); NPC quest states with **Forgive**; a **Pickups** list per map or across all maps (item icons, taken or not, **Re-arm** one or all); every map's flags (0–3199 and 8192–12287) and the save-wide flags with descriptions from the map layouts (pickups), talk tables and script comments, searchable per map or across all maps, with **Reset this map**; **Fix the copy** when the current map's flag copy disagrees with its slots; shop stock counters; set any flag by map and number. Buttons marked ✓ (respawn, mark defeated, fix) are confirmed in game; EXP edits are experimental |
 | **All fields** | Named and unknown records with strict scalar, text and hex editing, filtering, 100 records per page |
 | **Tree** | Container hierarchy and absolute file offsets, 200 records per page |
 | **World state** | Every world-state entity with its level and defining game file, named records, filtering, 200 per page; opt-in same-size edits |
@@ -278,7 +278,8 @@ python3 src/des_editor.py tendency FILE --trigger 20300 --trigger 30140 --out /t
 python3 src/des_editor.py events FILE [--json] [--filter TEXT]
 python3 src/des_editor.py events --list
 python3 src/des_editor.py events FILE --respawn BOSS [--full] --npc NPC=STATE --set ID=0 --set m02:200=0 --experimental --out /tmp/USR-DATA
-python3 src/des_editor.py events FILE --defeat BOSS --forgive NPC --rearm-pickups m02 --reset-map m06 --experimental --out /tmp/USR-DATA
+python3 src/des_editor.py events FILE --defeat BOSS [--no-soul] --out /tmp/USR-DATA   # dead, soul into the inventory
+python3 src/des_editor.py events FILE --forgive NPC --rearm-pickups m02 --reset-map m06 --experimental --out /tmp/USR-DATA
 python3 src/des_editor.py events FILE --sync-copy --out /tmp/USR-DATA
 python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 ```
@@ -288,7 +289,7 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 - `arrays` lists the recovered fixed-slot arrays with family names, slot letters, real field names and values; `aslot` writes one slot by array state and suffix character (the letter the listing shows).
 - `blobs` sizes every blob and summarises world-state containers; `world` lists their entities with level, file and named records; `wset` makes an experimental same-size edit of one record addressed by entity GUID and key.
 - `tendency` shows the character and each world with its band and the events it enables; `--set` takes `character`, `character_lr` or a world (`boletaria`, `stonefang`, `latria`, `storms`, `valley`), `--trigger` an event number from `--events`, and a combination no value can satisfy is refused with the conflict.
-- `events` reads the event flags the game's scripts set and test: which bosses are dead (with their soul-taken flags), every NPC's quest state, and a searchable list of what each flag means (`--filter`, `--list`). Flags 0–3199 and 8192–12287 belong to one map each, so `--set` names the map for them (`m02:200=0`). `--full` also clears a boss fight's own flags, `--defeat` marks a boss dead, `--forgive` replays the game's own forgiveness, `--rearm-pickups` and `--reset-map` work on one map, and `--sync-copy` rebuilds the current map's flag copy from its slots (what the game does on load). These options flip bits. The game keeps them (Kyty); `--respawn` was seen working in game and `--sync-copy` matches what the game does, so they need no flag, and the rest stay behind `--experimental` until their effect is seen; the how and why is in [Event flags](docs/research-event-flags.md).
+- `events` reads the event flags the game's scripts set and test: which bosses are dead (with their soul-taken flags), every NPC's quest state, and a searchable list of what each flag means (`--filter`, `--list`). Flags 0–3199 and 8192–12287 belong to one map each, so `--set` names the map for them (`m02:200=0`). `--full` also clears a boss fight's own flags, `--defeat` marks a boss dead and adds its demon soul (and anything else its soul pickup gives) to the inventory, `--no-soul` sets only the death flag, `--forgive` replays the game's own forgiveness, `--rearm-pickups` and `--reset-map` work on one map, and `--sync-copy` rebuilds the current map's flag copy from its slots (what the game does on load). These options flip bits. The game keeps them (Kyty); `--respawn` and `--defeat` were seen working in game and `--sync-copy` matches what the game does, so they need no flag, and the rest stay behind `--experimental` until their effect is seen; the how and why is in [Event flags](docs/research-event-flags.md).
 - `diff` prints the record-level and world-state delta, so two saves of the same character can be compared directly:
 
   ```text

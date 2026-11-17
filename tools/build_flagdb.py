@@ -913,6 +913,62 @@ def boss_resets(script_dir: Path, local: dict) -> dict[int, dict]:
     return out
 
 
+RATE_ITEM = re.compile(r'GetRateItem\s*\(\s*(\d+)\s*\)')
+ONCE_BLOCK = re.compile(r'if\s+proxy:IsCompleteEvent\s*\(\s*(\d+)\s*\)\s*==\s*false\s+then(.*?)\n\s*end', re.S)
+
+
+def rate_item(lot: int, lots_table: dict, items: dict) -> list[tuple[str, int, int, str]]:
+    """What ``GetRateItem(lot)`` hands over: an ITEMLOT row, or (the remake's
+    additions) an item encoded as category << 28 | id (0x40002709 = Goods 9993)."""
+    if lot in lots_table:
+        return lot_entries(lots_table[lot], items)
+    category = LOT_CATEGORY.get(lot >> 28) if lot >= 1 << 28 else None
+    if category is None:
+        return []
+    item_id = lot & 0x0FFFFFFF
+    return [(category, item_id, 1, items.get((category, item_id)) or f"{category} {item_id}")]
+
+
+def soul_handlers(script_dir: Path, lots_table: dict, items: dict) -> dict[int, dict]:
+    """Per boss (death flag): what its "Get Soul" handler hands over.
+
+    The handler is the map-script function that sets the soul flag
+    (``OnEvent_4103_1``: ``GetRateItem(10110) -- Soul``, four empty lots, then
+    ``SetEventFlag(4103, 1)``). ``soul_items`` are its unconditional items (the
+    demon soul first; Maiden Astrea's also holds the Ring of Sincere Prayer); ``bonus`` are its ``if not IsCompleteEvent(F) then
+    GetRateItem(..) SetEventFlag(F)`` blocks (the remake's one-time Nexial
+    Agent for the four world-final bosses, flag 17800).
+    """
+    out = {}
+    for death, area, name, _world, soul in BOSSES:
+        found = None
+        for path in sorted(script_dir.glob(f'm{area:02d}_*.lua')):
+            text = re.sub(r'--[^\n]*', '', _read(path))
+            for chunk in re.split(r'\n(?=function\s)', text):
+                if soul in {int(m.group(1)) for m in SET_TRUE.finditer(chunk)} \
+                        and RATE_ITEM.search(chunk):
+                    found = chunk
+                    break
+            if found:
+                break
+        if found is None:
+            raise AssertionError(f"no soul handler found for {name} (flag {soul})")
+        bonus = []
+        for m in ONCE_BLOCK.finditer(found):
+            given = [list(e) for lot in RATE_ITEM.findall(m.group(2))
+                     for e in rate_item(int(lot), lots_table, items)]
+            if given:
+                bonus.append({"flag": int(m.group(1)), "items": given})
+        plain = ONCE_BLOCK.sub('', found)
+        souls = [list(e) for lot in RATE_ITEM.findall(plain)
+                 for e in rate_item(int(lot), lots_table, items)]
+        # the demon soul comes first; Maiden Astrea's pickup also holds a ring
+        assert souls and souls[0][0] == 'Goods' and 'Demon Soul' in souls[0][3], \
+            f"{name}: the soul pickup should start with a demon soul, got {souls}"
+        out[death] = {"soul_items": souls, "bonus": bonus}
+    return out
+
+
 def build(game: Path) -> dict:
     script_dir = game / 'cp11demonssouls' / 'dvdroot' / 'script'
     define = parse_event_define(_read(script_dir / 'event_define.lua'))
@@ -990,6 +1046,7 @@ def build(game: Path) -> dict:
     items = item_names()
     pickups, placed, pickup_items = map_entities(game, items,
                                                  tables.get('ITEMLOT_PARAM_ST', {}))
+    souls = soul_handlers(script_dir, tables.get('ITEMLOT_PARAM_ST', {}), items)
     for area, rows in pickups.items():
         for flag, label in rows.items():
             add(area, flag, "pickup", label)
@@ -1106,7 +1163,7 @@ def build(game: Path) -> dict:
         "areas": {str(k): {"name": v[0], "map": v[1]} for k, v in AREAS.items()},
         "backup_offset": define['backup_offset'],
         "bosses": [{"id": fid, "area": area, "name": name, "world": world,
-                    "soul": soul, **resets[fid]}
+                    "soul": soul, **resets[fid], **souls[fid]}
                    for fid, area, name, world, soul in BOSSES],
         "npcs": npcs,
         "forgiveness": forgiveness,

@@ -647,7 +647,7 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
                out: str | None, no_backup: bool, bank_only: bool = False,
                full: bool = False, defeat: str | None = None, forgive: str | None = None,
                reset_map: str | None = None, rearm: str | None = None,
-               sync_copy: bool = False) -> int:
+               sync_copy: bool = False, no_soul: bool = False) -> int:
     """Event flags: the bits the game's scripts set and test."""
     F = des_flags
     db = F.load_db()
@@ -702,9 +702,11 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
                   f"{', '.join(map(str, result['cleared']))}{local})")
             changed = True
         if defeat:
-            result = F.defeat_boss(sf, db, defeat)
+            sf, result = F.defeat_boss(sf, db, defeat, give_soul=not no_soul)
             print(f"  {result['boss']} marked defeated (set flags "
                   f"{', '.join(map(str, result['set']))})")
+            if result['items']:
+                print(f"  added to the inventory: {', '.join(result['items'])}")
             changed = True
         if forgive:
             result = F.forgive_npc(sf, db, forgive)
@@ -925,6 +927,7 @@ EVENTFLAG_UNSEEN = ("event-flag edits are kept by the game's own save but their 
 # Event-flag recipes whose effect was seen in game (docs/research.md#in-game-checks);
 # the page's EV_CONFIRMED holds the same names.
 EVENT_CONFIRMED: set[str] = {"respawn", "respawn-full",   # Phalanx back on screen, 2026-11-18
+                              "defeat",   # Allant gone from 1-4, soul kept, 2026-11-18
                               "sync"}   # the game rebuilds the copy from the slots on load
 
 
@@ -967,7 +970,7 @@ COMMANDS = {
     "events": lambda a: cmd_events(a.file, a.as_json, a.text, a.list_known, a.sets,
                                    a.respawn, a.npc, a.out, a.no_backup, a.bank_only,
                                    a.full, a.defeat, a.forgive, a.reset_map, a.rearm,
-                                   a.sync_copy),
+                                   a.sync_copy, a.no_soul),
     "diff": lambda a: cmd_diff(a.before, a.after, a.as_json),
     "selftest": lambda a: cmd_selftest(a.paths),
     "fields": lambda a: cmd_fields(),
@@ -1094,7 +1097,11 @@ def main(argv: list[str]) -> int:
                    help="clear a boss's death flag and its soul-taken flag (name from --list)")
     p.add_argument("--full", action="store_true",
                    help="with --respawn: also clear the fight's fog/cutscene flags and boss-room flags")
-    p.add_argument("--defeat", metavar="BOSS", help="mark a boss defeated (sets its death flag)")
+    p.add_argument("--defeat", metavar="BOSS",
+                   help="mark a boss defeated and hand over what its soul pickup gives "
+                        "(the demon soul goes to the inventory)")
+    p.add_argument("--no-soul", action="store_true",
+                   help="with --defeat: set only the death flag (no soul handed over)")
     p.add_argument("--forgive", metavar="NPC",
                    help="what seeking forgiveness does: a hostile NPC returns to their previous state")
     p.add_argument("--reset-map", metavar="AREA",

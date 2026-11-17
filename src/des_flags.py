@@ -501,17 +501,44 @@ def respawn_boss(sf: des_save.SaveFile, db: FlagDB, name: str, full: bool = Fals
             "cleared_local": cleared_local}
 
 
-def defeat_boss(sf: des_save.SaveFile, db: FlagDB, name: str, soul: bool = False) -> dict:
-    """Mark one boss defeated: set its death flag (and, with ``soul``, its
-    soul-taken flag, which means the demon soul is never handed over). The
-    fight's own fog/cutscene flags are left to the game."""
+def defeat_boss(sf: des_save.SaveFile, db: FlagDB, name: str,
+                give_soul: bool = True) -> tuple[des_save.SaveFile, dict]:
+    """Mark one boss defeated as a kill and soul pickup would; returns a new
+    save (``sf`` is never modified) and what was done.
+
+    Sets the death flag. With ``give_soul`` and the soul not yet taken, it also
+    does what the boss's "Get Soul" handler does: adds its items to the
+    inventory (the demon soul, plus e.g. Maiden Astrea's ring), sets the soul
+    flag, and hands over each one-time extra whose flag is clear (the Nexial
+    Agent, flag 17800). The fight's fog/cutscene flags, the world counters,
+    the world tendency and ARCHSTONEHOMEINDEX are left alone. Any inventory
+    problem raises before anything is returned.
+    """
+    import des_inventory
     boss = db.find_boss(name)
-    set_flag(sf, boss['id'], True)
-    done = [boss['id']]
-    if soul and boss.get('soul') is not None:
-        set_flag(sf, boss['soul'], True)
-        done.append(boss['soul'])
-    return {"boss": boss['name'], "set": done}
+    if get_flag(sf, boss['id']):
+        raise ValueError(f"{boss['name']} is already defeated")
+    out = des_save.SaveFile(sf.build())
+    done, items = [boss['id']], []
+
+    def give(rows: list) -> None:
+        nonlocal out
+        for category, item_id, count, item_name in rows:
+            out = des_inventory.with_added_item(out, category, item_id, quantity=count)
+            items.append(f"{item_name} ×{count}" if count > 1 else item_name)
+
+    soul = boss.get('soul')
+    if give_soul and soul is not None and not get_flag(out, soul):
+        give(boss.get('soul_items', []))
+        set_flag(out, soul, True)
+        done.append(soul)
+        for extra in boss.get('bonus', []):
+            if not get_flag(out, extra['flag']):
+                give(extra['items'])
+                set_flag(out, extra['flag'], True)
+                done.append(extra['flag'])
+    set_flag(out, boss['id'], True)
+    return out, {"boss": boss['name'], "set": done, "items": items}
 
 
 def forgivable(sf: des_save.SaveFile, db: FlagDB, npc: dict) -> dict | None:

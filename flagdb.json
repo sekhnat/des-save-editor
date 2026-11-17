@@ -48,7 +48,16 @@
    ],
    "room": [
     110
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     15,
+     1,
+     "Lead Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 4224,
@@ -61,7 +70,16 @@
     582,
     584,
     585
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     16,
+     1,
+     "Iron Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 4360,
@@ -79,7 +97,16 @@
     1034,
     1036,
     1431
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     17,
+     1,
+     "Silver Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 4480,
@@ -94,7 +121,16 @@
     1540,
     1570,
     1710
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     7,
+     1,
+     "False King Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 5123,
@@ -110,7 +146,16 @@
     2013,
     2014,
     2015
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     21,
+     1,
+     "Doll Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 5251,
@@ -123,7 +168,16 @@
    ],
    "room": [
     523
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     22,
+     1,
+     "Mixed Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 5380,
@@ -137,6 +191,27 @@
    ],
    "room": [
     1031
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     23,
+     1,
+     "Golden Demon Soul"
+    ]
+   ],
+   "bonus": [
+    {
+     "flag": 17800,
+     "items": [
+      [
+       "Goods",
+       9993,
+       1,
+       "Nexial Agent"
+      ]
+     ]
+    }
    ]
   },
   {
@@ -153,7 +228,16 @@
     160,
     162,
     163
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     24,
+     1,
+     "Writhing Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 5770,
@@ -167,7 +251,16 @@
    "room": [
     533,
     537
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     25,
+     1,
+     "Eroded Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 5888,
@@ -185,6 +278,33 @@
     1030,
     1031,
     1050
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     26,
+     1,
+     "Pureblood Demon Soul"
+    ],
+    [
+     "Ring",
+     112,
+     1,
+     "Ring of Sincere Prayer"
+    ]
+   ],
+   "bonus": [
+    {
+     "flag": 17800,
+     "items": [
+      [
+       "Goods",
+       9993,
+       1,
+       "Nexial Agent"
+      ]
+     ]
+    }
    ]
   },
   {
@@ -210,7 +330,16 @@
     594,
     595,
     642
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     18,
+     1,
+     "Swollen Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 4895,
@@ -227,7 +356,16 @@
     1108,
     1190,
     1195
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     19,
+     1,
+     "Hero Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 4992,
@@ -243,6 +381,33 @@
    "room": [
     1541,
     1542
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     20,
+     1,
+     "Storm Demon Soul"
+    ],
+    [
+     "Goods",
+     2050,
+     1,
+     "Pure Cloudstone"
+    ]
+   ],
+   "bonus": [
+    {
+     "flag": 17800,
+     "items": [
+      [
+       "Goods",
+       9993,
+       1,
+       "Nexial Agent"
+      ]
+     ]
+    }
    ]
   },
   {
@@ -257,7 +422,22 @@
    ],
    "room": [
     111
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     27,
+     1,
+     "Hard Demon Soul"
+    ],
+    [
+     "Goods",
+     2026,
+     1,
+     "Pure Spiderstone"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 6272,
@@ -273,7 +453,16 @@
     520,
     522,
     523
-   ]
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     28,
+     1,
+     "Searing Demon Soul"
+    ]
+   ],
+   "bonus": []
   },
   {
    "id": 6400,
@@ -292,6 +481,33 @@
    ],
    "room": [
     1050
+   ],
+   "soul_items": [
+    [
+     "Goods",
+     29,
+     1,
+     "Dragon Demon Soul"
+    ],
+    [
+     "Goods",
+     2032,
+     1,
+     "Pure Dragonstone"
+    ]
+   ],
+   "bonus": [
+    {
+     "flag": 17800,
+     "items": [
+      [
+       "Goods",
+       9993,
+       1,
+       "Nexial Agent"
+      ]
+     ]
+    }
    ]
   }
  ],

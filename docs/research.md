@@ -144,6 +144,7 @@ Kyty's `set-map` and refills the flag copy from the new map's slots).**
 | m02 flag 10770 (high range, bank `78a5c2d7`) cleared in slot and copy | not visited | yes |
 | m02 flag 10766 cleared in the `78a5c2d7` slot only | not visited | yes; the copy was rebuilt from the slot, as for the low range |
 | Re-arm the Late Moon Grass pickup (m02 10242), 28 m ahead of the 1-1 start | no difference visible from the start, compared with a control | yes |
+| Mark False King Allant defeated (death + soul flags, False King Demon Soul added), start 5 m from him in 1-4 | **yes**: the throne room is empty with no boss bar, where a no-edit control from the same spot has him attacking at once | yes, flags and soul |
 | Crestfallen Warrior (dead) set to "In the Nexus" | his spot was out of view | **advanced by the game**: it saved "Starting to fade away (late game)" with "In the Nexus" as the previous state, so it read the edited state and ran its own state change from there |
 
 Further observations:

@@ -275,8 +275,29 @@ validated write path:
   re-evaluate everything on area load — the boss, its fog gate, the boss-room
   collision and the archstone state all key off the one flag.
 - **Full respawn.** `--respawn BOSS --full` also clears the fight's own flags
-  (the boss's `block` and `room`, above). **Mark defeated** (`--defeat BOSS`)
-  sets only the death flag.
+  (the boss's `block` and `room`, above).
+- **Mark a boss defeated.** `--defeat BOSS` does what the kill and the soul
+  pickup do. Each boss's "Get Soul" handler (the map-script function that
+  sets its soul flag, e.g. `OnEvent_4103_1`) calls `GetRateItem` on the
+  soul's item lot first, then on four lots that are empty for most bosses.
+  `build_flagdb.py` resolves them through `ITEMLOT_PARAM_ST` into each boss's
+  `soul_items`: the demon soul (Phalanx: Goods 15, Lead Demon Soul), plus
+  Maiden Astrea's Ring of Sincere Prayer and the Pure Cloudstone,
+  Spiderstone and Dragonstone of Storm King, Armor Spider and the Dragon God.
+  Every one of those lots has a single weighted slot, so the items are
+  guaranteed. The four world-final bosses also run the remake's
+  `if not IsCompleteEvent(17800) then GetRateItem(0x40002709)`. That id
+  encodes category << 28 | item, so it hands over Goods 9993, the Nexial
+  Agent, once; this is the boss's `bonus`.
+
+  `defeat_boss` sets the death flag. Unless the soul was already taken, it
+  also adds those items to the inventory (the editor's normal, confirmed
+  item creation), sets the soul flag and hands over each bonus whose flag is
+  clear. Any inventory problem refuses the whole edit. `--no-soul` sets only
+  the death flag. It leaves alone the fight's fog and cutscene flags, the
+  world counters (8014/8050/8071), the world tendency and
+  `ARCHSTONEHOMEINDEX`, which the soul handler sets through
+  `BP_SetArchstoneAsHomeByCollectingSoul`.
 - **Forgive an NPC.** `--forgive NPC` does what seeking forgiveness does in
   game (above). The Events tab offers the button only when it would work.
 - **Re-arm pickups, reset a map.** `--rearm-pickups m02` clears the
@@ -365,12 +386,19 @@ the new map's slot.
 | `flag-local-high` | `--set m02:10770=0` (Tower Shield pickup, bank `78a5c2d7`) | kept in slot and copy |
 | `flag-local-high-bankonly` | m02 10766 cleared in the `78a5c2d7` slot only | kept; the game rebuilt the copy from the slot, as for 0–3199 |
 | `flag-rearm-pickup` | `--set m02:10242=0` (Late Moon Grass ×2, 28 m ahead of the 1-1 start) | kept, but no difference from a control shot is visible from the start |
+| `flag-defeat-visible` | `--defeat allant`: 4480, 4503 and the False King Demon Soul (Goods 7), start at m02_03 `c0000_0000`, 5 m from the boss's MSB part | the throne room is empty and no boss bar appears; the game's save kept both flags and the soul |
+| control (`boot --start`, no edit) | same start, the boss alive | he attacks at once, health bar on screen |
 | `flag-npc-visible` | Crestfallen Warrior (dead) set to "In the Nexus", start at m01 `c0000_0001` | his spot was out of view. The game **advanced** the state: it saved "Starting to fade away (late game)", with "In the Nexus" as the previous state. So it read the edited state and applied its own late-game rule to it |
 
 ![Phalanx respawned](assets/ingame-phalanx-respawned.jpg)
 ![Control: Phalanx dead](assets/ingame-phalanx-control.jpg)
+![Allant marked defeated](assets/ingame-allant-defeated.jpg)
+![Control: Allant alive](assets/ingame-allant-control.jpg)
 
-Boss respawn (plain and full) is therefore confirmed and no longer needs
+The game's health bar calls the 1-4 boss "Old King Allant"; the editor keeps
+the boss table's "False King Allant", which matches his soul's name.
+
+Boss respawn (plain and full) and Mark defeated are therefore confirmed and no longer need
 `--experimental` or the Events tab's toggle (`EVENT_CONFIRMED` in
 `des_editor.py`, `EV_CONFIRMED` in the page). Everything else stays
 experimental:
@@ -378,7 +406,7 @@ experimental:
   seen.
 - NPC state edits are read by the game, which may then move the NPC on by
   its own rules (late-game fading, for one).
-- Mark defeated, Forgive and Reset map have not been run in game.
+- Forgive and Reset map have not been run in game.
 
 
 ## Using it
@@ -396,7 +424,8 @@ python3 src/des_editor.py events FILE --set 4103=0 --experimental      # save-wi
 python3 src/des_editor.py events FILE --set m02:200=0 --experimental   # map-local flag
 python3 src/des_editor.py events FILE --set m02:10770=0 --experimental # map-local, high range
 python3 src/des_editor.py events FILE --respawn phalanx --full --experimental
-python3 src/des_editor.py events FILE --defeat phalanx --experimental
+python3 src/des_editor.py events FILE --defeat allant                 # dead + soul in the inventory
+python3 src/des_editor.py events FILE --defeat allant --no-soul       # death flag only
 python3 src/des_editor.py events FILE --forgive baldwin --experimental
 python3 src/des_editor.py events FILE --rearm-pickups m02 --experimental
 python3 src/des_editor.py events FILE --reset-map m02 --experimental

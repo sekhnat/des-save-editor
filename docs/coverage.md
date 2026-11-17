@@ -294,7 +294,8 @@ open questions are in [Event flags](research-event-flags.md).
 
 The `events` command and the **Events** tab read them and offer these
 recipes:
-- respawn (and full respawn) or mark a boss defeated
+- respawn (and full respawn) a boss, or mark it defeated with its demon soul
+  (and anything else its soul pickup gives) added to the inventory
 - set an NPC's quest state, or forgive a hostile NPC (the game's own
   `SeekForgiveness` table)
 - re-arm a map's pickups (all, or one at a time from the Pickups list with
@@ -304,8 +305,9 @@ recipes:
   the copy**), as the game does on load
 - set any flag
 
-Boss respawn was seen working in game (Phalanx back with its fog gate) and
-needs no opt-in, nor does the copy fix. The page marks each recipe button ✓ or
+Boss respawn and Mark defeated were seen working in game (Phalanx back with
+its fog gate; Allant's throne room empty with his soul kept) and need no
+opt-in, nor does the copy fix. The page marks each recipe button ✓ or
 EXP accordingly. Every other edit is experimental; the
 [in-game checks](research.md#in-game-checks) record what Kyty showed. The shop-stock counters (8 flags per limited item)
 are shown read-only, because what they count is not confirmed.

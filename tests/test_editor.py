@@ -637,13 +637,14 @@ class EventsBrowserTests(unittest.TestCase):
 
     def test_edits_wait_for_the_experimental_toggle(self):
         self.open_events(experimental=False)
-        # respawn was seen working in game, so it needs no toggle; the rest do
+        # respawn and defeat were seen working in game, so they need no toggle; the rest do
         self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="respawn"]').is_enabled())
-        self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_disabled())
+        self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_enabled())
+        self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="defeat"]').is_disabled())   # already dead
         self.assertTrue(self.page.locator('.evnpc[data-npc="baldwin_flag_list"] select').is_disabled())
         self.assertTrue(self.page.locator('#evlocal input[data-flag="200"]').is_disabled())
         self.page.check('#eventsexperimental')
-        self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_enabled())
+        self.assertTrue(self.page.locator('.evnpc[data-npc="baldwin_flag_list"] select').is_enabled())
 
     def test_reads_match_python(self):
         self.open_events(experimental=False)
@@ -759,6 +760,29 @@ class EventsBrowserTests(unittest.TestCase):
         self.page.check('#eventsexperimental')
         self.assertTrue(again.is_enabled())
 
+    def test_defeat_matches_python_and_hands_over_the_soul(self):
+        fresh = lambda: test_flags.defeat_save({4096: 1}, area=1, local={(1, 200): 1})
+        self.open_events(fresh())
+        knight = self.page.locator('.evboss[data-boss="4224"]')
+        self.assertIn('Iron Demon Soul not taken', knight.inner_text())
+        self.assertEqual(1, knight.locator('.evsoul .glyph').count())
+        self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="defeat"]').is_disabled())
+        knight.locator('button[data-action="defeat"]').click()
+        self.assertIn('Iron Demon Soul', self.page.inner_text('#message'))
+        self.page.click('.evboss[data-boss="5888"] button[data-action="defeat"]')   # soul + ring + Nexial Agent
+        expected, _ = des_flags.defeat_boss(fresh(), self.db, 'tower knight')
+        expected, _ = des_flags.defeat_boss(expected, self.db, 'maiden astrea')
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(2, self.page.evaluate('current().undo.length'))
+        self.assertIn('Iron Demon Soul taken', self.page.locator('.evboss[data-boss="4224"]').inner_text())
+
+    def test_easy_mode_can_mark_a_boss_defeated(self):
+        self.page.evaluate('setMode("easy")')
+        self.open_events(test_flags.defeat_save({}, area=1))
+        self.page.click('.evboss[data-boss="4096"] button[data-action="defeat"]')
+        expected, _ = des_flags.defeat_boss(test_flags.defeat_save({}, area=1), self.db, 'phalanx')
+        self.assertEqual(expected.build(), self.page_bytes())
+
     @staticmethod
     def pickup_save():
         return test_flags.flags_save({4096: 1}, area=1, local={(1, 10240): 1, (1, 10242): 1, (5, 1050): 1})
@@ -829,7 +853,8 @@ class EventsBrowserTests(unittest.TestCase):
         status = lambda sel: self.page.locator(sel).first.get_attribute('data-status')
         self.assertEqual('confirmed', status('button[data-action="respawn"]'))
         self.assertEqual('confirmed', status('button[data-action="respawn-full"]'))
-        for action in ('defeat', 'rearm', 'reset-map'):
+        self.assertEqual('confirmed', status('button[data-action="defeat"]'))
+        for action in ('rearm', 'reset-map'):
             self.assertEqual('experimental', status(f'button[data-action="{action}"]'), action)
         self.assertEqual('experimental', status('.evnpc select'))
         self.assertIn('✓', self.page.locator('button[data-action="respawn"]').first.inner_text())
