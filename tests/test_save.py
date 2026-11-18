@@ -742,15 +742,15 @@ class CreationTests(unittest.TestCase):
             self.add(high, 'Goods', 1001, destination='storage')
 
 
-    def test_cli_add_needs_experimental_only_for_storage(self):
+    def test_cli_add_needs_no_opt_in(self):
         import des_editor
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'USR-DATA'
             path.write_bytes(creation_save([self.BUCKLER],
                                            storage=[{'cat': 'G', 'id': 2000, 'quantity': 25}],
                                            rings=[105], slot_ref=0).build())
-            with self.assertRaises(SystemExit):
-                des_editor.main(['add', str(path), 'goods', '1001', '--to', 'storage'])
+            # storage-box additions were seen in game (Stockpile Thomas, 2026-11-19)
+            self.assertEqual(0, des_editor.main(['add', str(path), 'goods', '1001', '--to', 'storage']))
             self.assertEqual(0, des_editor.main(['add', str(path), 'weapon', '20700']))
             rows = inventory.inventory(save.SaveFile(path.read_bytes()))
             self.assertEqual((20700, 'Weapon', 1, 600), (rows[1]['id'], rows[1]['category'],
@@ -848,13 +848,13 @@ class InventoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             inventory.set_durability(sf, 1, 10)
 
-    def test_cli_inv_needs_experimental_only_for_storage(self):
+    def test_cli_inv_needs_no_opt_in(self):
         import des_editor
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'USR-DATA'
             path.write_bytes(inventory_save(self.ITEMS, [(0x40000000 | 2000, 25)]).build())
-            with self.assertRaises(SystemExit):
-                des_editor.main(['inv', str(path), '--box-qty', '0=30'])
+            self.assertEqual(0, des_editor.main(['inv', str(path), '--box-qty', '0=30']))
+            self.assertEqual(30, inventory.storage(save.SaveFile(path.read_bytes()))[0]['low_quantity'])
             self.assertEqual(0, des_editor.main(['inv', str(path), '--qty', '3=50']))
             self.assertEqual(50, inventory.inventory(save.SaveFile(path.read_bytes()))[3]['quantity'])
 
@@ -897,7 +897,7 @@ class InventoryTests(unittest.TestCase):
                 call()
         self.assertEqual(before, sf.build())
 
-    def test_cli_upgrade_lists_and_needs_experimental_only_for_storage(self):
+    def test_cli_upgrade_lists_and_needs_no_opt_in(self):
         import contextlib
         import io
         import des_editor
@@ -908,10 +908,10 @@ class InventoryTests(unittest.TestCase):
             with contextlib.redirect_stdout(listing):
                 self.assertEqual(0, des_editor.main(['upgrade', str(path), '0']))
             self.assertIn('Broadsword+10', listing.getvalue())
-            with self.assertRaises(SystemExit):
-                des_editor.main(['upgrade', str(path), '0', '20110', '--storage'])
             with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(0, des_editor.main(['upgrade', str(path), '0', '20110', '--storage']))
                 self.assertEqual(0, des_editor.main(['upgrade', str(path), '0', '20110']))
+            self.assertEqual(20110, inventory.storage(save.SaveFile(path.read_bytes()))[0]['id'])
             self.assertEqual(20110, inventory.inventory(save.SaveFile(path.read_bytes()))[0]['id'])
 
     @unittest.skipUnless(HAVE_SAVES, 'no sample saves (set DES_SAVE_DIR to run this)')

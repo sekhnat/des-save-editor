@@ -78,14 +78,13 @@ save kept them.
 | Attribute redistribution at the same soul level | ✅ Verified in game |
 | Event flags: respawn a boss, mark it defeated, NPC state, forgive, take, re-arm or reset a map's pickups | ✅ Verified in game: each was seen on screen against an unedited control (boss back or gone, Boldwin hostile then back at work, a pickup's glow gone and back) |
 | Raw single-flag edits, re-arming a tendency event | ⚠️ Experimental, opt-in: the game keeps the bit, but what it does depends on the flag, and a tendency event repeating was not seen |
-| Storage-box edits | ⚠️ Experimental, opt-in: the game kept them, but they were not seen on screen |
+| Storage-box edits (quantity, adding items, weapon upgrades) | ✅ Verified in game, on Stockpile Thomas's storage screen |
 | World-state edits (other than `BROKEN`) | ⚠️ Experimental, opt-in: no observed effect |
 | Soul-level change, class change | ⏳ Not yet checked in game |
 
 > [!WARNING]
 > A checksum-valid file is not necessarily a game-safe edit. **Back up your entire
-> `_SaveData` folder before you start.** Easy mode adds to the storage box only
-> after a warning, instead of requiring the experimental toggle.
+> `_SaveData` folder before you start.**
 
 ## Download
 
@@ -149,7 +148,7 @@ A browser download request cannot prove that the download actually completed.
 
 | View | What it provides |
 |---|---|
-| **Editor** | Character and class, souls, base and current attributes, vitals, resistances, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels and paths (storage box: experimental); recovered arrays |
+| **Editor** | Character and class, souls, base and current attributes, vitals, resistances, spells, records, options and coverage warnings; attribute redistribution at the same soul level; inventory, storage box and equipment slots with **Add item…** and weapon upgrade levels and paths; recovered arrays |
 | **Tendency** | Character and the five worlds on a −200 to 200 slider with band, presets and all-world buttons; every tendency event with its required range, live on/off status, **Trigger** (one or several at once) and the events a change turns on or off; the tendency-gated one-time events, whether each already happened, and **Re-arm** |
 | **Events** | Bosses with their death and soul flags and the soul each gives, **Respawn**, **Full respawn** and **Mark defeated** (the demon soul and anything else the soul pickup gives go to the inventory); NPC quest states with **Forgive**; a **Pickups** list per map or across all maps (item icons, taken or not, **Re-arm** or **Take** one or all; Take puts the items in the inventory, and what goes past a stack's limit in the storage box, as in game); every map's flags (0–3199 and 8192–12287) and the save-wide flags with descriptions from the map layouts (pickups), talk tables and script comments, searchable per map or across all maps, with **Reset this map**; **Fix the copy** when the current map's flag copy disagrees with its slots; shop stock counters; set any flag by map and number. Buttons marked ✓ (every recipe, and fix) are confirmed in game; EXP edits are experimental |
 | **All fields** | Named and unknown records with strict scalar, text and hex editing, filtering, 100 records per page |
@@ -263,11 +262,11 @@ python3 src/des_editor.py dump FILE dump.json
 python3 src/des_editor.py verify FILE
 python3 src/des_editor.py items FILE [--json]
 python3 src/des_editor.py inv FILE --qty 9=40 --durability 0=200 --out /tmp/USR-DATA
-python3 src/des_editor.py inv FILE --box-qty 4=30 --experimental --out /tmp/USR-DATA
+python3 src/des_editor.py inv FILE --box-qty 4=30 --out /tmp/USR-DATA
 python3 src/des_editor.py add FILE weapon 20700                                      # Dragon Bone Smasher
-python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30 --experimental
+python3 src/des_editor.py add FILE goods 1001 --to storage --quantity 30
 python3 src/des_editor.py add FILE ring 123                                          # records trophy history
-python3 src/des_editor.py upgrade FILE INDEX [NEW_ID] [--storage --experimental]
+python3 src/des_editor.py upgrade FILE INDEX [NEW_ID] [--storage]
 python3 src/des_editor.py respec FILE [VIT=40 STR=30 ...] [--out /tmp/USR-DATA]
 python3 src/des_editor.py arrays FILE
 python3 src/des_editor.py aslot FILE 7516f500 --set 0=113 --clear 7 --out /tmp/USR-DATA
@@ -305,7 +304,6 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 
 </details>
 
-Storage-box edits (`inv --box-qty`, `add --to storage`, `upgrade --storage`),
 `wset` and raw event flags (`events --set`) require `--experimental`. `add` creates a full `USR-DATA` through the same
 validated path as the page. For in-place writes, `set`, `patch`, `inv`, `wset` and
 `aslot` first create a collision-resistant timestamped backup (`set --no-backup` is

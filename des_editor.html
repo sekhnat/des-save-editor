@@ -428,14 +428,13 @@
   </div>
   <div id="itemdialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="itemtitle">
     <div class="modalbox"><header><div class="flexh"><b id="itemtitle">Add item</b><button id="closeitem">Close</button></div>
-      <p class="small" id="itemintro">Adds one item to the inventory or storage box. Inventory additions were shown and kept by the game (Kyty, 2026-11-15). Storage-box additions were kept by the game’s own save but not seen in game, so they need the experimental toggle. Keep a backup.</p></header>
+      <p class="small" id="itemintro">Adds one item to the inventory or storage box. Both were shown and kept by the game (Kyty: the inventory 2026-11-15, the storage box at Stockpile Thomas 2026-11-19). Keep a backup.</p></header>
       <div class="body">
         <div class="bar"><select id="itemdestination" aria-label="Destination"><option value="inventory">Inventory</option><option value="storage">Storage box</option></select>
           <input id="itemquantity" type="number" min="1" value="1" aria-label="Quantity" disabled title="1 (stackables: goods and ammunition)">
           <input id="itemsearch" type="text" placeholder="Filter items…" aria-label="Filter items">
           <select id="itemcategory" aria-label="Category"><option value="">All</option><option value="W">Weapons</option><option value="A">Armor</option><option value="R">Rings</option><option value="G">Goods</option></select>
           <span id="itemcount" class="small"></span></div>
-        <p id="itemstoragewarn" class="warnbox hidden">Storage-box additions are kept by the game’s own save but have not been seen in game yet. Keep a backup of your save folder.</p>
         <div class="scroll" style="max-height:42vh"><table><thead><tr><th>ID</th><th>Name</th><th>Category</th><th>Limits</th></tr></thead><tbody id="itemlist"></tbody></table></div>
         <div id="itempages" class="pages"></div>
       </div>
@@ -3782,7 +3781,7 @@ function setBoxQuantity(s, index, quantity){
   if (fields.HIGHQUANTITY.value !== 0) throw new Error("HIGHQUANTITY is non-zero; its meaning is not verified");
   fields.LOWQUANTITY.value = wholeNumber(quantity,1,255,"Storage quantity");
 }
-/* Weapon upgrades (confirmed in game for the inventory; storage box experimental): a weapon's family is every row sharing its
+/* Weapon upgrades (confirmed in game for the inventory and the storage box): a weapon's family is every row sharing its
    unupgraded root through WEAPON_ORIGIN. Only the id changes, as when the game
    upgrades: real saves keep DISPLAYID's sort component from acquisition. An
    equipped weapon's EQUIPMENT_SLOT##_EQUIPMENTID follows. Mirrors
@@ -3831,7 +3830,7 @@ function setWeaponVariant(s, index, newId, destination = "inventory"){
   } else fields.EQUIPTYPEID.value = newId;          // weapon category bits are zero
   if (Number.isInteger(limit) && limit > 0 && fields[durability].value > limit) fields[durability].value = limit;
 }
-/* Item creation (confirmed in game for the inventory; storage box experimental): PARAM-backed rows carry creation data in
+/* Item creation (confirmed in game for the inventory and the storage box): PARAM-backed rows carry creation data in
    columns 5..7 (sort, initial durability, ammunition).  Eligibility mirrors
    des_items.creation_problem; structural checks mirror with_added_item. */
 const CREATION = new Map(ITEMDB.filter(row => row.length >= 8)
@@ -4170,7 +4169,7 @@ function diagnostics(e = current()){
   if(typeof boxCount === "number" && boxCount !== box.length) out.push(["err",`Storage box: EQUIPMENT_STORAGEBOX_COUNT ${boxCount}, entries ${box.length}.`]);
   const unnamed = [...inv, ...box].filter(row => !row.name).length;
   if(unnamed) out.push(["info",`${unnamed} inventory/storage entr${unnamed === 1 ? "y does" : "ies do"} not match a catalog item; preserve them.`]);
-  if(e.experimental) out.push(["warn","Experimental edits enabled. Storage-box quantities, additions and upgrades are kept by the game but were not seen in game; world-state records other than BROKEN have no observed effect."]);
+  if(e.experimental) out.push(["warn","Experimental edits enabled. World-state records other than BROKEN have no observed effect; raw event flags do what that flag does."]);
   return out;
 }
 function refreshDiagnostics(){
@@ -4882,9 +4881,6 @@ function renderInventory(){
   if (!inv.length && !box.length && !eq.length && !dead.length && invCount === null && boxCount === null) return;
   const card = document.createElement("section"); card.className = "card"; card.id = "invcard";
   card.innerHTML = '<h2>Inventory, storage and equipment</h2><p class="note">Read from the EQUIPMENT_INVENTORY##, EQUIPMENT_STORAGEBOX## and EQUIPMENT_SLOT## records; names come from the category bits and the catalog. Slots 0 and 1 are left and right hand 1 (seen in game); other slot meanings are not verified. Inventory quantity, durability, added items and weapon upgrades were shown and kept by the game; storage-box edits are experimental (kept, not seen). Removal is not supported.</p>';
-  const toggle = document.createElement("label"), checkbox = document.createElement("input"); checkbox.type = "checkbox"; checkbox.id = "experimental"; checkbox.checked = e.experimental;
-  toggle.append(checkbox,document.createTextNode(" Enable experimental storage-box edits (kept by the game, not seen in game)"));
-  checkbox.onchange = () => { e.experimental = checkbox.checked; state.rendered.delete("editor"); renderForm(); };
   const isPlayer = e.save.get("PLAYER_NAME") !== null, addItem = document.createElement("button");
   addItem.id = "additem"; addItem.textContent = "Add item…"; addItem.disabled = !isPlayer;
   if (!isPlayer) addItem.title = "Options profiles have no inventory or storage";
@@ -4896,7 +4892,7 @@ function renderInventory(){
   const count = document.createElement("span"); count.className = "small";
   count.textContent = `${inv.length} inventory · ${box.length} storage · ${eq.length} equipped · ${dead.length} dead-enemy indices`;
   bar.append(search,count); const list = document.createElement("div"); list.id = "invlist";
-  card.append(toggle,addItem,bar,list); $("#tab-editor").append(card); fillInvList(list);
+  card.append(addItem,bar,list); $("#tab-editor").append(card); fillInvList(list);
 }
 const CATLABEL = {W:"Weapon",A:"Armor",R:"Ring",G:"Goods"};
 function numberInput(value, label, enabled, apply, max = null){
@@ -4911,7 +4907,7 @@ function variantSelect(row, enabled, destination){
   if (family.length < 2) return null;
   const select = document.createElement("select"); select.disabled = !enabled;
   select.setAttribute("aria-label", `Upgrade level or path of ${destination} entry ${row.index}`);
-  select.title = "Weapon upgrade level or path; only the item id changes" + (destination === "storage" ? " (experimental)" : "");
+  select.title = "Weapon upgrade level or path; only the item id changes";
   for (const id of family){ const o = document.createElement("option"); o.value = id; o.textContent = ITEM_BY_CAT.get("W:"+id) || id; o.selected = id === row.id; select.append(o); }
   select.onchange = () => editCandidate(s => setWeaponVariant(s, row.index, Number(select.value), destination));
   return select;
@@ -4939,9 +4935,9 @@ function fillInvList(host){
     return el;
   });
   section("Storage box", storageRows(s), row => {
-    const el = itemRow(pad2(row.index), row), ok = e.experimental && row.complete && row.high === 0;
+    const el = itemRow(pad2(row.index), row), ok = row.complete && row.high === 0;
     el.append(numberInput(row.low, `Quantity of storage entry ${row.index}`, ok, (c, v) => setBoxQuantity(c, row.index, v), row.maxQuantity));
-    const variant = variantSelect(row, e.experimental && row.complete, "storage"); if (variant) el.append(variant);
+    const variant = variantSelect(row, row.complete, "storage"); if (variant) el.append(variant);
     return el;
   });
   section("Equipment slots (meanings not verified)", equipmentRows(s), row => itemRow(`#${row.slot}`, row));
@@ -6168,16 +6164,13 @@ function openItemDialog(preferCat = null, preferId = null, destination = null){
   $("#itemlist").replaceChildren(); $("#itempages").replaceChildren(); $("#itemdetails").textContent = "";
   $("#additemapply").disabled = true;
   if (destination) $("#itemdestination").value = destination;
-  showStorageWarning();
+  showItemIntro();
   $("#itemdialog").classList.remove("hidden");
   if (preferCat !== null && preferId !== null && !creationProblem(preferCat, preferId)) selectItem(preferCat, preferId);
   renderItemList();
   $("#itemsearch").focus();
 }
-function showStorageWarning(){
-  $("#itemintro").classList.toggle("hidden", state.mode === "easy");
-  $("#itemstoragewarn").classList.toggle("hidden", !(state.mode === "easy" && $("#itemdestination").value === "storage"));
-}
+function showItemIntro(){ $("#itemintro").classList.toggle("hidden", state.mode === "easy"); }
 function closeItemDialog(){
   const focus = itemState?.focus; itemState = null;
   $("#itemdialog").classList.add("hidden"); if (focus?.isConnected) focus.focus();
@@ -6240,13 +6233,10 @@ function applyAddItem(){
     if (e.jsonDirty) throw new Error("Apply or refresh the unapplied JSON draft before adding items");
     if (!itemState.cat) throw new Error("Choose an item first");
     const destination = $("#itemdestination").value, quantity = Number($("#itemquantity").value) || 1;
-    // Easy mode warns in the dialog instead of asking for the experimental toggle.
-    if (destination === "storage" && !e.experimental && state.mode !== "easy") throw new Error("Enable experimental storage-box edits first: storage additions were not seen in game");
     const name = ITEM_BY_CAT.get(itemState.cat+":"+itemState.id) || "?";
     const where = destination === "inventory" ? "inventory" : "storage box";
-    if (!confirm(`Add ${name}${quantity > 1 ? " ×"+quantity : ""} to the ${where}?` + (destination === "storage" ? " Storage-box additions were not seen in game." : ""))) return;
+    if (!confirm(`Add ${name}${quantity > 1 ? " ×"+quantity : ""} to the ${where}?`)) return;
     const made = withAddedItem(e.save, itemState.cat, itemState.id, quantity, destination);
-    if (destination === "storage") e.experimental = true;
     commitCandidate(e, made);
     closeItemDialog(); renderEditor();
     notify(`Added ${name} to the ${where}. Review Changes before exporting.`);
@@ -6255,7 +6245,7 @@ function applyAddItem(){
 $("#closeitem").onclick = () => closeItemDialog();
 $("#additemapply").onclick = applyAddItem;
 for (const id of ["#itemsearch","#itemcategory"]) $(id).oninput = () => { if (itemState){ itemState.page = 0; renderItemList(); } };
-$("#itemdestination").onchange = () => { showStorageWarning(); if (itemState && itemState.cat) selectItem(itemState.cat, itemState.id); };
+$("#itemdestination").onchange = () => { if (itemState && itemState.cat) selectItem(itemState.cat, itemState.id); };
 
 /* Browser wiring: no network, dependencies, or game-file writes on load. The only
    browser storage is the remembered Easy/Advanced choice, written when it is clicked. */

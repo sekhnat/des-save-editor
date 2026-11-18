@@ -18,8 +18,8 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py events <USR-DATA>          # event flags: bosses, NPC quests
     python3 des_editor.py events <USR-DATA> --respawn phalanx    # make a boss alive again
     python3 des_editor.py events <USR-DATA> --set m02:200=0 --experimental  # area-local flag
-    python3 des_editor.py events <USR-DATA> --rearm-pickups m02 --experimental  # pickups again
-    python3 des_editor.py events <USR-DATA> --take-pickup m02:10240 --experimental  # as if picked up
+    python3 des_editor.py events <USR-DATA> --rearm-pickups m02            # pickups again
+    python3 des_editor.py events <USR-DATA> --take-pickup m02:10240        # as if picked up
     python3 des_editor.py events <USR-DATA> --sync-copy           # fix a mismatched flag copy
     python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
@@ -333,7 +333,7 @@ def cmd_items(path: str, as_json: bool) -> int:
 
 def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
             box_quantities: list[str], out: str | None) -> int:
-    """Same-size edits of inventory values; storage-box quantities are experimental."""
+    """Same-size edits of inventory and storage-box values."""
     sf = des_save.load(path)
     for specs, setter, label in ((quantities, des_inventory.set_quantity, 'quantity'),
                                  (durabilities, des_inventory.set_durability, 'durability'),
@@ -350,7 +350,7 @@ def cmd_inv(path: str, quantities: list[str], durabilities: list[str],
 
 def cmd_add(path: str, category: str, item_id: str, destination: str, quantity: str,
             out: str | None) -> int:
-    """Item creation, written only after the operation succeeds (storage box: experimental)."""
+    """Item creation, written only after the operation succeeds."""
     name = {'weapon': 'Weapon', 'armor': 'Armor', 'ring': 'Ring',
             'goods': 'Goods'}.get(category.strip().lower())
     if name is None:
@@ -936,12 +936,11 @@ def cmd_tendency(path: str, sets: list[str], triggers: list[str], list_events: b
 # --------------------------------------------------------------------------- #
 # Edits not yet confirmed in game need --experimental. Inventory quantity,
 # durability, item creation and weapon upgrades were shown and kept by the game
-# (Kyty, 2026-11-15; docs/research.md). Storage-box edits were kept by the
-# game's own save but not seen on screen; world-state records beyond BROKEN
-# have no observed effect.
-STORAGE_UNSEEN = "storage-box edits are kept by the game but were not seen in game"
-EVENTFLAG_UNSEEN = ("event-flag edits are kept by the game's own save but their "
-                    "effect was not yet seen in game")
+# (Kyty, 2026-11-15), and so were the same edits in the storage box (Stockpile
+# Thomas's screen, 2026-11-19; docs/research.md). World-state records beyond
+# BROKEN have no observed effect, and a raw event flag does whatever that flag does.
+EVENTFLAG_UNSEEN = ("raw event-flag edits are kept by the game, but what a flag does "
+                    "depends on the flag")
 # Event-flag recipes whose effect was seen in game (docs/research.md#in-game-checks);
 # the page's EV_CONFIRMED holds the same names.
 EVENT_CONFIRMED: set[str] = {"respawn", "respawn-full",   # Phalanx back on screen, 2026-11-18
@@ -962,10 +961,7 @@ def _events_reason(a) -> str | None:
 
 
 EXPERIMENTAL = {
-    "inv": lambda a: STORAGE_UNSEEN if a.box_qty else None,
     "wset": lambda a: "world-state record meanings are unverified",
-    "add": lambda a: STORAGE_UNSEEN if a.destination == "storage" else None,
-    "upgrade": lambda a: STORAGE_UNSEEN if a.storage and a.id is not None and not a.list_family else None,
     "events": lambda a: _events_reason(a),
 }
 
@@ -1025,7 +1021,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("file")
     p.add_argument("--json", action="store_true", dest="as_json")
 
-    p = sub.add_parser("add", help="add an item to the inventory (storage box: experimental)")
+    p = sub.add_parser("add", help="add an item to the inventory or (--to storage) the storage box")
     p.add_argument("file")
     p.add_argument("category", help="weapon, armor, ring or goods")
     p.add_argument("id", help="catalog item id (category-specific)")
@@ -1034,7 +1030,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--quantity", default="1",
                    help="stack units for goods and ammunition (default 1)")
     p.add_argument('--experimental', action='store_true',
-                   help='acknowledge that storage-box additions were not seen in game')
+                   help='no longer needed (storage-box additions were seen in game); accepted for old scripts')
     p.add_argument("--out", help="write to this path instead of in place")
     p = sub.add_parser("respec", help="move points between attributes at the same soul level, or level up/down with --level")
     p.add_argument("file")
@@ -1044,7 +1040,7 @@ def main(argv: list[str]) -> int:
     p.add_argument("--no-backup", action="store_true")
     p.add_argument("--level", action="store_true",
                    help="let the soul level change with the attributes (not checked in game)")
-    p = sub.add_parser("upgrade", help="change a weapon's upgrade level or path (storage box: experimental)")
+    p = sub.add_parser("upgrade", help="change a weapon's upgrade level or path (inventory or storage box)")
     p.add_argument("file")
     p.add_argument("index", help="inventory (or with --storage, storage box) entry index")
     p.add_argument("id", nargs="?", help="the new weapon id; omit to list the weapon's levels and paths")
@@ -1052,12 +1048,12 @@ def main(argv: list[str]) -> int:
     p.add_argument("--list", action="store_true", dest="list_family",
                    help="list the weapon's levels and paths")
     p.add_argument('--experimental', action='store_true',
-                   help='acknowledge that storage-box upgrades were not seen in game')
+                   help='no longer needed (storage-box upgrades were seen in game); accepted for old scripts')
     p.add_argument("--out", help="write to this path instead of in place")
-    p = sub.add_parser("inv", help="same-size edits of inventory values (storage box: experimental)")
+    p = sub.add_parser("inv", help="same-size edits of inventory and storage-box values")
     p.add_argument("file")
     p.add_argument('--experimental', action='store_true',
-                   help='acknowledge that storage-box edits were not seen in game')
+                   help='no longer needed (storage-box edits were seen in game); accepted for old scripts')
     p.add_argument("--qty", action="append", default=[], metavar="INDEX=N",
                    help="inventory stack size (1..999)")
     p.add_argument("--durability", action="append", default=[], metavar="INDEX=N")
@@ -1142,7 +1138,7 @@ def main(argv: list[str]) -> int:
                    help="put an NPC into exactly one quest state (e.g. baldwin=work)")
     p.add_argument("--json", action="store_true", dest="as_json")
     p.add_argument('--experimental', action='store_true',
-                   help="acknowledge that event-flag edits are kept by the game but not yet seen in game")
+                   help="acknowledge that raw flag edits (--set) do whatever that flag does; recipes need no opt-in")
     p.add_argument("--out", help="write to this path instead of in place")
     p.add_argument("--no-backup", action="store_true")
     p.add_argument("--bank-only", action="store_true", help=argparse.SUPPRESS)

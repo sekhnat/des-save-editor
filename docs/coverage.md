@@ -9,9 +9,10 @@ game-safe edit.
 Inventory quantity and durability edits, adding items to the inventory, weapon
 upgrades and attribute redistribution were checked in the game on 2026-11-15
 (Kyty, `tools/ingame_check.py`): the menus showed each edit and the game's own
-save kept it (see [Research notes](research.md#in-game-checks)). Storage-box
-edits were kept by the game's save but could not be seen on screen, and world
-state is confirmed only for `BROKEN`; both stay experimental and opt-in.
+save kept it (see [Research notes](research.md#in-game-checks)). The same
+edits in the storage box were seen on Stockpile Thomas's storage screen on
+2026-11-19. World state is confirmed only for `BROKEN`; the rest stays
+experimental and opt-in.
 
 [← Back to the README](../README.md)
 
@@ -91,8 +92,8 @@ executable.
   accepted.
 
 **Editing:** inventory quantity (1–999) and durability are same-size edits,
-confirmed in game. The storage low-quantity byte (1–255) is experimental and
-opt-in: the game kept it, but the storage box was not opened in game. The
+confirmed in game. So is the storage low-quantity byte (1–255): an Elixir
+stack set to 7 showed 7 on Stockpile Thomas's storage screen. The
 `_COUNT` fields are read-only in the form. Stack and durability maxima from the
 equip PARAMs (`maxQuantity`, `maxStorageQuantity`, `durabilityMax`) are shown as
 hints and enforced only by item creation; the samples' durabilities sit at or
@@ -103,10 +104,8 @@ below them.
 Use **Add item…** (or the CLI `add`). Additions to the inventory were confirmed
 in game: a weapon, an armor piece, a ring, a new goods stack and units added to
 an existing stack all appeared in the menus, sorted where the game sorts them,
-and survived the game's own save. Additions to the storage box were kept by the
-game's save but not seen, so they need the *Enable experimental storage-box
-edits* toggle (CLI: `--experimental`). Easy mode shows a warning when the storage
-box is chosen instead, and turns the flag on for that file when the item is added.
+and survived the game's own save. So did an addition to the storage box (a Mail
+Coif, among the helmets on Stockpile Thomas's storage screen).
 
 - **What is offered.** Supported rows carry PARAM creation data, and the others
   are listed with the reason: weapons, armor, rings and goods with a usable sort
@@ -148,7 +147,7 @@ lowered to it.
 
 Confirmed in game for the inventory: an equipped Large Sword of Moonlight+5
 changed to +2 showed as +2 in right hand 1 and was kept. A storage-box upgrade
-(Bastard Sword → +10) was kept but not seen, so it is experimental.
+(Bastard Sword → +10) showed as Bastard Sword+10 on the storage screen and was kept.
 
 ## Attribute redistribution
 

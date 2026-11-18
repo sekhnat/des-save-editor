@@ -11,6 +11,7 @@ WAYLAND_DISPLAY are never used, and there is no visible-window option.
     ingame_check.py run CASE --dry-run          apply the edits to a scratch copy and judge that only
     ingame_check.py boot [CASE ...]             back up, edit, boot to gameplay and leave it running
     ingame_check.py boot --start MAP:SPAWN      the same with no edits, starting at an MSB player part
+                                                (or MAP:@X,Y,Z,YAW for a spot and facing of your own)
     ingame_check.py keys TOKEN ...              send keys to the running game (see KEYS)
     ingame_check.py shot NAME                   screenshot the running game
     ingame_check.py finish [--no-save]          save and exit, stop, judge, restore
@@ -162,6 +163,28 @@ def _rearm_case(how: str, edit: list[str]) -> Case:
         ('m05_00_00_00', 'c0000_0000'))
 
 
+# Stockpile Thomas (Nexus entity 687, part c0000_0009): a start 1.6 m in front of him, facing
+# him, puts "Talk" on screen. On profile 0 a fresh session's talk is three lines and then his
+# menu; "Organise storage" opens the inventory (left) and storage box (right) on the Items tab.
+# R1 steps through the tabs: Items, Materials, Key items, Melee, Shields, Casters, Ranged, Ammo,
+# Helmets, ... Square (k) moves the cursor into the storage box, where the item name shows.
+_AT_THOMAS = ('m01_00_00_00', '@3.93,479.81,-16.14,-145.9')
+
+
+# His greeting is several voiced lines and a press during one is sometimes ignored, sometimes
+# skips a line, so no fixed key sequence reliably lands on the storage screen (a press too many
+# there is Deposit). `run` therefore only checks the data and shows the start; to see the box,
+# `boot CASE`, then `keys j wait:4 shot:x` one press at a time until it opens, then the case's
+# STORAGE_LOOK keys, `keys l wait:2 l wait:3` (back to gameplay), and `finish`. Circle during
+# the talk ends it and rolls the character away.
+_STAND = ['wait:8', 'shot:stand']
+STORAGE_LOOK = {
+    'storage-qty': ['k', 'wait:1', 'Right*4', 'wait:1', 'shot:elixir'],
+    'add-storage': ['e*8', 'wait:2', 'k', 'wait:1', 'shot:helmets'],
+    'upgrade-storage': ['e*3', 'wait:2', 'k', 'wait:1'],      # then walk to row 2, column 4
+}
+
+
 CASES: dict[str, Case] = {
     'qty': Case(
         'inventory quantity of a goods stack: Crescent Moon Grass 45 -> 37',
@@ -186,8 +209,9 @@ CASES: dict[str, Case] = {
         'upgrade the stored Bastard Sword to Bastard Sword+10',
         [['upgrade', '0', '20410', '--storage', '--experimental']],
         lambda sf: len(_storage(sf, 'Weapon', 20410)) == 1,
-        'Bastard Sword+10 in storage', [],
-        lambda sf: _storage_at(sf, 0, 'Weapon', 20400)),
+        'Bastard Sword+10 in storage (seen at row 2, column 4 of the melee tab, 2026-11-19)',
+        _STAND,
+        lambda sf: _storage_at(sf, 0, 'Weapon', 20400), _AT_THOMAS),
     'ngplus': Case(
         'NG+ cycle: CLEARCOUNT 1 -> 2 (the exit screen shows "Games completed")',
         [['set', 'CLEARCOUNT=2', '--no-backup']],
@@ -242,13 +266,16 @@ CASES: dict[str, Case] = {
         'storage low-quantity byte of the Elixir stack -> 7',
         [['inv', '--experimental', '--box-qty', '25=7']],
         lambda sf: [r['low_quantity'] for r in _storage(sf, *_ELIXIR)] == [7],
-        'Elixir storage stack of 7', [],
-        lambda sf: _storage_at(sf, 25, *_ELIXIR)),
+        'Elixir storage stack of 7 (seen as 7 at row 0, column 4 of the Items tab, 2026-11-19)',
+        _STAND,
+        lambda sf: _storage_at(sf, 25, *_ELIXIR), _AT_THOMAS),
     'add-storage': Case(
         'add a Mail Coif to the storage box',
         [['add', 'Armor', '100400', '--to', 'storage', '--experimental']],
         lambda sf: len(_storage(sf, 'Armor', 100400)) == 1,
-        'one Mail Coif in storage', []),
+        'one Mail Coif in storage (seen among 8 helmets on the Helmets tab, 2026-11-19)',
+        _STAND,
+        None, _AT_THOMAS),
     # Event flags (written for the end-game LOL character, profile 1, on m02).
     'flag-respawn': Case(
         'event flags: respawn Phalanx (clear death flag 4096 and soul flag 4103)',
@@ -469,8 +496,9 @@ def apply_edits(source: Path, cases: list[str], out: Path) -> list[str]:
 
 def move_to(kyty: Path, path: Path, profile: str, map_name: str, spawn: str) -> str:
     """Start the character on another map at an MSB player part (Kyty's
-    demons-souls-save.py set-map), then refill the primary flag copy from the
-    new map's slots so the game does not save the old map's copy over it."""
+    demons-souls-save.py set-map), or at ``@X,Y,Z,YAW``, then refill the
+    primary flag copy from the new map's slots so the game does not save the
+    old map's copy over it."""
     tool = kyty / 'tools/local/demons-souls-save.py'
     game = os.environ.get('DES_GAME_DIR')
     if not game and (kyty / 'game-path.txt').exists():
@@ -482,14 +510,16 @@ def move_to(kyty: Path, path: Path, profile: str, map_name: str, spawn: str) -> 
         (src / 'PPSA01341' / profile).mkdir(parents=True)
         shutil.copyfile(path, src / 'PPSA01341' / profile / 'USR-DATA')
         result = subprocess.run([sys.executable, str(tool), 'set-map', str(src), str(dst), map_name,
-                                 '--profile', profile, '--spawn', spawn, '--game', game],
+                                 '--profile', profile, '--game', game,
+                                 *(['--at', spawn[1:]] if spawn.startswith('@') else ['--spawn', spawn])],
                                 capture_output=True, text=True)
         if result.returncode:
             die(f'set-map failed: {result.stdout}{result.stderr}')
         sf = des_save.load(str(dst / 'PPSA01341' / profile / 'USR-DATA'))
     synced = des_flags.sync_mirror(sf)
     des_save.save(sf, str(path))
-    return (f'set-map {map_name} --spawn {spawn}\n{result.stdout}'
+    where = f'--at {spawn[1:]}' if spawn.startswith('@') else f'--spawn {spawn}'
+    return (f'set-map {map_name} {where}\n{result.stdout}'
             f'primary flag copy refilled from the new map: {"changed" if synced else "unchanged"}\n')
 
 

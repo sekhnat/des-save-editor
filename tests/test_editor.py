@@ -359,14 +359,10 @@ class AddItemBrowserTests(SyntheticBrowserTests):
         self.page.click(f'#itemlist tr[data-cat="{cat}"][data-id="{item_id}"]')
         self.page.click('#additemapply')
 
-    def test_storage_additions_need_the_experimental_toggle(self):
+    def test_storage_additions_need_no_toggle(self):
         source = self.fixture().build()
         self.load_bytes(source)
-        self.add_via_dialog('Mail Coif', 'A', 100400, destination='storage')
-        self.assertIn('experimental', self.page.text_content('#message'))
-        self.assertEqual(source, bytes(self.page.evaluate('current().save.build()')))
-        self.page.evaluate('closeItemDialog()')
-        self.page.check('#experimental')
+        self.assertEqual(0, self.page.locator('#experimental').count())   # seen in game: no opt-in
         self.add_via_dialog('Mail Coif', 'A', 100400, destination='storage')
         expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Armor', 100400,
                                                  destination='storage').build()
@@ -375,7 +371,6 @@ class AddItemBrowserTests(SyntheticBrowserTests):
     def test_dialog_creates_the_same_bytes_as_python(self):
         source = self.fixture().build()
         self.load_bytes(source)
-        self.page.check('#experimental')
         self.add_via_dialog('Dragon Bone', 'W', 20700)
         made = bytes(self.page.evaluate('current().save.build()'))
         expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
@@ -390,7 +385,6 @@ class AddItemBrowserTests(SyntheticBrowserTests):
     def test_dialog_matches_python_when_the_count_sits_in_a_container(self):
         source = self.fixture(count_in_container=True).build()
         self.load_bytes(source)
-        self.page.check('#experimental')
         self.add_via_dialog('Dragon Bone', 'W', 20700)
         made = bytes(self.page.evaluate('current().save.build()'))
         expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
@@ -405,7 +399,6 @@ class AddItemBrowserTests(SyntheticBrowserTests):
                                                              'display': (5 << 16) | 1}],
                                          rings=[105], slot_ref=3, equipitem=0).build()
         self.load_bytes(source)
-        self.page.check('#experimental')
         self.add_via_dialog('Dragon Bone', 'W', 20700)
         made = bytes(self.page.evaluate('current().save.build()'))
         expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Weapon', 20700).build()
@@ -416,7 +409,6 @@ class AddItemBrowserTests(SyntheticBrowserTests):
     def test_catalog_row_adds_to_storage_like_python(self):
         source = self.fixture().build()
         self.load_bytes(source)
-        self.page.check('#experimental')
         self.page.click('[data-tab=catalog]')
         self.page.fill('#catalogsearch', 'Dragon Bone Smasher')
         self.page.click('#catalogbody tr:has-text("Dragon Bone Smasher") button')
@@ -479,7 +471,6 @@ class AddItemBrowserTests(SyntheticBrowserTests):
     def test_changes_after_creation_are_real_additions(self):
         source = self.fixture().build()
         self.load_bytes(source)
-        self.page.check('#experimental')
         self.add_via_dialog('Dragon Bone', 'W', 20700)
         added, changed = self.page.evaluate("""() => {
           const rows = collectChanges(current());
@@ -501,7 +492,6 @@ class AddItemBrowserTests(SyntheticBrowserTests):
     def test_scalar_changes_after_insertion_pair_by_identity(self):
         source = self.fixture().build()
         self.load_bytes(source)
-        self.page.check('#experimental')
         self.add_via_dialog('Dragon Bone', 'W', 20700)
         self.page.evaluate('setInvQuantity(current().save, 1, 50)')
         added, changed = self.page.evaluate("""() => {
@@ -983,14 +973,13 @@ class EasyModeBrowserTests(unittest.TestCase):
         self.assertEqual(1, self.page.locator('#easybox .easyrow .glyph').count())
         self.page.click('#easyaddbox')
         self.assertEqual('storage', self.page.input_value('#itemdestination'))
-        self.assertTrue(self.page.locator('#itemstoragewarn').is_visible())
         self.page.fill('#itemsearch', 'Mail Coif')
         self.page.click('#itemlist tr[data-cat="A"][data-id="100400"]')
         self.page.click('#additemapply')
         expected = des_inventory.with_added_item(des_save.SaveFile(source), 'Armor', 100400,
                                                  destination='storage').build()
         self.assertEqual(expected, bytes(self.page.evaluate('current().save.build()')))
-        self.assertTrue(self.page.evaluate('current().experimental'))
+        self.assertFalse(self.page.evaluate('!!current().experimental'))
         self.assertIn('Mail Coif', self.page.inner_text('#easybox'))
         self.assertEqual('character', self.page.evaluate('state.tab'))
 
@@ -1006,7 +995,6 @@ class EasyModeBrowserTests(unittest.TestCase):
         self.assertEqual('moon', self.page.input_value('#easyinv input[type=text]'))
         self.page.click('#easyaddinv')
         self.assertEqual('inventory', self.page.input_value('#itemdestination'))
-        self.assertFalse(self.page.locator('#itemstoragewarn').is_visible())
 
     def test_game_icons_replace_glyphs_where_the_pack_has_one(self):
         self.load_bytes(AddItemBrowserTests.fixture().build())

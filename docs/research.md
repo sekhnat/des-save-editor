@@ -121,8 +121,30 @@ means the game's own save still held it.
 | Upgrade an equipped weapon (Large Sword of Moonlight+5 → +2) | right hand 1 | yes |
 | Attributes VIT 50 → 60, STR 50 → 40 | Status screen, SL 320 | yes |
 | World state `BROKEN` 1 → 0 on seven 1-1 start objects | intact barricade | yes |
-| Storage quantity, storage addition, storage upgrade | not opened | yes |
+| Storage quantity, storage addition, storage upgrade | not opened (on 2026-11-19, yes: below) | yes |
 | `CLEARCOUNT` 1 → 2, `CLEARSTATE` 1 → 2 | *Games completed* stayed 1 | yes |
+
+**Storage box seen (2026-11-19, character `DPG`).** The storage box is only
+shown by Stockpile Thomas in the Nexus, so the harness starts the character
+1.6 m in front of him, facing him (`set-map --at 3.93,479.81,-16.14,-145.9`;
+Thomas is entity 687, MSB part `c0000_0009`). Talking and choosing *Organise
+storage* opens the inventory and storage box side by side; R1 steps through the
+item tabs and Square moves the cursor into the box, where each item's name
+shows. Each edit, compared with a no-edit control at the same spot:
+
+| Edit | Shown | Kept |
+|---|---|---|
+| Storage low quantity of the Elixir stack 1 → 7 (`inv --box-qty 25=7`) | **yes**: the Elixir shows 7, where the control shows no number | yes |
+| Add a Mail Coif to the storage box (`add --to storage`) | **yes**: 8 helmets where the control has 7, one named Mail Coif | yes |
+| Stored Bastard Sword → Bastard Sword+10 (`upgrade 0 20410 --storage`) | **yes**: the tile the control names Bastard Sword is named Bastard Sword+10 | yes |
+
+![Storage box: control and edited](assets/ingame-storage-box.jpg)
+
+Thomas's greeting is three voiced lines, and a press during a line is
+sometimes ignored, so fixed key timings land on different screens from run to
+run. These checks were driven one press at a time (`boot CASE`, `keys`, look,
+`finish`). Circle during the talk ends it and rolls the character away.
+Storage-box edits need no opt-in since.
 
 **Results (2026-11-17, character `LOL`, end-game, in Boletaria 1-3).** Event
 flags ([Event flags](research-event-flags.md#in-game-check)):

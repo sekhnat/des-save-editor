@@ -322,16 +322,13 @@ class BrowserTests(unittest.TestCase):
         self.page.evaluate('doUndo()')
         self.assertEqual(before, self.page.evaluate(value))
 
-    def test_inventory_edits_are_undoable_and_storage_is_opt_in(self):
+    def test_inventory_edits_are_undoable_and_storage_is_editable(self):
         self.load()
         self.page.wait_for_selector('#invcard')
         self.assertIn('Inventory, storage and equipment', self.page.text_content('#invcard'))
         if self.page.evaluate('storageRows(current().save).length'):
             box = self.page.locator('[aria-label="Quantity of storage entry 0"]')
-            self.assertTrue(box.is_disabled())
-            self.page.check('#experimental')
-            box = self.page.locator('[aria-label="Quantity of storage entry 0"]')
-            self.assertFalse(box.is_disabled())
+            self.assertFalse(box.is_disabled())                       # seen in game: no opt-in
         quantity = self.page.locator('[aria-label="Quantity of inventory entry 0"]')
         self.assertFalse(quantity.is_disabled())
         before = self.page.evaluate('inventoryRows(current().save)[0].quantity')
