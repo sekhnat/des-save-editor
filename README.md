@@ -280,7 +280,8 @@ python3 src/des_editor.py tendency FILE --set boletaria=-200 --set character=180
 python3 src/des_editor.py tendency FILE --trigger 20300 --trigger 30140 --out /tmp/USR-DATA
 python3 src/des_editor.py events FILE [--json] [--filter TEXT]
 python3 src/des_editor.py events --list
-python3 src/des_editor.py events FILE --respawn BOSS [--full] --npc NPC=STATE --set ID=0 --set m02:200=0 --experimental --out /tmp/USR-DATA
+python3 src/des_editor.py events FILE --respawn BOSS [--full] --npc NPC=STATE --out /tmp/USR-DATA
+python3 src/des_editor.py events FILE --set 4103=0 --set m02:200=0 --experimental --out /tmp/USR-DATA   # raw flags
 python3 src/des_editor.py events FILE --defeat BOSS [--no-soul] --out /tmp/USR-DATA   # dead, soul into the inventory
 python3 src/des_editor.py events FILE --forgive NPC --rearm-pickups m02 --reset-map m06 --out /tmp/USR-DATA
 python3 src/des_editor.py events FILE --take-pickup m02:10240 [--take-pickups m02] --out /tmp/USR-DATA   # as if picked up
@@ -304,8 +305,8 @@ python3 src/des_editor.py diff BEFORE/USR-DATA AFTER/USR-DATA [--json]
 
 </details>
 
-Storage-box edits (`inv --box-qty`, `add --to storage`, `upgrade --storage`) and
-`wset` require `--experimental`. `add` creates a full `USR-DATA` through the same
+Storage-box edits (`inv --box-qty`, `add --to storage`, `upgrade --storage`),
+`wset` and raw event flags (`events --set`) require `--experimental`. `add` creates a full `USR-DATA` through the same
 validated path as the page. For in-place writes, `set`, `patch`, `inv`, `wset` and
 `aslot` first create a collision-resistant timestamped backup (`set --no-backup` is
 an explicit opt-out). Edited bytes are validated, written to a temporary file,
