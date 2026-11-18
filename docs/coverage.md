@@ -300,6 +300,9 @@ recipes:
   `SeekForgiveness` table)
 - re-arm a map's pickups (all, or one at a time from the Pickups list with
   item icons) or reset a map
+- take a map's pickups as if picked up (one or all not yet taken): the items
+  go to the inventory, what passes a stack's limit to the storage box, and the
+  taken-flag is set
 - re-arm a tendency-gated one-time event (Tendency tab)
 - rebuild the current map's flag copy from its slots (`--sync-copy`, **Fix
   the copy**), as the game does on load

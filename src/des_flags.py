@@ -614,6 +614,46 @@ def rearm_pickups(sf: des_save.SaveFile, db: FlagDB, area: int) -> list[int]:
     return cleared
 
 
+def take_pickups(sf: des_save.SaveFile, db: FlagDB, area: int,
+                 flags: list[int] | None = None) -> tuple[des_save.SaveFile, dict]:
+    """Do what picking up map pickups does: add their items to the inventory
+    and set their taken-flags. Returns a new save (``sf`` is never modified)
+    and what was done.
+
+    ``flags`` names the pickups; each must be one of the area's and not yet
+    taken. Without it, every pickup of the area not yet taken is taken. As in
+    game, what does not fit the inventory stack's limit goes to the storage
+    box. Any inventory problem raises before anything is returned.
+    """
+    import des_inventory
+    _check_area(area)
+    rows = db.pickup_items.get(area, {})
+    if flags is None:
+        targets = [f for f in db.pickups.get(area, []) if not get_local(sf, area, f)]
+    else:
+        targets = list(dict.fromkeys(flags))
+        for flag in targets:
+            if flag not in rows:
+                raise ValueError(f"{flag} is not one of {db.area_name(area)}'s pickups")
+            if get_local(sf, area, flag):
+                raise ValueError(f"pickup {flag} in {db.area_name(area)} is already taken")
+    out = des_save.SaveFile(sf.build())
+    items = []
+    for flag in targets:
+        for category, item_id, count, item_name in rows[flag].get('items', []):
+            room = des_inventory.inventory_room(out, category, item_id)
+            here = count if room is None else min(count, room)
+            if here:
+                out = des_inventory.with_added_item(out, category, item_id, quantity=here)
+            if count - here:
+                out = des_inventory.with_added_item(out, category, item_id, quantity=count - here,
+                                                    destination='storage')
+            label = f"{item_name} ×{count}" if count > 1 else item_name
+            items.append(label + (f" ({count - here} to storage)" if count - here else ""))
+        set_local(out, area, flag, True)
+    return out, {"area": area, "taken": targets, "items": items}
+
+
 def set_npc_state(sf: des_save.SaveFile, db: FlagDB, npc: str, state: str) -> dict:
     """Put one NPC into exactly one quest state, the way the game does.
 

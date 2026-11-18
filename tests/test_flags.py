@@ -297,6 +297,51 @@ class RecipeTests(unittest.TestCase):
         self.assertEqual([200], flags.local_flags(sf, 1))
         self.assertTrue(flags.mirror_ok(sf))
 
+    def test_take_pickup_hands_over_its_items(self):
+        sf = defeat_save({}, area=1, local={(1, 10240): 1})
+        before = sf.build()
+        out, result = flags.take_pickups(sf, self.db, 1, [10241, 10250])
+        self.assertEqual(before, sf.build())                   # source untouched
+        self.assertEqual([10241, 10250], result['taken'])
+        self.assertEqual(['Old Ragged Robes', 'Old Ragged Gloves', 'Light Crossbow',
+                          'Wooden Bolt ×16'], result['items'])
+        have = inventory_ids(out)
+        self.assertIn(('Armor', 202100), have)
+        self.assertIn(('Armor', 302100), have)
+        self.assertEqual(16, have[('Weapon', 170300)])          # ammo stacks
+        self.assertTrue(flags.get_local(out, 1, 10241))
+        self.assertTrue(flags.get_local(out, 1, 10250))
+        self.assertTrue(flags.mirror_ok(out))                   # current map: copy written too
+
+    def test_take_all_pickups_skips_the_taken_ones(self):
+        sf = defeat_save({}, area=1, local={(1, 10240): 1})
+        out, result = flags.take_pickups(sf, self.db, 1)
+        self.assertNotIn(10240, result['taken'])
+        self.assertEqual(len(self.db.pickups[1]) - 1, len(result['taken']))
+        self.assertEqual([], flags.take_pickups(out, self.db, 1)[1]['taken'])
+        self.assertTrue(all(flags.get_local(out, 1, f) for f in self.db.pickups[1]))
+        self.assertNotIn('Jade Hair Ornament', result['items'])
+        # 32 Half Moon Grass held + 22 lying in Boletaria: 18 fill the stack to
+        # its limit of 50, the rest goes to the storage box as in game
+        self.assertEqual(50, inventory_ids(out)[('Goods', 1001)])
+        import des_inventory
+        box = {(r['category'], r['id']): r for r in des_inventory.storage(out)}
+        self.assertEqual(4, box[('Goods', 1001)]['low_quantity'])
+        self.assertTrue(any(i.endswith('to storage)') for i in result['items']))
+
+    def test_take_pickup_refuses_and_fails_atomically(self):
+        sf = defeat_save({}, area=1, local={(1, 10240): 1})
+        with self.assertRaises(ValueError):
+            flags.take_pickups(sf, self.db, 1, [10240])       # already taken
+        with self.assertRaises(ValueError):
+            flags.take_pickups(sf, self.db, 1, [200])         # not a pickup
+        two = [{'cat': 'G', 'id': 1002, 'quantity': 1, 'sort': 1}, {'cat': 'G', 'id': 1002, 'quantity': 1, 'sort': 1}]
+        sf = defeat_save({}, entries=two, area=1)               # two Late Moon Grass stacks
+        before = sf.build()
+        with self.assertRaises(ValueError):
+            flags.take_pickups(sf, self.db, 1, [10241, 10242])
+        self.assertEqual(before, sf.build())
+
     def test_shop_counters_read_eight_flags_as_a_byte(self):
         sf = flags_save({15041: 1})
         rows = {s['flag']: s for s in flags.shop_counters(sf, self.db)}

@@ -19,6 +19,7 @@ Demon's Souls (PS5) save editor - command line interface.
     python3 des_editor.py events <USR-DATA> --respawn phalanx    # make a boss alive again
     python3 des_editor.py events <USR-DATA> --set m02:200=0 --experimental  # area-local flag
     python3 des_editor.py events <USR-DATA> --rearm-pickups m02 --experimental  # pickups again
+    python3 des_editor.py events <USR-DATA> --take-pickup m02:10240 --experimental  # as if picked up
     python3 des_editor.py events <USR-DATA> --sync-copy           # fix a mismatched flag copy
     python3 des_editor.py tendency <USR-DATA> --trigger 20300   # world/character tendency
 
@@ -647,7 +648,8 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
                out: str | None, no_backup: bool, bank_only: bool = False,
                full: bool = False, defeat: str | None = None, forgive: str | None = None,
                reset_map: str | None = None, rearm: str | None = None,
-               sync_copy: bool = False, no_soul: bool = False) -> int:
+               sync_copy: bool = False, no_soul: bool = False,
+               take_pickup: list[str] | None = None, take_pickups: str | None = None) -> int:
     """Event flags: the bits the game's scripts set and test."""
     F = des_flags
     db = F.load_db()
@@ -730,6 +732,22 @@ def cmd_events(path: str | None, as_json: bool, text: str | None, list_known: bo
             for flag in cleared:
                 print(f"    {flag}  {db.event_label(flag, area)}")
             changed = changed or bool(cleared)
+        takes: dict[int, list[int]] = {}
+        for target in take_pickup or []:
+            area, flag = F.parse_target(target)
+            if area is None:
+                raise ValueError(f"bad --take-pickup {target!r} (expected AREA:ID, e.g. m02:10240)")
+            takes.setdefault(area, []).append(flag)
+        if take_pickups:
+            takes[F.parse_area(take_pickups)] = None      # the whole map covers single picks
+        for area, flags in takes.items():
+            sf, result = F.take_pickups(sf, db, area, flags)
+            print(f"  {db.area_name(area)}: {len(result['taken'])} pickups taken")
+            for flag in result['taken']:
+                print(f"    {flag}  {db.event_label(flag, area)}")
+            if result['items']:
+                print(f"  added to the inventory: {', '.join(result['items'])}")
+            changed = changed or bool(result['taken'])
         if npc:
             npc_name, sep, state = npc.partition("=")
             if not sep:
@@ -928,6 +946,7 @@ EVENTFLAG_UNSEEN = ("event-flag edits are kept by the game's own save but their 
 # the page's EV_CONFIRMED holds the same names.
 EVENT_CONFIRMED: set[str] = {"respawn", "respawn-full",   # Phalanx back on screen, 2026-11-18
                               "defeat",   # Allant gone from 1-4, soul kept, 2026-11-18
+                              "take",     # 5-1 Noble's Lotus glow gone, items kept, 2026-11-18
                               "sync"}   # the game rebuilds the copy from the slots on load
 
 
@@ -935,7 +954,8 @@ def _events_reason(a) -> str | None:
     used = {name for name, on in (
         ("set", a.sets), ("respawn", a.respawn and not a.full), ("respawn-full", a.respawn and a.full),
         ("npc", a.npc), ("defeat", a.defeat), ("forgive", a.forgive),
-        ("reset-map", a.reset_map), ("rearm", a.rearm), ("sync", a.sync_copy)) if on}
+        ("reset-map", a.reset_map), ("rearm", a.rearm), ("sync", a.sync_copy),
+        ("take", a.take_pickup or a.take_pickups)) if on}
     return EVENTFLAG_UNSEEN if used - EVENT_CONFIRMED else None
 
 
@@ -970,7 +990,7 @@ COMMANDS = {
     "events": lambda a: cmd_events(a.file, a.as_json, a.text, a.list_known, a.sets,
                                    a.respawn, a.npc, a.out, a.no_backup, a.bank_only,
                                    a.full, a.defeat, a.forgive, a.reset_map, a.rearm,
-                                   a.sync_copy, a.no_soul),
+                                   a.sync_copy, a.no_soul, a.take_pickup, a.take_pickups),
     "diff": lambda a: cmd_diff(a.before, a.after, a.as_json),
     "selftest": lambda a: cmd_selftest(a.paths),
     "fields": lambda a: cmd_fields(),
@@ -1108,6 +1128,11 @@ def main(argv: list[str]) -> int:
                    help="clear every local flag of one map (m01..m08): doors, levers, pickups, events")
     p.add_argument("--rearm-pickups", metavar="AREA", dest="rearm",
                    help="let one map's one-time pickups be picked up again")
+    p.add_argument("--take-pickup", action="append", default=[], metavar="AREA:ID",
+                   help="do what picking up one map pickup does: its items go to the inventory "
+                        "and its taken-flag is set (e.g. m02:10240; repeatable)")
+    p.add_argument("--take-pickups", metavar="AREA",
+                   help="take every pickup of one map (m01..m08) not yet taken")
     p.add_argument("--sync-copy", action="store_true",
                    help="rebuild the main flag block's copy of the current map's flags from that "
                         "map's own slots (what the game does on load; repairs a mismatch)")

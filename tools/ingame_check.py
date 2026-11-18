@@ -82,6 +82,7 @@ _BANK_ONLY_FLAG = 1380      # m02: Yuria ("the witch") thanks the player - likew
 _HIGH_FLAG = 10770          # m02 high range (bank 78a5c2d7): the Tower Shield pickup in 1-2
 _HIGH_BANK_ONLY = 10766     # m02 high range: an Unknown Hero Soul pickup in 1-2
 _REARM_FLAG = 10242         # m02: Late Moon Grass x2 in 1-1, 28 m straight ahead of spawn c0000_0001
+_TAKE_FLAG = 10240          # m05: Noble's Lotus x4 in 5-1, 4 m from spawn c0000_0000
 _LOOK = ['wait:8', 'shot:look-1', 'wait:6', 'shot:look-2']
 
 
@@ -298,6 +299,20 @@ CASES: dict[str, Case] = {
         'flags 4480 and 4503 set and the False King Demon Soul in the inventory; look at the screenshots',
         _LOOK + ['Return', 'wait:2', 'e', 'wait:2', 'shot:inventory', 'l', 'wait:2'],
         lambda sf: not des_flags.get_flag(sf, 4480), ('m02_03_00_00', 'c0000_0000')),
+    'flag-take-pickup': Case(
+        "event flags: take the Noble's Lotus x4 pickup (m05 10240) as if picked up (flag set; 22 -> 25, "
+        "the stack limit, in the inventory and 11 -> 12 in storage), starting at 5-1 spawn c0000_0000, 4 m from it (written for profile 0, DPG)",
+        [['events', '--take-pickup', f'm05:{_TAKE_FLAG}', '--experimental', '--no-backup']],
+        lambda sf: des_flags.get_local(sf, 4, _TAKE_FLAG)
+        and [r['quantity'] for r in _inventory(sf, 'Goods', 1007)] == [25]
+        and [r['low_quantity'] for r in _storage(sf, 'Goods', 1007)] == [12],
+        "flag 10240 set in m05, Noble's Lotus 25 in the inventory and 12 in storage; "
+        "look at the screenshots for the item glow",
+        _LOOK + ['Return', 'wait:2', 'e', 'wait:2', 'shot:inventory', 'l', 'wait:2'],
+        lambda sf: not des_flags.get_local(sf, 4, _TAKE_FLAG)
+        and [r['quantity'] for r in _inventory(sf, 'Goods', 1007)] == [22]
+        and [r['low_quantity'] for r in _storage(sf, 'Goods', 1007)] == [11],
+        ('m05_00_00_00', 'c0000_0000')),
 }
 _ELIXIR = ('Goods', None)        # filled from the catalog at start-up
 

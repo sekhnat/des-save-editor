@@ -488,6 +488,28 @@ def _check_new_keys_absent(candidate, names: list[str]) -> None:
                              'refusing to create a colliding record')
 
 
+def _inventory_cap(entry: dict, category: str) -> int:
+    return min(entry.get('maxQuantity', MAX_QUANTITY) if category == 'Goods'
+               else MAX_QUANTITY, MAX_QUANTITY)
+
+
+def inventory_room(sf, category: str, item_id: int, catalog: dict | None = None) -> int | None:
+    """How many more of a stackable item (goods, ammunition) the inventory
+    takes before its stack limit; None when the item does not stack (each copy
+    is an entry of its own) or is not in the catalog. Raises, as
+    with_added_item does, when the inventory holds several stacks of it."""
+    catalog = _catalog() if catalog is None else catalog
+    entry = catalog.get((category, item_id))
+    if entry is None or not (category == 'Goods' or entry.get('ammo') is True):
+        return None
+    stacks = [r for r in inventory(sf, catalog) if r['category'] == category and r['id'] == item_id]
+    if len(stacks) > 1:
+        raise ValueError(f'the inventory holds {len(stacks)} stacks of {entry["name"]}; '
+                         'refusing to pick one for you')
+    held = (stacks[0]['quantity'] or 0) if stacks else 0
+    return max(0, _inventory_cap(entry, category) - held)
+
+
 def with_added_item(sf, category: str, item_id, quantity: int = 1,
                     destination: str = 'inventory',
                     catalog: dict | None = None) -> des_save.SaveFile:
@@ -521,8 +543,7 @@ def with_added_item(sf, category: str, item_id, quantity: int = 1,
     stackable = category == 'Goods' or entry.get('ammo') is True
     if stackable:
         if destination == 'inventory':
-            cap = min(entry.get('maxQuantity', MAX_QUANTITY) if category == 'Goods'
-                      else MAX_QUANTITY, MAX_QUANTITY)
+            cap = _inventory_cap(entry, category)
         else:
             cap = min(entry.get('maxStorageQuantity', MAX_STORAGE_QUANTITY)
                       if category == 'Goods' else MAX_STORAGE_QUANTITY, MAX_STORAGE_QUANTITY)

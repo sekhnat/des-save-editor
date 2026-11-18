@@ -304,6 +304,14 @@ validated write path:
   taken-flags of every map-layout pickup in Boletaria. `--reset-map m02`
   clears every local flag of the map (both ranges): doors, levers, pickups,
   cutscenes and conversations, as on a new game.
+- **Take pickups.** `--take-pickup m05:10240` (or `--take-pickups m05` for
+  every pickup of the map not yet taken) does what picking it up does. Each
+  item of the pickup's lots goes to the inventory, and what passes the
+  inventory stack's limit goes to the storage box. Then the taken-flag is set.
+  Every treasure lot has one fixed item slot, with no random roll and no
+  `eventId` of its own, so the items are exact. Any inventory problem
+  refuses the whole edit. Seen in game: the Noble's Lotus glow at the 5-1
+  start was gone, and the game kept the flag and both stacks.
 - **Edit a map's flags.** `events FILE --set m02:200=0` clears Boletaria's
   execution-ground door flag in its slot and, if the character is in
   Boletaria, in the current-map copy. A bare local number is refused.
@@ -437,6 +445,6 @@ Every editing option writes through the normal validated path
 (timestamped backup, atomic replace) and change nothing else; reads never need
 `--experimental`. In the editor page the same views and edits are on the
 **Events** tab. Its **Pickups** card (Easy and Advanced) lists each map's
-pickups with their item icons, taken or not, and re-arms one or all; the map
+pickups with their item icons, taken or not, and re-arms or takes one or all; the map
 flags can be searched across all maps at once. Each recipe button carries a
 ✓ (seen working in game) or EXP (experimental, needs the toggle) marker.

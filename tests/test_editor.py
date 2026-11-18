@@ -637,7 +637,7 @@ class EventsBrowserTests(unittest.TestCase):
 
     def test_edits_wait_for_the_experimental_toggle(self):
         self.open_events(experimental=False)
-        # respawn and defeat were seen working in game, so they need no toggle; the rest do
+        # respawn, defeat and take were seen working in game, so they need no toggle; the rest do
         self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="respawn"]').is_enabled())
         self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_enabled())
         self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="defeat"]').is_disabled())   # already dead
@@ -795,7 +795,7 @@ class EventsBrowserTests(unittest.TestCase):
         self.assertIn('Late Moon Grass ×2', grass.inner_text())
         self.assertIn('Taken', grass.inner_text())
         self.assertEqual(1, grass.locator('.glyph').count())
-        self.assertEqual(0, self.page.locator('.evpick[data-flag="10241"] button').count())   # not taken
+        self.assertEqual(0, self.page.locator('.evpick[data-flag="10241"] button[data-action="rearm"]').count())   # not taken
         grass.locator('button[data-action="rearm"]').click()
         expected = self.pickup_save()
         des_flags.set_local(expected, 1, 10242, False)
@@ -808,6 +808,25 @@ class EventsBrowserTests(unittest.TestCase):
         self.assertIn('Not taken', ring.inner_text())
         self.page.check('#evpicktaken')
         self.assertEqual(0, self.page.locator('#evpickups .evpick').count())
+
+    def test_take_pickups_matches_python(self):
+        fresh = lambda: test_flags.defeat_save({}, area=1, local={(1, 10240): 1})
+        self.open_events(fresh(), experimental=False)
+        robes = self.page.locator('.evpick[data-flag="10241"] button[data-action="take"]')
+        self.assertTrue(robes.is_enabled())                             # seen working in game
+        self.assertEqual(0, self.page.locator('.evpick[data-flag="10240"] button[data-action="take"]').count())
+        robes.click()
+        self.assertIn('Old Ragged Robes', self.page.inner_text('#message'))
+        row = self.page.locator('.evpick[data-flag="10241"]')
+        self.assertIn('Taken', row.inner_text())
+        self.assertEqual(1, row.locator('button[data-action="rearm"]').count())
+        expected, _ = des_flags.take_pickups(fresh(), self.db, 1, [10241])
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.page.click('#evtakeall')
+        expected, _ = des_flags.take_pickups(expected, self.db, 1)
+        self.assertEqual(expected.build(), self.page_bytes())
+        self.assertEqual(2, self.page.evaluate('current().undo.length'))
+        self.assertTrue(self.page.locator('#evtakeall').is_disabled())  # nothing left
 
     def test_map_flag_search_covers_all_maps(self):
         self.open_events()                                              # on Boletaria (m02)

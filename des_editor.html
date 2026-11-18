@@ -3943,6 +3943,16 @@ function createRingHistory(s){
   }
   return {parent, position, count, recorded};
 }
+/* des_inventory.inventory_room: how many more of a stackable item the
+   inventory takes before its stack limit; null when it does not stack. */
+function inventoryRoom(s, cat, id){
+  const row = CREATION.get(cat+":"+id);
+  if (!row || !(cat === "G" || row.ammo)) return null;
+  const stacks = inventoryRows(s).filter(r => r.cat === cat && r.id === id);
+  if (stacks.length > 1) throw new Error(`the inventory holds ${stacks.length} stacks of ${ITEM_BY_CAT.get(cat+":"+id) || "?"}; refusing to pick one for you`);
+  const cap = cat === "G" ? Math.min(row.limit, 999) : 999;
+  return Math.max(0, cap - (stacks.length ? stacks[0].quantity || 0 : 0));
+}
 function withAddedItem(source, cat, id, quantity = 1, destination = "inventory"){
   if (destination !== "inventory" && destination !== "storage") throw new Error("destination must be 'inventory' or 'storage'");
   if (!Number.isInteger(id) || id < 0 || id > 0x0FFFFFFF) throw new Error("item id must be a whole number 0..0x0FFFFFFF");
@@ -5271,7 +5281,7 @@ for (const [judge, flag, area] of FLAGDB ? FLAGDB.pairs : []){
 /* Recipes the in-game checks showed working (docs/research.md#in-game-checks);
    the rest stay behind the experimental toggle. "sync" (refill the copy from
    the map slots) is what the game itself was seen doing on load. */
-const EV_CONFIRMED = new Set(["respawn", "respawn-full", "defeat", "sync"]);
+const EV_CONFIRMED = new Set(["respawn", "respawn-full", "defeat", "take", "sync"]);
 const evAreaName = area => FLAGDB ? FLAGDB.areaNames[area] : `m${pad2(area + 1)}`;
 const evRangesText = () => EV_RANGES.map(([a, b]) => `${a}..${b - 1}`).join(" and ");
 function evBlob(s, key){ const f = s.find(key); return f && f.type === T.BLOB ? f : null; }
@@ -5454,6 +5464,35 @@ function evRearmPickups(s, area){
   const cleared = (EV_PICKUPS[area] || []).filter(f => evGetLocal(s, area, f));
   for (const f of cleared) evSetLocal(s, area, f, false);
   return cleared;
+}
+/* des_flags.take_pickups: what picking up map pickups does (their items into
+   the inventory, their taken-flags set). Without flags, every pickup of the
+   area not yet taken. As in game, what does not fit the inventory stack's
+   limit goes to the storage box. Returns a new save; the source is never
+   modified. */
+function evTakeSave(source, area, flags = null){
+  const rows = new Map((EV_PICKUP_ROWS[area] || []).map(r => [r[0], r]));
+  let targets;
+  if (flags === null) targets = (EV_PICKUPS[area] || []).filter(f => !evGetLocal(source, area, f));
+  else {
+    targets = [...new Set(flags)];
+    for (const f of targets){
+      if (!rows.has(f)) throw new Error(`${f} is not one of ${evAreaName(area)}'s pickups`);
+      if (evGetLocal(source, area, f)) throw new Error(`pickup ${f} in ${evAreaName(area)} is already taken`);
+    }
+  }
+  let out = new SaveFile(source.build());
+  const items = [];
+  for (const f of targets){
+    for (const [cat, item, count, label] of rows.get(f)[2]){
+      const room = inventoryRoom(out, cat, item), here = room === null ? count : Math.min(count, room);
+      if (here) out = withAddedItem(out, cat, item, here, "inventory");
+      if (count - here) out = withAddedItem(out, cat, item, count - here, "storage");
+      items.push((count > 1 ? `${label} ×${count}` : label) + (count - here ? ` (${count - here} to storage)` : ""));
+    }
+    evSetLocal(out, area, f, true);
+  }
+  return {save: out, taken: targets, items};
 }
 function evShopValue(s, flag){ let v = 0; for (let n = 0; n < 8; n++) if (evGetGlobal(s, flag + n)) v |= 1 << n; return v; }
 
@@ -5655,7 +5694,8 @@ function renderEvents(){
     const all = view.pickArea === "all";
     const pcard = document.createElement("section"); pcard.className = "card"; pcard.id = "evpickups";
     pcard.innerHTML = '<h2>Pickups</h2><p class="note">The items lying in each map (from the game\'s map layouts). '
-      + 'Once taken, a pickup stays gone. Re-arm puts it back: the game reads it when the map loads, so travel there by archstone.</p>';
+      + 'Once taken, a pickup stays gone. Re-arm puts it back: the game reads it when the map loads, so travel there by archstone. '
+      + 'Take does what picking it up does: its items go into your inventory and it is marked taken, so a missed item needs no trip back.</p>';
     const pbar = document.createElement("div"); pbar.className = "bar";
     const ppick = document.createElement("select"); ppick.id = "evpickarea"; ppick.setAttribute("aria-label", "Pickup map");
     const takenIn = a => (EV_PICKUPS[a] || []).filter(f => { try { return evGetLocal(s, a, f); } catch (_) { return false; } });
@@ -5682,7 +5722,19 @@ function renderEvents(){
       rearm.textContent = `Re-arm all ${taken} taken`; rearm.disabled = !evAllowed(e, "rearm") || !taken;
       rearm.title = "Clear the taken-flags of this map's one-time pickups so they can be picked up again";
       rearm.onclick = () => { let n = []; if (editCandidate(x => { n = evRearmPickups(x, a); })) notify(`${evShortArea(a)}: ${n.length} pickups re-armed.`); };
-      tools.append(evMark(rearm, "rearm")); pcard.append(tools);
+      const left = (EV_PICKUPS[a] || []).length - taken;
+      const takeAll = document.createElement("button"); takeAll.id = "evtakeall"; takeAll.dataset.action = "take";
+      takeAll.textContent = `Take all ${left} not taken`; takeAll.disabled = !evAllowed(e, "take") || !left;
+      takeAll.title = "Mark every pickup of this map taken and add their items to your inventory";
+      takeAll.onclick = () => evTake(a, null, made => `${evShortArea(a)}: ${made.taken.length} pickups taken`);
+      tools.append(evMark(rearm, "rearm"), evMark(takeAll, "take")); pcard.append(tools);
+    }
+    function evTake(a, flags, what){
+      try {
+        const made = evTakeSave(e.save, a, flags);
+        commitCandidate(e, made.save); renderEditor();
+        notify(what(made) + (made.items.length ? `; added to your inventory: ${made.items.join(", ")}.` : "."));
+      } catch (error){ fail(error); }
     }
     const pneedle = view.pickQ.trim().toLowerCase();
     const prow = [];
@@ -5707,6 +5759,12 @@ function renderEvents(){
             b.disabled = !evAllowed(e, "rearm"); b.title = "Put this pickup back";
             b.onclick = () => { if (editCandidate(x => evSetLocal(x, a, flag, false))) notify(`${text} (${level}) re-armed.`); };
             act.append(evMark(b, "rearm"));
+          } else if (on === false){
+            const b = document.createElement("button"); b.textContent = "Take"; b.dataset.action = "take";
+            b.disabled = !evAllowed(e, "take");
+            b.title = items.length ? `Mark taken and add ${text} to your inventory` : "Mark taken (the lot holds no item)";
+            b.onclick = () => evTake(a, [flag], () => `${text} (${level}) taken`);
+            act.append(evMark(b, "take"));
           }
           row.append(icons, what, where, st, act);
           return row;
