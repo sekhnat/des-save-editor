@@ -56,8 +56,8 @@ tool covers scripting and batch work.
   map's pickups with their item icons, re-arm them or take the ones you missed
   (their items go into your inventory), one at a time or all at once, and browse or search every map's event flags (doors, levers,
   pickups, conversations) by name: about 94% of the flags an end-game save has
-  set carry a description. Boss respawn and defeat are confirmed in game;
-  the rest is experimental.
+  set carry a description. Boss respawn, mark defeated and taking a pickup
+  are confirmed in game; the rest is experimental.
 - **World state.** Inspect per-entity records (archstones, boss loot, chains,
   statues), each labelled with its level and the game file that defines it.
 - **Fully inspectable.** Tree view, raw field editing, JSON dumps, conflict-checked
@@ -75,6 +75,8 @@ save kept them.
 | Adding items to the inventory | ✅ Verified in game |
 | Weapon upgrade level and path | ✅ Verified in game |
 | Attribute redistribution at the same soul level | ✅ Verified in game |
+| Event flags: respawn a boss, mark it defeated, take a missed pickup | ✅ Verified in game: the boss came back or stayed gone, the pickup's glow was gone, and the items reached the inventory |
+| Other event-flag edits (NPC states, forgive, re-arm, reset a map, single flags) | ⚠️ Experimental, opt-in: the game kept them, but their effect was not yet seen on screen |
 | Storage-box edits | ⚠️ Experimental, opt-in: the game kept them, but they were not seen on screen |
 | World-state edits (other than `BROKEN`) | ⚠️ Experimental, opt-in: no observed effect |
 | Soul-level change, class change | ⏳ Not yet checked in game |
