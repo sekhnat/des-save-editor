@@ -5171,14 +5171,14 @@ function tdGatedCard(host, e, easy){
       + `<td>${easy ? "" : `<span class="mono small">${where}${flag}</span> `}${escapeHtml(label || "(no description)")}</td>`
       + `<td>${on === null ? "?" : on ? "Yes" : "No"}</td><td></td>`;
     if (on){
-      const b = document.createElement("button"); b.textContent = "Re-arm"; b.dataset.action = "rearm";
-      b.disabled = !evAllowed(e, "rearm");
+      const b = document.createElement("button"); b.textContent = "Re-arm"; b.dataset.action = "tendency-rearm";
+      b.disabled = !evAllowed(e, "tendency-rearm");
       b.title = "Clear this flag so the event can happen again";
       b.onclick = () => {
         if (editCandidate(x => local ? evSetLocal(x, area, flag, false) : evSetGlobal(x, flag, false)))
           notify(`${ev ? ev.title : "Tendency event " + judge}: re-armed. It can happen again the next time its area loads.`);
       };
-      tr.lastElementChild.append(evMark(b, "rearm"));
+      tr.lastElementChild.append(evMark(b, "tendency-rearm"));   // its own name: a repeat is not yet seen in game
     }
     body.append(tr);
   }
@@ -5281,7 +5281,7 @@ for (const [judge, flag, area] of FLAGDB ? FLAGDB.pairs : []){
 /* Recipes the in-game checks showed working (docs/research.md#in-game-checks);
    the rest stay behind the experimental toggle. "sync" (refill the copy from
    the map slots) is what the game itself was seen doing on load. */
-const EV_CONFIRMED = new Set(["respawn", "respawn-full", "defeat", "take", "sync"]);
+const EV_CONFIRMED = new Set(["respawn", "respawn-full", "defeat", "take", "rearm", "reset-map", "npc", "forgive", "sync"]);
 const evAreaName = area => FLAGDB ? FLAGDB.areaNames[area] : `m${pad2(area + 1)}`;
 const evRangesText = () => EV_RANGES.map(([a, b]) => `${a}..${b - 1}`).join(" and ");
 function evBlob(s, key){ const f = s.find(key); return f && f.type === T.BLOB ? f : null; }

@@ -687,10 +687,17 @@ class CliTests(unittest.TestCase):
         self.assertFalse(flags.get_local(sf, 5, 11266))
         self.assertTrue(flags.mirror_ok(sf))
 
-    def test_recipes_require_experimental(self):
-        for extra in (['--forgive', 'baldwin'], ['--reset-map', 'm02'], ['--rearm-pickups', 'm02']):
+    def test_raw_flag_edits_require_experimental(self):
+        # the recipes were seen working in game; a raw flag's effect depends on the flag
+        for extra in (['--set', '4096=0'], ['--set', 'm02:200=0']):
             with self.assertRaises(SystemExit):
                 self.des_editor.main(['events', self.path, *extra])
+
+    def test_confirmed_recipes_need_no_opt_in(self):
+        out = str(Path(self.tmp.name) / 'out')
+        # (this fixture has no 78a5c2d7 bank, so --rearm-pickups is covered by the page tests)
+        for extra in (['--forgive', 'baldwin'], ['--reset-map', 'm02'], ['--npc', 'baldwin=work']):
+            self.assertEqual(0, self.des_editor.main(['events', self.path, *extra, '--out', out]), extra)
 
     def test_npc_round_trip(self):
         out = str(Path(self.tmp.name) / 'out')

@@ -142,6 +142,26 @@ EQUIPMENT_KEYS = ['Return', 'wait:2', 'shot:equipment', 'l', 'wait:1']
 WEAPON_LIST_KEYS = ['Return', 'wait:2', 'Down', 'wait:1', 'j', 'wait:2', 'shot:weapons', 'l', 'wait:1', 'l', 'wait:1']
 STATUS_KEYS = ['Return', 'wait:2', 'e*2', 'wait:2', 'shot:status', 'l', 'wait:1']
 
+_BOLDWIN_WORK, _BOLDWIN_HOSTILE = 16440, 16441
+_BOLDWIN_STATES = (16440, 16441, 16442, 16443)      # work, hostile, dead, not here yet
+
+
+def _lotus(sf) -> list[int]:
+    return [r['quantity'] for r in _inventory(sf, 'Goods', 1007)]
+
+
+def _rearm_case(how: str, edit: list[str]) -> Case:
+    """Take the 5-1 Noble's Lotus (confirmed), then clear its taken-flag with `edit`."""
+    return Case(
+        f"event flags: re-arm the 5-1 Noble's Lotus after taking it, {how}; starting 4 m from it "
+        "(written for profile 0, DPG)",
+        [['events', '--take-pickup', f'm05:{_TAKE_FLAG}', '--no-backup'], edit],
+        lambda sf: not des_flags.get_local(sf, 4, _TAKE_FLAG) and _lotus(sf) == [25],
+        "flag 10240 clear in m05 after the take (lotus 25); look at the screenshots for the item glow",
+        _LOOK, lambda sf: not des_flags.get_local(sf, 4, _TAKE_FLAG) and _lotus(sf) == [22],
+        ('m05_00_00_00', 'c0000_0000'))
+
+
 CASES: dict[str, Case] = {
     'qty': Case(
         'inventory quantity of a goods stack: Crescent Moon Grass 45 -> 37',
@@ -313,6 +333,35 @@ CASES: dict[str, Case] = {
         and [r['quantity'] for r in _inventory(sf, 'Goods', 1007)] == [22]
         and [r['low_quantity'] for r in _storage(sf, 'Goods', 1007)] == [11],
         ('m05_00_00_00', 'c0000_0000')),
+    # Re-arm recipes on the same proven spot: take the lotus (confirmed above), then undo the
+    # taken-flag with the recipe under test; the glow should be back. The lotus stays at 25.
+    'flag-rearm-one': _rearm_case('one pickup, as the Pickups row does: --set m05:10240=0',
+                                  ['events', '--set', f'm05:{_TAKE_FLAG}=0', '--experimental', '--no-backup']),
+    'flag-rearm-all': _rearm_case("every taken pickup of the map: --rearm-pickups m05",
+                                  ['events', '--rearm-pickups', 'm05', '--experimental', '--no-backup']),
+    'flag-reset-map': _rearm_case('every local flag of the map: --reset-map m05',
+                                  ['events', '--reset-map', 'm05', '--experimental', '--no-backup']),
+    # Blacksmith Boldwin (entity 694) stands 8.4 m ahead of Nexus spawn c0000_0003. The Nexus
+    # script turns his logic on and makes him an enemy when BALDWIN_STATE_HOSTILE is set.
+    'flag-npc-hostile': Case(
+        'event flags: set Blacksmith Boldwin hostile (--npc), starting 8.4 m from him in the Nexus '
+        '(written for profile 1, LOL)',
+        [['events', '--npc', 'baldwin=hostile', '--experimental', '--no-backup']],
+        lambda sf: des_flags.get_flag(sf, _BOLDWIN_HOSTILE) and not des_flags.get_flag(sf, _BOLDWIN_WORK),
+        'state flag 16441 set, 16440 clear; look at the screenshots for an attacking Boldwin',
+        _LOOK + ['wait:8', 'shot:look-3'],
+        lambda sf: des_flags.get_flag(sf, _BOLDWIN_WORK), ('m01_00_00_00', 'c0000_0003')),
+    'flag-forgive': Case(
+        'event flags: set Boldwin hostile, then forgive him (--forgive); he should be back at work',
+        [['events', '--npc', 'baldwin=hostile', '--experimental', '--no-backup'],
+         ['events', '--forgive', 'baldwin', '--experimental', '--no-backup']],
+        lambda sf: des_flags.get_flag(sf, _BOLDWIN_WORK) and not des_flags.get_flag(sf, _BOLDWIN_HOSTILE)
+        and not any(des_flags.get_flag(sf, f + 1000) for f in _BOLDWIN_STATES),
+        'state flag 16440 set, 16441 clear, no previous-state twin left; look at the screenshots',
+        _LOOK + ['wait:8', 'shot:look-3'],
+        lambda sf: des_flags.get_flag(sf, _BOLDWIN_WORK)
+        and any(des_flags.get_flag(sf, f + 1000) for f in _BOLDWIN_STATES),
+        ('m01_00_00_00', 'c0000_0003')),
 }
 _ELIXIR = ('Goods', None)        # filled from the catalog at start-up
 

@@ -637,14 +637,15 @@ class EventsBrowserTests(unittest.TestCase):
 
     def test_edits_wait_for_the_experimental_toggle(self):
         self.open_events(experimental=False)
-        # respawn, defeat and take were seen working in game, so they need no toggle; the rest do
+        # the recipes were seen working in game, so they need no toggle; raw flag edits do
         self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="respawn"]').is_enabled())
         self.assertTrue(self.page.locator('.evboss[data-boss="4224"] button[data-action="defeat"]').is_enabled())
         self.assertTrue(self.page.locator('.evboss[data-boss="4096"] button[data-action="defeat"]').is_disabled())   # already dead
-        self.assertTrue(self.page.locator('.evnpc[data-npc="baldwin_flag_list"] select').is_disabled())
+        self.assertTrue(self.page.locator('.evnpc[data-npc="baldwin_flag_list"] select').is_enabled())
+        self.assertTrue(self.page.locator('#evresetmap').is_enabled())
         self.assertTrue(self.page.locator('#evlocal input[data-flag="200"]').is_disabled())
         self.page.check('#eventsexperimental')
-        self.assertTrue(self.page.locator('.evnpc[data-npc="baldwin_flag_list"] select').is_enabled())
+        self.assertTrue(self.page.locator('#evlocal input[data-flag="200"]').is_enabled())
 
     def test_reads_match_python(self):
         self.open_events(experimental=False)
@@ -756,9 +757,7 @@ class EventsBrowserTests(unittest.TestCase):
         self.assertEqual(0, self.page.locator('button[data-action="respawn-full"]').count())
         self.assertEqual(16, self.page.locator('.evboss').count())
         again = self.page.locator('.evpick[data-flag="10242"] button[data-action="rearm"]')
-        self.assertTrue(again.is_disabled())                            # experimental
-        self.page.check('#eventsexperimental')
-        self.assertTrue(again.is_enabled())
+        self.assertTrue(again.is_enabled())                             # seen working in game
 
     def test_defeat_matches_python_and_hands_over_the_soul(self):
         fresh = lambda: test_flags.defeat_save({4096: 1}, area=1, local={(1, 200): 1})
@@ -845,10 +844,10 @@ class EventsBrowserTests(unittest.TestCase):
     def test_tendency_rearm_matches_python(self):
         self.open_events(experimental=False)
         self.page.click('button[data-tab="tendency"]')
-        again = self.page.locator('#tdgated tr[data-flag="200"] button[data-action="rearm"]').first
+        again = self.page.locator('#tdgated tr[data-flag="200"] button[data-action="tendency-rearm"]').first
         self.assertTrue(again.is_disabled())
         self.page.check('#tdexperimental')
-        again = self.page.locator('#tdgated tr[data-flag="200"] button[data-action="rearm"]').first
+        again = self.page.locator('#tdgated tr[data-flag="200"] button[data-action="tendency-rearm"]').first
         again.click()
         expected = self.fixture()
         des_flags.set_local(expected, 1, 200, False)
@@ -873,9 +872,12 @@ class EventsBrowserTests(unittest.TestCase):
         self.assertEqual('confirmed', status('button[data-action="respawn"]'))
         self.assertEqual('confirmed', status('button[data-action="respawn-full"]'))
         self.assertEqual('confirmed', status('button[data-action="defeat"]'))
-        for action in ('rearm', 'reset-map'):
-            self.assertEqual('experimental', status(f'button[data-action="{action}"]'), action)
-        self.assertEqual('experimental', status('.evnpc select'))
+        for action in ('rearm', 'reset-map', 'take'):
+            self.assertEqual('confirmed', status(f'button[data-action="{action}"]'), action)
+        self.assertEqual('confirmed', status('.evnpc select'))
+        self.open_events(experimental=False)                           # m02:200 is a tendency-gated flag
+        self.page.click('button[data-tab="tendency"]')               # a repeat not yet seen in game
+        self.assertEqual('experimental', status('button[data-action="tendency-rearm"]'))
         self.assertIn('✓', self.page.locator('button[data-action="respawn"]').first.inner_text())
 
     def test_phone_width_has_no_sideways_scroll(self):

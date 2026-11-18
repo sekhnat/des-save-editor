@@ -308,10 +308,13 @@ recipes:
   the copy**), as the game does on load
 - set any flag
 
-Boss respawn and Mark defeated were seen working in game (Phalanx back with
-its fog gate; Allant's throne room empty with his soul kept) and need no
-opt-in, nor does the copy fix. The page marks each recipe button ✓ or
-EXP accordingly. Every other edit is experimental; the
+Every recipe was seen working in game: boss respawn (Phalanx back with its
+fog gate), Mark defeated (Allant's throne room empty, his soul kept), NPC
+state and Forgive (Boldwin off his anvil when hostile, back at it when
+forgiven), and Take, Re-arm and Reset map (a pickup's glow gone and back).
+They need no opt-in, nor does the copy fix. The page marks each recipe button
+✓ or EXP accordingly. Raw flag edits and re-arming a tendency event stay
+experimental; the
 [in-game checks](research.md#in-game-checks) record what Kyty showed. The shop-stock counters (8 flags per limited item)
 are shown read-only, because what they count is not confirmed.
 

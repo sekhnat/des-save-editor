@@ -947,6 +947,8 @@ EVENTFLAG_UNSEEN = ("event-flag edits are kept by the game's own save but their 
 EVENT_CONFIRMED: set[str] = {"respawn", "respawn-full",   # Phalanx back on screen, 2026-11-18
                               "defeat",   # Allant gone from 1-4, soul kept, 2026-11-18
                               "take",     # 5-1 Noble's Lotus glow gone, items kept, 2026-11-18
+                              "rearm", "reset-map",   # the lotus glow back after a take, 2026-11-18
+                              "npc", "forgive",   # Boldwin off his anvil when hostile, back when forgiven
                               "sync"}   # the game rebuilds the copy from the slots on load
 
 

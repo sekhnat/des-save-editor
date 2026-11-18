@@ -323,13 +323,13 @@ validated write path:
 - **Tendency-gated events.** The Tendency tab lists the 42 pairings with each
   flag's state. A flag that is already set means the one-shot event happened,
   which is why a tendency change sometimes appears to "do nothing". Its
-  **Re-arm** button clears that flag (experimental).
+  **Re-arm** button clears that flag (experimental: a repeat is not yet seen).
 - **Fix the current-map copy.** `--sync-copy` (the page's **Fix the copy**,
   shown only when the copy differs) rebuilds the primary blob's copy of the
   current map's flags from that map's slots. The game does the same on load
   (seen in Kyty for both ranges), so this needs no opt-in.
 
-Edits are opt-in (`--experimental`) until they are verified in game.
+Edits are opt-in (`--experimental`) until they are verified in game; every recipe now is (below).
 
 ## Verification status and next steps
 
@@ -406,15 +406,36 @@ the new map's slot.
 The game's health bar calls the 1-4 boss "Old King Allant"; the editor keeps
 the boss table's "False King Allant", which matches his soul's name.
 
-Boss respawn (plain and full) and Mark defeated are therefore confirmed and no longer need
-`--experimental` or the Events tab's toggle (`EVENT_CONFIRMED` in
-`des_editor.py`, `EV_CONFIRMED` in the page). Everything else stays
-experimental:
-- The game keeps map-flag edits and pickup re-arms, but they have not been
-  seen.
-- NPC state edits are read by the game, which may then move the NPC on by
-  its own rules (late-game fading, for one).
-- Forgive and Reset map have not been run in game.
+On 2026-11-18 the remaining recipes were run the same way, each against a
+no-edit control from the same spot:
+
+| Case | Edit | Result |
+|---|---|---|
+| `flag-take-pickup` | `--take-pickup m05:10240` (Noble's Lotus ×4, 4 m from 5-1 `c0000_0000`; profile 0) | the item glow beside the character is gone; flag, inventory and storage overflow kept |
+| `flag-rearm-one` | take, then `--set m05:10240=0` (what a Pickups row's Re-arm does) | the glow is back; kept |
+| `flag-rearm-all` | take, then `--rearm-pickups m05` | the glow is back; kept |
+| `flag-reset-map` | take, then `--reset-map m05` | the glow is back; kept |
+| `flag-npc-hostile` | `--npc baldwin=hostile`, start at m01 `c0000_0003`, 8.4 m from Boldwin (entity 694; profile 1) | he leaves his anvil and stands turned, where the control has him hammering; kept |
+| `flag-forgive` | `--npc baldwin=hostile`, then `--forgive baldwin` | back at his anvil as in the control; state Working, no previous-state twin left |
+
+![Boldwin: control, hostile, forgiven](assets/ingame-boldwin-npc-forgive.jpg)
+![The 5-1 lotus: control, taken, re-armed three ways](assets/ingame-lotus-take-rearm.jpg)
+
+Every recipe is therefore confirmed and needs neither `--experimental` nor the
+Events tab's toggle (`EVENT_CONFIRMED` in `des_editor.py`, `EV_CONFIRMED` in
+the page). Two edits stay experimental:
+- Raw flag edits (`--set`, the flag lists' checkboxes): the game keeps the
+  bit and reads the slot, but what a flag does depends on the flag.
+- Re-arming a tendency-gated event (Tendency tab, recipe `tendency-rearm`): the
+  flag clears, but the event repeating has not been seen.
+
+The Maiden in Black is no NPC-state test subject: the Nexus script moves her
+from "not here yet" to "waiting" by itself once any boss is dead.
+
+Spawn facing, for picking a camera-facing start: a player part's yaw is the
+second rotation float at part offset 0x2C (degrees). The bearing of a target is
+`atan2(dx, dz) − yaw + 180`, positive to the right; checked against Allant
+(front right) and the 5-1 lotus (front left).
 
 
 ## Using it
@@ -426,17 +447,18 @@ python3 src/des_editor.py events --list                    # bosses and NPC stat
 python3 src/des_editor.py events FILE                      # bosses, NPC states, per-map counts
 python3 src/des_editor.py events FILE --filter miralda     # search by text (all maps)
 python3 src/des_editor.py events FILE --json
-python3 src/des_editor.py events FILE --respawn phalanx --experimental
-python3 src/des_editor.py events FILE --npc baldwin=work --experimental
+python3 src/des_editor.py events FILE --respawn phalanx
+python3 src/des_editor.py events FILE --npc baldwin=work
 python3 src/des_editor.py events FILE --set 4103=0 --experimental      # save-wide flag
 python3 src/des_editor.py events FILE --set m02:200=0 --experimental   # map-local flag
 python3 src/des_editor.py events FILE --set m02:10770=0 --experimental # map-local, high range
-python3 src/des_editor.py events FILE --respawn phalanx --full --experimental
+python3 src/des_editor.py events FILE --respawn phalanx --full
 python3 src/des_editor.py events FILE --defeat allant                 # dead + soul in the inventory
 python3 src/des_editor.py events FILE --defeat allant --no-soul       # death flag only
-python3 src/des_editor.py events FILE --forgive baldwin --experimental
-python3 src/des_editor.py events FILE --rearm-pickups m02 --experimental
-python3 src/des_editor.py events FILE --reset-map m02 --experimental
+python3 src/des_editor.py events FILE --forgive baldwin
+python3 src/des_editor.py events FILE --take-pickup m02:10240         # as if picked up
+python3 src/des_editor.py events FILE --rearm-pickups m02
+python3 src/des_editor.py events FILE --reset-map m02
 python3 src/des_editor.py events FILE --sync-copy                       # rebuild the map-flag copy
 python3 tools/build_flagdb.py GAME --coverage FILE                      # label coverage
 ```
